@@ -6,7 +6,7 @@ description = "Big Badass Graph: authenticated state with polynomial commitments
 license = "Cyber"
 
 [dependencies]
-aurum = { path = "../aurum" }
+nebu = { path = "../nebu" }
 hemera = { path = "../hemera" }
 nox = { path = "../nox" }
 zheng = { path = "../zheng" }

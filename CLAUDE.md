@@ -567,7 +567,7 @@ Layer 4: UTXO State        mutator set (AOCL + SWBF), privacy layer
 
 | repo | path | role |
 |------|------|------|
-| aurum | `~/git/aurum/` | Goldilocks field arithmetic |
+| nebu | `~/git/nebu/` | Goldilocks field arithmetic |
 | hemera | `~/git/hemera/` | hash function + tree primitives |
 | nox | `~/git/nox/` | VM (execution, circuits) |
 | zheng | `~/git/zheng/` | proof system (WHIR, SuperSpartan) |
