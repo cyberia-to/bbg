@@ -72,16 +72,6 @@ fjall keyspace: "bbg"
 │   polynomial coefficients and evaluation points
 │   recomputed on state transitions via range scan of source partition
 │
-├── partition: "refs"
-│   key:   ref_name (UTF-8)
-│   value: (Hash, sequence: u64, author)
-│   mutable name resolution (file roots, PIDs, agent entry points)
-│
-├── partition: "refs_log"
-│   key:   (ref_name, sequence)
-│   value: (Hash, author)
-│   append-only history — enables time travel and sync protocol
-│
 └── partition: "cozo_*"
     CozoDB internal relations via fjall backend trait
     ├── cozo relations (cyberlinks, particles, properties)
@@ -104,7 +94,7 @@ fjall keyspace: "bbg"
 | namespace sync response | idx_* + edges | range scan | validator |
 | namespace sync receive | edges, idx_* | batch write | light client |
 | Datalog query | cozo_* + idx_* | CozoDB query plan | both |
-| time travel | refs_log | range scan by sequence | both |
+| name resolution | idx_neuron + edges | range scan (latest ~ cyberlink) | both |
 
 ## state transitions
 
@@ -165,5 +155,46 @@ CozoDB    zheng
 ```
 
 bbg owns the fjall keyspace. CozoDB and zheng are consumers — CozoDB for interactive Datalog queries, zheng for proof generation and verification. neither knows about the other. bbg mediates.
+
+## names are cyberlinks
+
+there is no separate "refs" or "mutable pointers" abstraction. a [[name]] is a [[cyberlink]] with the `~` [[semcon]] — it lives in the edge store and idx_neuron like any other edge. deterministic resolution is a query: "latest cyberlink from this neuron where from = name_label." time travel is a query over the same index filtered by timestamp. the cybergraph already has dynamic pointers — cyberlinks — so no separate naming layer is needed.
+
+```
+~mastercyb/blog → QmXyz
+
+stored as edge:
+  neuron: mastercyb
+  from:   H("blog")
+  to:     QmXyz
+  weight: 1
+  time:   t
+
+resolution:
+  idx_neuron range scan (mastercyb, *)
+  filter: from = H("blog")
+  order by time desc
+  take 1
+```
+
+## the bbg / ask boundary
+
+bbg answers: is this data authentic? (proofs)
+[[Ask]] answers: what does this data mean? (queries)
+
+every query CAN become a proof — [[Ask]] formulates the Datalog query, bbg proves the result via [[zheng]]. the boundary is not about what is provable, but about responsibility:
+
+- bbg stores edges, maintains indexes, computes polynomial commitments, generates and verifies [[WHIR]] proofs, runs the [[mutator set]], serves namespace sync. it is the authenticated storage engine.
+- [[Ask]] compiles Datalog, optimizes query plans, runs graph algorithms (PageRank, Dijkstra, Louvain), manages HNSW vector indices, bridges interactive queries to provable queries. it is the reasoning engine.
+
+bbg does not know what a query means. [[Ask]] does not know how a proof works. when a provable query is requested, [[Ask]] formulates it and hands the execution plan to bbg, which generates the proof via [[zheng]]. clean separation, composable.
+
+```
+neuron asks: "all edges where particle = X, proved"
+  → Ask: compile Datalog → query plan
+  → bbg: execute plan against fjall → result set
+  → bbg: generate WHIR range proof over idx_particle
+  → return: result + proof
+```
 
 see [[bbg]] for the cryptographic structure, [[data structure for superintelligence]] for full specification, [[mutator set]] for UTXO privacy
