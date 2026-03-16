@@ -66,6 +66,14 @@ fjall keyspace: "bbg"
 │   active window: 128 KB directly accessible
 │   inactive chunks: compacted into MMR
 │
+├── partition: "names"
+│   key:   (neuron_id, from_hash)
+│   value: (to_hash, time, edge_hash)
+│   mutable — overwritten on each name update
+│   materialized current state of ~ cyberlinks
+│   O(1) deterministic resolution
+│   history lives in edges (all cyberlinks for this name)
+│
 ├── partition: "commitments"
 │   key:   (index_kind, epoch)
 │   value: WHIR commitment data
@@ -94,7 +102,8 @@ fjall keyspace: "bbg"
 | namespace sync response | idx_* + edges | range scan | validator |
 | namespace sync receive | edges, idx_* | batch write | light client |
 | Datalog query | cozo_* + idx_* | CozoDB query plan | both |
-| name resolution | idx_neuron + edges | range scan (latest ~ cyberlink) | both |
+| name resolution | names | point lookup | both |
+| name history | idx_neuron + edges | range scan (all ~ cyberlinks) | both |
 
 ## state transitions
 
@@ -158,24 +167,32 @@ bbg owns the fjall keyspace. CozoDB and zheng are consumers — CozoDB for inter
 
 ## names are cyberlinks
 
-there is no separate "refs" or "mutable pointers" abstraction. a [[name]] is a [[cyberlink]] with the `~` [[semcon]] — it lives in the edge store and idx_neuron like any other edge. deterministic resolution is a query: "latest cyberlink from this neuron where from = name_label." time travel is a query over the same index filtered by timestamp. the cybergraph already has dynamic pointers — cyberlinks — so no separate naming layer is needed.
+a [[name]] is a [[cyberlink]] with the `~` [[semcon]]. every name update creates a new edge in the edge store. the "names" partition caches the latest value for O(1) resolution. the edge store holds the full history.
 
 ```
 ~mastercyb/blog → QmXyz
 
-stored as edge:
+stored as edge (append-only, in edges + indexes):
   neuron: mastercyb
   from:   H("blog")
   to:     QmXyz
   weight: 1
   time:   t
 
+cached in names partition (mutable, overwritten):
+  key:   (mastercyb, H("blog"))
+  value: (QmXyz, t, H(edge))
+
 resolution:
+  names partition point lookup → O(1)
+
+history:
   idx_neuron range scan (mastercyb, *)
   filter: from = H("blog")
-  order by time desc
-  take 1
+  → all versions, ordered by time
 ```
+
+names and the "names" partition are not separate concepts — one is the protocol-level [[name]] (a [[cyberlink]] with `~`), the other is the storage-level optimization that makes resolution fast. the edge store is the log. the names partition is the snapshot.
 
 ## the bbg / ask boundary
 
