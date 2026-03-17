@@ -152,6 +152,40 @@ network query:  "prove all edges where neuron = X"
 
 same data, same storage, two access modes. interactive queries go through CozoDB/[[Ask]]. provable queries go through [[zheng]]/[[WHIR]]. both read from fjall.
 
+## algebra-adaptive storage
+
+the noun store holds trees with different-sized leaves depending on the algebra. the tree structure (cells as pairs) is universal — only leaf sizes differ.
+
+| atom type | width | algebra | notes |
+|-----------|-------|---------|-------|
+| F₂ | 1 bit | Bt programs | compact, massive trees |
+| F_p | 64 bits / 8 bytes | field programs | standard |
+| word | 32 bits / 4 bytes | word-type | fits in F_p |
+| hash | 512 bits / 64 bytes | 8 × F_p identity | CIDs, content addresses |
+
+the content-addressed store handles all leaf widths. `H(noun)` hashes the canonical serialization regardless of leaf size — a noun with bit-leaves and a noun with field-leaves both live in the same "edges" partition, keyed by their hash.
+
+### algebra-dependent access patterns
+
+different algebras produce different memory access patterns on the same noun store:
+
+- **field programs** (Tri, Wav, Ten): dense trees with F_p leaves. sequential access — matrix ops produce predictable axis paths. cache-friendly. dominated by fma-pattern workloads.
+- **binary programs** (Bt): ultra-compact trees with bit-sized leaves. very large trees (a SHA-256 circuit is millions of gates). bandwidth-bound.
+- **graph programs** (Arc): sparse trees with hash-type leaves (CIDs pointing to other nouns). random access patterns. latency-bound.
+- **mixed programs** (Rs): trees with both field and word leaves. irregular access.
+
+### storage is wiring
+
+in a content-addressed system, the noun tree topology IS the connectivity between operations and data. `axis(s, 2)` means "follow this wire to the left child." changing the algebra = changing the tree structure = changing the content addresses = changing the storage layout.
+
+optimizing the memory system (content-addressed lookup, tree traversal, noun caching) accelerates every algebra simultaneously. a faster fjall read path speeds up field programs, binary programs, and graph programs equally — because all of them resolve to `H(noun) → noun` lookups and axis traversals over the same store.
+
+### implications for fjall partitions
+
+the existing keyspace layout handles this naturally — edges are content-addressed by hash regardless of leaf type. the "edges" partition does not care whether a noun contains bit-leaves or field-leaves; the key is `H(edge)`, the value is the serialized edge.
+
+hot-path optimization should consider which partitions are accessed by which algebra patterns. field programs hammer "edges" with sequential scans (dense noun trees, predictable traversal). graph programs hammer "edges" with random point reads (hash leaves → follow CID → another point read). binary programs produce long sequential reads over very large nouns. cache eviction policy, prefetch strategy, and fjall block size all benefit from knowing the dominant algebra in the current workload.
+
 ## dependency graph
 
 ```
