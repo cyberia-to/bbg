@@ -40,21 +40,9 @@ COMPLETENESS PROOF for namespace N:
   3. left boundary: left neighbor has namespace < N (or is tree boundary)
   4. right boundary: right neighbor has namespace > N (or is tree boundary)
 
-VERIFICATION (by any client with only the root):
-  a) both Merkle paths verify against root           — O(log n) hashes
-  b) leftmost leaf has namespace = N                  — 1 comparison
-  c) rightmost leaf has namespace = N                 — 1 comparison
-  d) left neighbor namespace < N                      — 1 comparison
-  e) right neighbor namespace > N                     — 1 comparison
-
-GUARANTEE:
-  the client has provably received every leaf in namespace N
-  no leaf can be hidden — the tree structure prevents it
-
 ABSENCE PROOF for namespace N:
   show two adjacent leaves with namespaces that bracket N:
     leaf_i.namespace < N < leaf_{i+1}.namespace
-  this proves no leaf with namespace N exists
 
 COST:
   proof size: O(log n) hash digests
@@ -62,35 +50,12 @@ COST:
   for n = 2³²: ~32 × 736 = ~23,500 stark constraints
 ```
 
-## why NMTs cannot be replaced
+## why NMTs
 
-sorted [[polynomial commitments]] can approximate completeness but lack structural guarantees:
-
-- polynomial completeness requires a protocol: prove boundary entries, prove contiguity, prove sorting was maintained. each step requires a separate argument. any step can have bugs.
-- NMT completeness is a structural invariant: the tree physically cannot represent a valid root over misordered leaves. there is no protocol to debug because there is no protocol — a tree.
-- DAS requires NMTs: namespace-aware Data Availability Sampling (Celestia model) needs namespace labels propagated through internal nodes. polynomials have no internal nodes.
-- sync requires NMTs: "give me everything for neuron N with proof nothing is hidden" is the [[cybergraph]]'s fundamental operation.
+sorted [[polynomial commitments]] can approximate completeness but lack structural guarantees. polynomial completeness requires a protocol: prove boundary entries, prove contiguity, prove sorting was maintained — each step requires a separate argument. NMT completeness is a structural invariant: the tree physically cannot represent a valid root over misordered leaves. DAS requires NMTs for namespace-aware sampling. sync requires NMTs for provable namespace queries. see [[why-nmt]] for full analysis.
 
 ## use in cyber
 
-the [[BBG]] maintains nine NMT indexes committed in the [[BBG root|architecture]]:
+the [[BBG]] maintains nine NMT indexes: particles, axons_out, axons_in, neurons, locations, coins, cards, files, time. individual [[cyberlinks]] are private — NMT indexes contain only public aggregates.
 
-| index | namespace | proves |
-|---|---|---|
-| particles | CID | particle existence, energy, π* |
-| axons_out | source CID | all outgoing axons from a particle |
-| axons_in | target CID | all incoming axons to a particle |
-| neurons | neuron_id | focus, karma, stake per neuron |
-| locations | neuron_id | proof of location |
-| coins | denom_hash | fungible token supply |
-| cards | card_id | non-fungible knowledge assets |
-| files | CID | content availability (DAS) |
-| time | time_unit | historical BBG_root snapshots |
-
-individual [[cyberlinks]] are private — NMT indexes contain only public aggregates. see [[indexes]] for leaf structures.
-
-## data availability sampling
-
-block data is arranged in a √n × √n grid, erasure-coded in both dimensions (Reed-Solomon over [[Goldilocks field]]), and committed via NMT per row. light clients sample random cells with namespace-aware proofs — O(√n) samples for 99.9% confidence that all data is available.
-
-see [[BBG]] for the full graph architecture, [[indexes]] for NMT leaf structures, [[architecture-overview]] for the complete specification, [[Celestia]] for production heritage
+see [[indexes]] for leaf structures, [[cross-index]] for LogUp consistency across NMTs, [[data-availability]] for DAS
