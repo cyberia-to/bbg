@@ -52,6 +52,20 @@ bbg eliminates each fault class with a data structure property:
 
 the result: no leader election, no quorum, no voting. a single device online is a fully functional system. any two devices can sync bilaterally. any subset works. this is exactly the topology that personal infrastructure needs.
 
+## five verification layers
+
+no single layer is sufficient. each eliminates a different failure mode:
+
+| layer | mechanism | eliminates |
+|---|---|---|
+| validity | zheng proof per signal | forging (invalid operations) |
+| ordering | hash chain + VDF | reordering, equivocation, flooding |
+| completeness | per-device signal NMT | signal withholding |
+| availability | DAS + erasure coding | data loss from device failure |
+| merge | CRDT (G-Set) | content conflicts |
+
+together: **provably valid, provably ordered, provably complete, provably available, correctly merged.** that is extremely reliable sync.
+
 ## steps and snapshots
 
 a step is a logical clock tick. steps serve three purposes:

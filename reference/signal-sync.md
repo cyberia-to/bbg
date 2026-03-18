@@ -13,19 +13,33 @@ a [[neuron]] operates from multiple devices (1-20) with intermittent connectivit
 
 ## signal structure
 
+the canonical [[signal]] is s = (ν, l⃗, π_Δ, σ, t). for device sync, the signal is wrapped in a sync envelope that provides ordering without network consensus.
+
 ```
 signal = {
-  batch:          [cyberlink | file_op]       operations
-  proof:          zheng_proof                 self-certifying validity
-  author:         (neuron_id, device_id)      creator identity
+  // canonical signal (ν, l⃗, π_Δ, σ)
+  ν:              neuron_id                   subject (signing neuron)
+  l⃗:              [cyberlink]                 links (L⁺), each a 7-tuple (ν, p, q, τ, a, v, t)
+  π_Δ:            [(particle, F_p)]*          impulse: sparse focus update, how the batch shifts π*
+  σ:              zheng_proof                 recursive proof covering impulse + conviction
+
+  // sync envelope (device-level ordering)
+  device:         device_id                   which device within ν
   prev:           H(author's previous signal) device-local hash chain
   merkle_clock:   H(causal DAG root)          compact causal state
   vdf_proof:      VDF(prev, T)               physical time proof
-  step:           u64                         logical step counter
+  step:           u64                         device-local step counter
+
   hash:           H(all above)
 }
 
-signal size: batch + ~1-5 KiB proof + 160 bytes metadata
+lifecycle:
+  created on device:    (ν, l⃗, π_Δ, σ) + sync envelope
+  synced between peers: full signal (both layers)
+  submitted to network: (ν, l⃗, π_Δ, σ) — envelope stripped
+  included in block:    network assigns t (block height)
+
+signal size: canonical ~1-5 KiB proof + impulse + 160 bytes sync metadata
 ```
 
 ## steps
