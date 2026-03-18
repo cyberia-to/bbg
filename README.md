@@ -59,6 +59,7 @@ light client join:    one zheng verification + namespace sync
 | [[data-availability]] | 2D Reed-Solomon, NMT commitment, fraud proofs, DAS |
 | [[temporal]] | edge decay, pruning protocol, storage reclamation |
 | [[storage]] | tiered storage model, private record lifecycle |
+| [[signal-sync]] | private device sync, signal DAG, Merkle clocks, VDF, Byzantine elimination |
 
 ## explanations
 
@@ -67,6 +68,7 @@ light client join:    one zheng verification + namespace sync
 | [[design-principles]] | the three laws explained in depth |
 | [[why-nmt]] | why NMTs over sorted polynomial commitments |
 | [[why-mutator-set]] | why mutator set over polynomial + nullifier |
+| [[signal-sync explained|signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
 
 ## open design
 
