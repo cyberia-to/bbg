@@ -263,4 +263,4 @@ this axon exists in:
 
 names and cards are not separate concepts — one is the protocol-level [[name]] (a [[cyberlink]] creating a binding), the other is the storage-level commitment that makes resolution fast and provable. the cyberlink is the log. the card is the snapshot.
 
-see [[privacy]] for full mutator set architecture, [[architecture]] for the layer model, [[data structure for superintelligence]] for overview
+see [[privacy]] for full mutator set architecture, [[architecture]] for the layer model, [[architecture-overview]] for overview

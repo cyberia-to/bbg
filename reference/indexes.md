@@ -152,6 +152,18 @@ cards leaf:
   creator: F_p⁴                          32 bytes
   creation_time: u64                      8 bytes
 
+files leaf:
+  namespace: CID                          32 bytes
+  chunk_count: u32                        4 bytes
+  erasure_commitment: F_p⁴               32 bytes
+  availability_window: u64                8 bytes
+
+locations leaf:
+  namespace: entity_id                    32 bytes
+  location_claim: F_p⁴                   32 bytes
+  attestation_proof: F_p⁴                32 bytes
+  timestamp: u64                          8 bytes
+
 time leaf:
   namespace: time_unit                    32 bytes
   boundary_value: u64                     8 bytes

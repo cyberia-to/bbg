@@ -276,4 +276,4 @@ neuron asks: "all axons where source = X, proved"
   → return: result + proof
 ```
 
-see [[bbg]] for the cryptographic structure, [[architecture]] for the layer model, [[privacy]] for mutator set, [[data structure for superintelligence]] for overview
+see [[bbg]] for the cryptographic structure, [[architecture]] for the layer model, [[privacy]] for mutator set, [[architecture-overview]] for overview

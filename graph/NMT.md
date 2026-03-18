@@ -93,4 +93,4 @@ individual [[cyberlinks]] are private — NMT indexes contain only public aggreg
 
 block data is arranged in a √n × √n grid, erasure-coded in both dimensions (Reed-Solomon over [[Goldilocks field]]), and committed via NMT per row. light clients sample random cells with namespace-aware proofs — O(√n) samples for 99.9% confidence that all data is available.
 
-see [[BBG]] for the full graph architecture, [[indexes]] for NMT leaf structures, [[data structure for superintelligence]] for the complete specification, [[Celestia]] for production heritage
+see [[BBG]] for the full graph architecture, [[indexes]] for NMT leaf structures, [[architecture-overview]] for the complete specification, [[Celestia]] for production heritage
