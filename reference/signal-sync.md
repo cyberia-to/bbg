@@ -13,33 +13,36 @@ a [[neuron]] operates from multiple devices (1-20) with intermittent connectivit
 
 ## signal structure
 
-the canonical [[signal]] is s = (ν, l⃗, π_Δ, σ, t). for device sync, the signal is wrapped in a sync envelope that provides ordering without network consensus.
+the [[signal]] is s = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step, t). the ordering fields (prev, mc, vdf, step) are part of the signal — not a separate envelope. the same fields serve local device sync and global [[foculus]] consensus. device = neuron at different scales.
 
 ```
 signal = {
-  // canonical signal (ν, l⃗, π_Δ, σ)
+  // payload — what the signal means
   ν:              neuron_id                   subject (signing neuron)
   l⃗:              [cyberlink]                 links (L⁺), each a 7-tuple (ν, p, q, τ, a, v, t)
   π_Δ:            [(particle, F_p)]*          impulse: sparse focus update, how the batch shifts π*
   σ:              zheng_proof                 recursive proof covering impulse + conviction
 
-  // sync envelope (device-level ordering)
-  device:         device_id                   which device within ν
-  prev:           H(author's previous signal) device-local hash chain
+  // ordering — where the signal sits in causal and physical time
+  device:         device_id                   which device within ν (local sync only)
+  prev:           H(author's previous signal) per-neuron hash chain
   merkle_clock:   H(causal DAG root)          compact causal state
   vdf_proof:      VDF(prev, T)               physical time proof
-  step:           u64                         device-local step counter
+  step:           u64                         monotonic logical clock
+
+  // finalization
+  t:              u64                         block height (assigned at network inclusion)
 
   hash:           H(all above)
 }
 
 lifecycle:
-  created on device:    (ν, l⃗, π_Δ, σ) + sync envelope
-  synced between peers: full signal (both layers)
-  submitted to network: (ν, l⃗, π_Δ, σ) — envelope stripped
+  created on device:    (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
+  synced between peers: full signal
+  submitted to network: full signal (ordering fields preserved)
   included in block:    network assigns t (block height)
 
-signal size: canonical ~1-5 KiB proof + impulse + 160 bytes sync metadata
+signal size: ~1-5 KiB proof + impulse + 160 bytes ordering metadata
 ```
 
 ## steps

@@ -69,6 +69,8 @@ light client join:    one zheng verification + namespace sync
 | [[why-nmt]] | why NMTs over sorted polynomial commitments |
 | [[why-mutator-set]] | why mutator set over polynomial + nullifier |
 | [[signal-sync explained|signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
+| [[foculus-vs-crdt]] | why π convergence replaces CRDTs at global scale |
+| [[data-availability explained|data-availability]] | DAS, erasure coding, and provable availability |
 
 ## open design
 
