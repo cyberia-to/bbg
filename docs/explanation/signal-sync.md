@@ -48,7 +48,7 @@ bbg eliminates each fault class with a data structure property:
 
 **reordering** — the hash chain makes device-local history immutable. inserting, removing, or reordering a signal breaks the chain (subsequent hashes no longer verify). any peer walking the chain detects the break in O(n) where n is chain length.
 
-**withholding** — if a device refuses to share signals, other devices operate independently. no device is a bottleneck. the withheld signals simply don't participate in the DAG until the device reconnects. this is self-punishing — the withholding device falls behind.
+**withholding** — each device commits its signal chain to a per-device NMT (namespaced by step). a peer requesting "all signals in steps [100, 200]" gets an NMT completeness proof — the tree structure prevents omission. the device cannot hide signals in the requested range. content availability is verified via DAS — erasure-coded chunks sampled at O(√n) cost. withholding is not self-punishing — it is structurally detectable.
 
 the result: no leader election, no quorum, no voting. a single device online is a fully functional system. any two devices can sync bilaterally. any subset works. this is exactly the topology that personal infrastructure needs.
 
@@ -74,6 +74,20 @@ all three maintain independent signal chains with VDF proofs. when the laptop co
 
 the phone connects later. same protocol. it finds the laptop and server already in sync, downloads their signals, verifies, replays. three devices, identical state, no server-centric architecture, no timestamp trust.
 
-content (file blobs) syncs separately as a CRDT — grow-only set of CIDs. "do you have this chunk? no? here." no ordering needed for content. ordering is only for name bindings and cyberlink operations.
+content (file blobs) syncs as three composed layers: CRDT merge (grow-only set of CIDs), NMT completeness proofs (provably all content received), and DAS availability (erasure-coded chunks survive device failure).
 
-see [[signal-sync]] for the full specification, [[design-principles]] for the three laws, [[sync]] for public namespace sync
+## why DAS, not just CRDTs
+
+a CRDT guarantees convergence if all updates are delivered. delivery is assumed, not proven. a G-Set merge on incomplete data converges — to the wrong state.
+
+DAS adds the guarantee CRDTs lack: **provable completeness.** content chunks are erasure-coded across devices (2D Reed-Solomon). any device can sample O(√n) random chunks to verify that all data is available. the NMT commits each device's content set — a peer requests a namespace proof and knows structurally that nothing was withheld.
+
+for personal sync this matters because:
+
+- a compromised device might selectively withhold files. CRDT: undetectable. DAS + NMT: structurally impossible.
+- a device dies permanently. CRDT: data on that device is lost. DAS: erasure coding across the device set means any k-of-n surviving devices reconstruct everything.
+- a phone wants to verify all files exist without downloading them. CRDT: must download all. DAS: O(√n) samples for 99.9% confidence.
+
+the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), NMT handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
+
+see [[signal-sync]] for the full specification, [[design-principles]] for the three laws, [[sync]] for public namespace sync, [[data-availability]] for DAS in bbg

@@ -159,10 +159,12 @@ REORDERING           hash chain              reordering breaks chain →
                                              detectable by any peer
                                              cost: O(1) detection
 
-WITHHOLDING          independent operation   withholding device falls behind
-(refusing to share)                          other devices operate independently
-                                             no device is a bottleneck
-                                             cost: self-punishing
+WITHHOLDING          NMT + DAS               NMT completeness proof per device:
+(refusing to share)                          device commits signal set to NMT
+                                             peer requests namespace proof →
+                                             withheld signals detectable
+                                             DAS: content availability verifiable
+                                             cost: O(√n) sampling to detect
 
 FLOODING             VDF rate limiting       each signal costs T_min wall time
 (signal spam)                                cannot be parallelized
@@ -194,6 +196,26 @@ ORDERING RULES:
     no negotiation, no leader, no timestamps
 ```
 
+## signal NMT — per-device signal commitment
+
+each device commits its signal chain to a per-device NMT, namespaced by step.
+
+```
+SIGNAL NMT:
+
+  structure: NMT[ step → signal_hash ]
+  namespace: step counter (u64)
+  root: signed by device key
+
+  proves: "these are ALL signals from device D in step range [a, b]"
+  NMT completeness: device cannot hide a signal in the requested range
+
+  updated: on every new signal (append to NMT, recompute root)
+  cost: O(log n) per signal (NMT path update)
+```
+
+this transforms withholding from self-punishing to detectable. a peer requests a namespace proof for the step range it's missing. the NMT either provides all signals in that range or the proof fails. structural guarantee — the tree cannot lie.
+
 ## sync protocol
 
 ```
@@ -203,20 +225,30 @@ SYNC (two devices reconnect):
      equal → done (already in sync)
      different → continue
 
-  2. WALK Merkle DAG to divergence             O(log n)
-     exchange only missing signals
+  2. EXCHANGE signal NMT roots                 O(1)
+     each device sends its current signal NMT root
 
-  3. VERIFY each received signal:
+  3. REQUEST missing step ranges               O(log n)
+     with NMT completeness proofs
+     → provably ALL signals in range received
+     → no withholding possible
+
+  4. DAS SAMPLE content chunks                 O(√n)
+     verify content availability
+     request missing chunks by CID
+
+  5. VERIFY each received signal:
      a) zheng proof valid?                     forging check
      b) hash chain intact? (prev links)        reordering check
      c) no equivocation? (no duplicate prev)   double-signal check
      d) VDF proof valid?                       rate/time check
      e) step counter monotonic?                gap check
+     f) NMT inclusion proof valid?             completeness check
 
-  4. MERGE signal DAGs                         O(signals)
+  6. MERGE signal DAGs                         O(signals)
      compute deterministic total order
 
-  5. REPLAY ordered signals                    O(signals)
+  7. REPLAY ordered signals                    O(signals)
      apply state transitions
      → identical state on all devices
 
@@ -228,23 +260,97 @@ SYNC (two devices reconnect):
 
 ## content sync
 
-file blobs are content-addressed [[particles]]. content sync is a CRDT (grow-only set).
+file blobs are content-addressed [[particles]]. content is chunked, erasure-coded, and committed to an NMT. three layers compose: CRDT for merge, DAS for completeness, NMT for provability.
 
 ```
-CONTENT SYNC:
+CONTENT LAYER:
 
   file → content-defined chunks → each chunk is a particle
   file_CID = H(chunk_CID_1 ‖ chunk_CID_2 ‖ ... ‖ chunk_CID_n)
+  chunk size: configurable (default 256 KiB, content-defined boundaries)
+```
 
+### CRDT merge (grow-only set)
+
+```
   sync: exchange missing CIDs
   "do you have CID X?" → yes (skip) / no (transfer)
 
-  no ordering needed
-  no conflicts possible
+  no ordering needed for content
+  no conflicts possible (content-addressed)
   deduplication automatic
   verification: H(received) == CID
+```
 
-  chunk size: configurable (default 256 KiB, content-defined boundaries)
+### DAS — data availability sampling
+
+content chunks are erasure-coded across devices using 2D Reed-Solomon over [[Goldilocks field]].
+
+```
+ERASURE CODING:
+
+  file chunks → k data chunks + (n-k) parity chunks
+  any k-of-n chunks reconstruct the original
+  distributed across N devices in the sync group
+
+  device goes offline permanently?
+    any k surviving devices → full recovery
+    no single device is a point of failure
+
+DAS VERIFICATION:
+
+  each device commits its content to a per-device NMT
+  (namespace = CID, sorted by content hash)
+
+  verifier samples O(√n) random chunk positions
+  each sample: request chunk + NMT inclusion proof
+  if all samples verify → data is available with high probability
+  99.9% confidence at O(√n) samples
+
+  cost: O(√n) samples vs O(n) full download
+  a phone verifies availability without downloading everything
+```
+
+### NMT completeness — provable sync
+
+```
+COMPLETENESS PROOF:
+
+  device A commits content set to NMT:
+    content_nmt.root = NMT(all CIDs held by device A)
+
+  device B requests namespace proof:
+    "give me ALL CIDs in range [X, Y] with proof"
+
+  NMT completeness guarantee:
+    device A cannot hide a CID in the requested range
+    the tree structure prevents omission
+    device B KNOWS it has everything
+
+  CRDT alone:  "I merged what I received" (was everything sent?)
+  NMT + DAS:   "I have everything, provably" (structural guarantee)
+```
+
+### three layers composed
+
+```
+LAYER           MECHANISM       GUARANTEES
+─────           ─────────       ──────────
+merge           CRDT (G-Set)    convergence on received data
+                                commutative, associative, idempotent
+
+completeness    NMT proof       provable completeness per namespace
+                                withholding structurally impossible
+                                O(log n) proof size
+
+availability    DAS + erasure   data survives device failure
+                                O(√n) verification cost
+                                no single point of failure
+
+CRDT alone: converges, but on possibly incomplete data
+DAS alone: proves availability, but no merge semantics
+NMT alone: proves completeness, but no availability
+together: provably complete, provably available, correctly merged
 ```
 
 ## name resolution sync
