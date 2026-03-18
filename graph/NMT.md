@@ -59,7 +59,7 @@ ABSENCE PROOF for namespace N:
 COST:
   proof size: O(log n) hash digests
   verification: O(log n) hash computations
-  for n = 2³²: ~32 × 250 = 8,000 stark constraints
+  for n = 2³²: ~32 × 736 = ~23,500 stark constraints
 ```
 
 ## why NMTs cannot be replaced
@@ -73,21 +73,24 @@ sorted [[polynomial commitments]] can approximate completeness but lack structur
 
 ## use in cyber
 
-the [[BBG]] maintains six NMT indexes over the same edge and [[token]] data:
+the [[BBG]] maintains nine NMT indexes committed in the [[BBG root|architecture]]:
 
 | index | namespace | proves |
 |---|---|---|
-| by_neuron | neuron_id | all edges created by a [[neuron]] |
-| by_particle | particle_hash | all edges touching a [[particle]] |
-| focus | neuron_id | current [[focus]] value per [[neuron]] |
-| balance | neuron_id | current balance per [[neuron]] |
-| coins | denom_hash | fungible [[token]] supply records |
+| particles | CID | particle existence, energy, π* |
+| axons_out | source CID | all outgoing axons from a particle |
+| axons_in | target CID | all incoming axons to a particle |
+| neurons | neuron_id | focus, karma, stake per neuron |
+| locations | neuron_id | proof of location |
+| coins | denom_hash | fungible token supply |
 | cards | card_id | non-fungible knowledge assets |
+| files | CID | content availability (DAS) |
+| time | time_unit | historical BBG_root snapshots |
 
-within each NMT leaf, an [[EdgeSet]] ([[polynomial commitment]] via [[WHIR]]) stores the actual edge hashes. the NMT provides completeness ("all edges for this namespace"). the EdgeSet provides efficient membership ("this edge belongs to this set").
+individual [[cyberlinks]] are private — NMT indexes contain only public aggregates. see [[indexes]] for leaf structures.
 
 ## data availability sampling
 
 block data is arranged in a √n × √n grid, erasure-coded in both dimensions (Reed-Solomon over [[Goldilocks field]]), and committed via NMT per row. light clients sample random cells with namespace-aware proofs — O(√n) samples for 99.9% confidence that all data is available.
 
-see [[BBG]] for the full graph architecture, [[EdgeSet]] for polynomial commitments within NMT leaves, [[data structure for superintelligence]] for the complete specification, [[Celestia]] for production heritage
+see [[BBG]] for the full graph architecture, [[indexes]] for NMT leaf structures, [[data structure for superintelligence]] for the complete specification, [[Celestia]] for production heritage

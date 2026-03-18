@@ -540,28 +540,25 @@ all files that have it — it is not decoration.
 
 ## what bbg is
 
-bbg is the authenticated state layer for cyber. it stores the cybergraph — edges
-(cyberlinks), neuron state, particle energy, focus, balances — with polynomial
-commitment indexes that provide cryptographic completeness proofs. when you sync
-a namespace, you get mathematical proof that nothing was withheld.
+bbg is the authenticated state layer for cyber. individual cyberlinks are private —
+the cybergraph is the public aggregate: axons, neuron summaries, particle energy,
+token supplies, π* distribution. NMT completeness proofs on public indexes,
+mutator set (AOCL + SWBF) for private records. when you sync a namespace, you get
+mathematical proof that nothing was withheld.
 
 ## structure
 
-```
-Layer 0: Edge Store        content-addressed, stored once, immutable
-Layer 1: Neuron Index      polynomial commitment, completeness by creator
-Layer 2: Particle Index    polynomial commitment, completeness by endpoint
-Layer 3: Focus & Balance   polynomial commitments over (neuron_id, value)
-Layer 4: UTXO State        mutator set (AOCL + SWBF), privacy layer
-```
+13 sub-roots under BBG_root (416 bytes):
+- 9 public NMTs: particles, axons_out, axons_in, neurons, locations, coins, cards, files, time
+- 3 private state: cyberlinks (AOCL/MMR), spent (SWBF archive/MMR), balance (SWBF active window)
+- 1 finalization: signals (MMR)
 
 ## key mechanisms
 
-- NMT (Namespace Merkle Trees) for edge indexing
-- EdgeSet polynomial commitments for membership proofs
-- LogUp lookup arguments for cross-index consistency
-- mutator set for private UTXO lifecycle
-- WHIR evaluation proofs for all polynomial commitments
+- NMT (Namespace Merkle Trees) for public aggregate indexing and completeness proofs
+- LogUp lookup arguments for cross-index consistency (particles ↔ axons_out ↔ axons_in)
+- mutator set for all private records (cyberlinks + economic transfers)
+- WHIR evaluation proofs for polynomial commitments
 
 ## companion repos
 
