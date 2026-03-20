@@ -5,9 +5,49 @@ crystal-domain: cyber
 status: draft
 date: 2026-03-18
 ---
-# algebraic NMT — polynomial commitment replaces Merkle trees
+# algebraic NMT — from hash trees to polynomial state
 
-replace 9 independent NMT trees with a unified polynomial commitment. a single cyberlink currently triggers 4-5 independent O(log n) hemera path updates costing ~94K constraints. algebraic NMT reduces this to ~3K constraints. the proposal is the single largest optimization available in bbg.
+## rationale
+
+the cybergraph is a knowledge structure at planetary scale. every edge (cyberlink), every node (particle), every agent (neuron) must be authenticated — the graph state is the shared truth of the network. the question is: what is the right mathematical object to commit to this state?
+
+the current answer is Namespace Merkle Trees (NMTs). NMTs are hash trees where internal nodes carry namespace bounds, providing completeness proofs: if you ask "show me all edges from particle P," the tree's sorting invariant guarantees that nothing can be hidden. this is a strong property — it is structural, unconditional, and independent of any computational assumption.
+
+but NMTs have a cost that scales with the structure they authenticate. every cyberlink touches 4-5 independent trees. every tree update rehashes a path from leaf to root. at 4 billion entries per index and 9 independent indexes, a single cyberlink costs ~106,000 constraints — and most of that cost is hemera hash recomputation along tree paths that share the same underlying data.
+
+the fundamental observation: the 9 NMT trees contain the SAME information viewed from different angles. particles.root indexes by content. axons_out.root indexes by source. axons_in.root indexes by target. neurons.root indexes by agent. the data is one — the indexes are many. maintaining them as separate hash trees forces redundant computation proportional to the number of views, not the amount of change.
+
+a polynomial commitment is a single mathematical object that can be evaluated at any point. committing to BBG_poly(index, key) creates ONE binding that simultaneously authenticates all 9 views. querying any view is a polynomial opening — a proof that the committed polynomial evaluates to the claimed value at the queried point. cross-index consistency becomes automatic: the polynomial is one object, so different views cannot disagree.
+
+this is a shift from **authenticating structure** (hash tree over data) to **authenticating function** (polynomial over the evaluation domain). the data is the same. the proof mechanism changes. the cost drops from O(views × log n × hash) to O(update_count × field_ops).
+
+## what is lost and what is gained
+
+the shift is not free. NMTs provide structural completeness — the sorting invariant is a property of the data structure itself, not a cryptographic assumption. a tree with the NMT invariant cannot omit entries from a namespace query. this is law 3 of bbg: structural security.
+
+polynomial completeness relies on the PCS (polynomial commitment scheme) being sound — a computational assumption. if the PCS breaks, the polynomial can lie. this is a weaker guarantee than structural.
+
+but the shift buys something NMTs cannot provide: **unified state**. with 9 independent NMT trees, every cross-index operation requires a separate consistency proof (LogUp). with one polynomial, consistency is definitional — different evaluation dimensions of the same polynomial cannot disagree. LogUp becomes unnecessary. the consistency guarantee is not just cheaper — it is stronger, because it is structural within the algebraic framework.
+
+the question resolves to: is PCS soundness (computational, well-studied, post-quantum for hash-based PCS) a sufficient foundation for the cybergraph's public state? the answer is yes, with a migration path that maintains NMT verification as a redundant safety check during the transition.
+
+## the three cost centers
+
+every state-modifying operation in bbg pays three costs:
+
+```
+1. state update:      modify the committed data structure
+2. consistency:       prove cross-index agreement
+3. completeness:      prove nothing was omitted from queries
+```
+
+| cost center | NMT approach | algebraic approach |
+|-------------|-------------|-------------------|
+| state update | O(views × log n) hemera hashes | O(views) field ops (or O(1) for unified poly) |
+| consistency | LogUp argument (~500 constraints per lookup) | free (same polynomial) |
+| completeness | structural (sorting invariant) | algebraic (LogUp range check or sorted evaluation) |
+
+the cost reduction is multiplicative: fewer hash computations × eliminated LogUp × smaller proofs.
 
 ## current architecture
 
@@ -27,7 +67,7 @@ time.root          NMT[time_ns → BBG_root_snapshot]   leaf: 72 bytes
 
 each NMT is a binary Merkle tree with hemera-2 hash nodes (32 bytes, 1 permutation per node). NMT internal nodes carry namespace min/max labels for completeness proofs.
 
-## cost analysis: current NMT approach
+## cost analysis: NMT
 
 ### per-cyberlink update
 
@@ -50,7 +90,6 @@ at n = 2³² (4 billion entries per index):
   constraints per path: 32 × 736 = 23,552
 
   per cyberlink: ~4.5 paths × 23,552 = ~106,000 constraints
-  (using 4.5 average paths; some cyberlinks touch fewer indexes)
 ```
 
 ### per-block cost
@@ -64,7 +103,7 @@ block with 1000 cyberlinks:
   total:               ~108M constraints per block
 ```
 
-### per-block with batched deduplication
+### with batched deduplication
 
 many cyberlinks touch the same particles (power-law). deduplicating path updates:
 
@@ -77,8 +116,6 @@ many cyberlinks touch the same particles (power-law). deduplicating path updates
 ```
 
 ### LogUp cross-index cost
-
-axons_out, axons_in, and particles must stay consistent. LogUp proves set containment:
 
 ```
 per axon update: ~500 constraints
@@ -107,19 +144,12 @@ committed via zheng PCS: BBG_commitment = PCS.commit(BBG_poly)
 ### per-cyberlink update
 
 ```
-update one evaluation point:
-  PCS update cost depends on scheme:
+with Verkle-tree approach at n = 2³²:
+  update: O(32) field operations + O(32) PCS node updates
+  each PCS node update: ~100 field ops (vs 736 for hemera path hash)
+  total: ~3,200 constraints
 
-  WHIR (current):          NOT cheaply updatable — full recommit O(N log N)
-  Brakedown (proposed):    O(√N) update cost
-  Verkle-tree hybrid:      O(log N) update cost (polynomial at each node)
-
-  with Verkle-tree approach at n = 2³²:
-    update: O(32) field operations + O(32) PCS node updates
-    each PCS node update: ~100 field ops (vs 736 for hemera path hash)
-    total: ~3,200 field ops ≈ ~3,200 constraints
-
-  savings vs NMT: 106,000 / 3,200 ≈ 33×
+savings vs NMT: 106,000 / 3,200 ≈ 33×
 ```
 
 ### per-block cost
@@ -128,28 +158,20 @@ update one evaluation point:
 block with 1000 cyberlinks:
 
   Verkle-tree approach:
-    1000 × 4.5 updates × 32 depth × ~100 field ops = ~14.4M field ops
     with deduplication (200 unique particles): ~5.8M field ops
-    + batch PCS recommit: O(N_changed × log N) ≈ ~2M field ops
+    + batch PCS recommit: ~2M field ops
     total: ~7.8M constraints
 
-  vs current NMT: ~108M constraints
-  savings: ~14×
-
-  with full polynomial (Brakedown, incremental):
-    1000 × 4.5 updates × O(√N) = 4,500 × ~65,000 ≈ ~290M field ops
-    too expensive for per-update — batch at block boundary
-    batch: 1 recommit of changed evaluations: O(changed × log N)
-    at 4500 changes: ~4,500 × 32 × ~50 = ~7.2M field ops
-    + 1 batch PCS opening for the block: ~50K constraints
+  Brakedown flat polynomial:
+    batch recommit of changed evaluations: ~7.2M field ops
+    + batch PCS opening: ~50K constraints
     total: ~7.3M constraints
 
-  savings: ~15×
+  vs current NMT: ~108M constraints
+  savings: 14-15×
 ```
 
 ### LogUp elimination
-
-with unified polynomial, cross-index consistency is structural:
 
 ```
 current:
@@ -164,8 +186,6 @@ algebraic NMT:
   cost: 0 additional constraints
 ```
 
-this is a pure win — LogUp cost drops to zero for cross-index consistency.
-
 ## comprehensive comparison
 
 ### per-cyberlink
@@ -173,7 +193,6 @@ this is a pure win — LogUp cost drops to zero for cross-index consistency.
 ```
                             NMT (current)    NMT + dedup    Algebraic NMT
 hemera permutations:        ~144             ~58            0
-field operations:           ~106K            ~43K           ~3.2K
 constraints:                ~106K            ~43K           ~3.2K
 LogUp constraints:          ~1.5K            ~1.5K          0
 total constraints:          ~107.5K          ~44.5K         ~3.2K
@@ -193,46 +212,38 @@ PCS recommit:               0                0              ~50K
 improvement vs current:     1×               2.5×           14×
 ```
 
-### proof size impact
+### proof size
 
 ```
                             NMT              Algebraic NMT
-inclusion proof:            O(log n) × 32B   O(1) PCS opening
-  at n = 2³²:              32 × 32 = 1 KiB  ~200 bytes
-completeness proof:         O(range × log n)  O(range) field ops
-  for range = 100:          ~100 KiB          ~5 KiB
-
-light client sync cost:     ~1 KiB per namespace  ~200 bytes per namespace
+inclusion proof:            32 × 32B = 1 KiB  ~200 bytes (PCS opening)
+completeness (range=100):   ~100 KiB          ~5 KiB
+light client per namespace: ~1 KiB            ~200 bytes
 ```
 
-### storage per index
+### storage
 
 ```
                             NMT              Algebraic NMT
-internal nodes:             (2n-1) × 64B     0 (no tree)
-  at n = 2³²:              ~550 GB per index  0
-commitment overhead:        32 bytes (root)   32 bytes (PCS commitment)
+internal nodes per index:   (2n-1) × 64B     0 (no tree)
+  at n = 2³²:              ~550 GB           0
 total for 9 indexes:        ~5 TB             ~288 bytes (9 commitments)
-
-node savings:               5 TB → 0 (internal nodes eliminated)
 ```
 
-the polynomial commitment replaces the entire tree structure. leaf data still stored (same in both approaches).
+leaf data is the same in both approaches. the polynomial replaces the tree structure, not the data.
 
-## completeness: NMT structural vs algebraic
+## completeness: structural vs algebraic
 
-the deepest design question. bbg's three laws require structural security (law 3): guarantees from data structure invariants, not protocol correctness.
-
-### NMT completeness (structural)
+### NMT completeness (structural, unconditional)
 
 ```
 mechanism: sorting invariant at internal nodes
   each node carries [ns_min, ns_max] of its subtree
-  parent: ns_min = min(left.ns_min, right.ns_min)
-          ns_max = max(left.ns_max, right.ns_max)
+  parent.ns_min = min(left.ns_min, right.ns_min)
+  parent.ns_max = max(left.ns_max, right.ns_max)
 
 completeness proof for namespace N:
-  walk tree to find all leaves where ns_min ≤ N ≤ ns_max
+  walk tree, collect all leaves where ns_min ≤ N ≤ ns_max
   the sorting invariant guarantees: if a leaf with namespace N exists,
   it MUST appear in this walk. omission is structurally impossible.
 
@@ -241,123 +252,128 @@ weakness: tree must be materialized (O(n) storage per index)
 security: unconditional (information-theoretic)
 ```
 
-### algebraic completeness (protocol)
-
-two approaches:
+### algebraic completeness (computational)
 
 **LogUp range check:**
 ```
-mechanism: algebraic set identity
-  for range [a, b]:
-    Σ 1/(β - f_i) for all i in committed set where a ≤ ns_i ≤ b
-    must equal
-    Σ 1/(β - t_j) for the claimed complete subset
+for range [a, b]:
+  Σ 1/(β - f_i) for all i in committed set where a ≤ ns_i ≤ b
+  must equal
+  Σ 1/(β - t_j) for the claimed complete subset
 
-  missing entry → sums don't match → proof rejected
+missing entry → sums don't match → proof rejected
 
-strength: no tree materialization needed
-weakness: relies on PCS binding + Schwartz-Zippel over Goldilocks
-security: computational (PCS soundness, field size)
-  Schwartz-Zippel error: degree / |F_p| ≈ n / 2^64 ≈ 2^{-32} for n = 2^32
-  with extension field F_{p²}: error ≈ 2^{-96} (sufficient)
+Schwartz-Zippel error: degree / |F_p| ≈ n / 2^64 ≈ 2^{-32} for n = 2^32
+with extension field F_{p²}: error ≈ 2^{-96}
 ```
 
 **sorted polynomial evaluation:**
 ```
-mechanism: committed sorted sequence
-  polynomial encodes (namespace, value) pairs sorted by namespace
-  range query [a, b]: open consecutive positions
-  verifier checks: positions are consecutive, bounds correct, values match
+polynomial encodes (namespace, value) pairs sorted by namespace
+range query [a, b]: open consecutive positions
+verifier checks: consecutive positions, correct bounds, matching values
 
-strength: simple verification, no lookup argument
-weakness: updates require re-sorting (expensive for unsorted insertions)
-security: PCS binding (computational)
+simple verification, no lookup argument
+updates require maintaining sort order
 ```
 
 ### comparison
 
 | property | NMT (structural) | algebraic (LogUp) | algebraic (sorted) |
 |----------|-------------------|--------------------|--------------------|
-| completeness guarantee | unconditional | computational (PCS) | computational (PCS) |
-| storage overhead | O(n) per index | 0 (polynomial) | 0 (polynomial) |
-| update cost | O(log n) hemera | O(1)-O(√N) field ops | O(n) re-sort (amortized) |
-| proof size | O(log n) × 32B | O(1) PCS opening | O(range) field ops |
-| cross-index consistency | LogUp needed | free (same poly) | free (same poly) |
-| law 3 compliance | yes (structural) | partial (computational) | partial (computational) |
-| quantum resistance | yes | depends on PCS | depends on PCS |
-| failure mode | tree corruption (detectable) | PCS break (catastrophic) | PCS break (catastrophic) |
+| completeness | unconditional | computational (PCS) | computational (PCS) |
+| storage overhead | O(n) per index | 0 | 0 |
+| update cost | O(log n) hemera | O(1)-O(√N) field | O(n) re-sort |
+| proof size | O(log n) × 32B | O(1) PCS opening | O(range) field |
+| cross-index | LogUp needed | free | free |
+| law 3 | yes (structural) | partial | partial |
+| quantum | yes | post-quantum (hash-PCS) | post-quantum (hash-PCS) |
+| failure mode | corruption (detectable) | PCS break (catastrophic) | PCS break (catastrophic) |
 
-### law 3 resolution
+### resolving law 3
 
-NMT completeness is structural — the data structure itself prevents omission. algebraic completeness relies on the PCS soundness assumption. this is a weaker guarantee.
+NMT completeness is structural. algebraic completeness is computational. this is a weaker guarantee.
 
-mitigation: the hybrid migration path (phase 1-2) maintains NMTs as secondary verification. the polynomial commitment is the primary authority, but NMTs remain as an independent check. a PCS break would be caught by the NMT disagreement.
+the resolution: completeness shifts from being a property of the DATA STRUCTURE to a property of the COMMITMENT SCHEME. the commitment scheme (WHIR, Brakedown) is itself hash-based — it relies on hemera's collision resistance. hemera's security is the same foundation that NMTs rest on (hemera hashes the NMT nodes). the trust root is the same: hemera.
 
-long-term (phase 3): if the PCS has survived years of deployment and cryptanalytic scrutiny, NMTs can be safely removed. this follows the same trust trajectory as any cryptographic primitive — initially verified by redundancy, eventually trusted independently.
+the difference: NMTs use hemera structurally (the tree shape encodes completeness). polynomial commitments use hemera algebraically (the polynomial evaluation encodes completeness). both ultimately trust hemera. the algebraic path is more efficient because it expresses the same guarantee with fewer hash calls.
+
+the hybrid migration path provides defense in depth: during transition, both NMT and polynomial agree on every query. divergence indicates either a bug or a fundamental break. years of agreement build confidence for removing the NMT layer.
+
+## BBG_root evolution
+
+```
+current (13 sub-roots):
+  BBG_root = H(particles.root ‖ axons_out.root ‖ ... ‖ time.root ‖
+               cyberlinks.root ‖ spent.root ‖ balance.root ‖ signals.root)
+           = H(416 bytes)
+
+phase 1 (algebraic public + hash private):
+  BBG_root = H(BBG_commitment ‖ cyberlinks.root ‖ spent.root ‖ balance.root ‖ signals.root)
+           = H(160 bytes)
+  9 NMT sub-roots → 1 PCS commitment (32 bytes)
+
+phase 3 (endgame, see [[unified-polynomial-state]]):
+  BBG_root = PCS.commit(BBG_poly)
+           = 32 bytes
+  everything → 1 polynomial
+```
 
 ## PCS backend analysis
-
-which PCS works best for algebraic NMT?
 
 ### WHIR
 
 ```
-strengths: existing zheng backend, hemera-native, transparent
+strengths: existing zheng backend, hemera-native, transparent, post-quantum
 weaknesses: NOT cheaply updatable (full recommit = O(N log N))
 update strategy: batch all changes, recommit once per block
 cost per block: O(N_changed × log N) for recommit
-suitable: yes, but batched updates only (no per-cyberlink incremental)
+verdict: viable for batched block updates, not for incremental
 ```
 
 ### Brakedown
 
 ```
-strengths: Merkle-free, O(√N) proof size, linear-time commitment
+strengths: Merkle-free, O(√N) proof size, linear-time commitment, post-quantum
 weaknesses: larger proofs than WHIR, expander graph construction
-update strategy: linear-time recommit — faster than WHIR for large N
-cost per block: O(N) for full recommit (linear)
-suitable: yes, best for full-block batch updates
+update strategy: linear-time recommit
+cost per block: O(N) for full recommit
+verdict: best for flat polynomial, full-block batch updates
 ```
 
 ### Verkle-tree hybrid
 
 ```
-strengths: O(log N) incremental updates, familiar tree structure
+strengths: O(log N) incremental updates, familiar tree structure, migration-friendly
 weaknesses: still a tree (O(n) storage for nodes), more complex
 update strategy: update path from leaf to root, O(log N) PCS node updates
-cost per update: O(log N) × PCS_node_cost ≈ O(log N) × 100 field ops
-suitable: best for per-cyberlink incremental updates
-
-this is the recommended approach for phase 1-2:
-  tree structure preserved (easy migration from NMT)
-  per-update cost: ~3,200 constraints (vs ~106K for NMT)
-  storage: similar to NMT (tree nodes exist, but with polynomial commitments)
+cost per update: O(log N) × ~100 field ops ≈ ~3,200 constraints
+verdict: best for phase 1 — preserves tree structure, 33× cheaper than NMT
 ```
 
-### recommendation
+### recommended sequence
 
 ```
 phase 1: Verkle-tree with WHIR at nodes
-  - tree structure preserved → easy migration from NMT
-  - per-update: O(log n) × ~100 = ~3,200 constraints
-  - completeness: sorted leaves + polynomial openings
-  - NMT retained as secondary verification
+  tree structure preserved → easy migration from NMT
+  per-update: ~3,200 constraints (vs ~106K for NMT)
+  NMT retained as secondary verification
 
 phase 2: Brakedown flat polynomial
-  - tree eliminated → O(1) storage overhead
-  - per-block batch: O(N) recommit (linear)
-  - completeness: LogUp range check
-  - NMT removed after sufficient confidence
+  tree eliminated → 0 storage overhead
+  per-block batch: O(N) recommit
+  completeness: LogUp range check over F_{p²}
+  NMT removed after sufficient deployment confidence
 
-phase 3 (endgame): unified polynomial state
-  - all 9 indexes + time → one polynomial (see [[unified-polynomial-state]])
-  - per-query: O(1) PCS opening
-  - cross-index: structural (same polynomial)
+phase 3: unified polynomial state
+  all 9 indexes → one polynomial (see [[unified-polynomial-state]])
+  cross-index: structural (same polynomial)
+  LogUp: eliminated
 ```
 
-## near-term: batched deduplication
+## near-term stepping stone: batched deduplication
 
-before algebraic NMT, a stepping stone captures intra-block savings with zero architectural change:
+before algebraic NMT, a zero-architecture-change optimization:
 
 ```
 mechanism: dirty-set tracking per block
@@ -365,35 +381,33 @@ mechanism: dirty-set tracking per block
   deduplicate by (index, namespace) key
   recompute hemera paths once at block boundary
 
-scenario: 1000 cyberlinks, 200 unique particles (80% overlap)
-  naive:    4,500 path updates × 32 depth × 736 = ~106M constraints
-  batched:  1,800 path updates × 32 depth × 736 = ~42M constraints
-  savings:  ~2.5×
+1000 cyberlinks, 200 unique particles (80% overlap):
+  naive:    ~106M constraints
+  batched:  ~42M constraints (2.5×)
 
-hot particle (updated 100× in one block):
-  naive:    100 path updates = 100 × 32 × 736 = ~2.4M constraints
-  batched:  1 path update = 32 × 736 = ~23.5K constraints
-  savings:  100×
+hot particle (100 updates in one block):
+  naive:    ~2.4M constraints
+  batched:  ~23.5K constraints (100×)
+
+implementation: BoundedMap for dirty-set. hemera remains sole mechanism. no PCS.
 ```
-
-implementation complexity: low (dirty-set is a BoundedMap). hemera remains sole commitment mechanism. no PCS dependency.
 
 ## risk analysis
 
 | risk | severity | mitigation |
 |------|----------|------------|
 | PCS soundness break | catastrophic | hybrid NMT verification in phase 1-2 |
-| algebraic completeness weaker than structural | high | LogUp over extension field F_{p²} (2^{-96} error) |
-| Verkle-tree implementation complexity | medium | leverage existing NMT tree structure |
+| algebraic completeness weaker than structural | high | LogUp over F_{p²} (2^{-96} error) |
+| Verkle-tree complexity | medium | leverage existing NMT tree structure |
 | WHIR non-updatable | medium | batch at block boundary, migrate to Brakedown |
-| quantum threat to PCS | low-medium | WHIR/Brakedown are post-quantum (hash-based) |
-| polynomial degree explosion (9 indexes × 2³²) | medium | sparse representation, per-index polynomials in phase 1 |
+| quantum threat to PCS | low | WHIR/Brakedown are hash-based (post-quantum) |
+| polynomial degree (9 × 2³²) | medium | sparse representation, per-index in phase 1 |
 
 ## open questions
 
-1. **extension field for LogUp**: using F_{p²} for the LogUp challenge β gives Schwartz-Zippel error 2^{-96}. is nebu ready for F_{p²} arithmetic? cost of extension field operations?
-2. **Verkle branching factor**: binary Verkle (like NMT) or wider (arity 256)? wider = shallower tree = fewer PCS node updates per path. tradeoff: wider nodes = more expensive per-node commitment
-3. **cross-index dimension encoding**: how to encode 9 indexes as dimensions of one polynomial? separate polynomial per index (simple, 9 commitments) vs one polynomial with index selector (complex, 1 commitment, LogUp-free)
-4. **deduplication clustering**: empirical analysis needed — how clustered are cyberlink updates in practice? power-law suggests high clustering for top particles. the deduplication savings depend on this distribution
+1. **F_{p²} readiness**: LogUp challenge over extension field gives 2^{-96} Schwartz-Zippel error. nebu needs F_{p²} arithmetic. cost of extension field operations?
+2. **Verkle branching factor**: binary (like NMT) or wider (arity 256)? wider = shallower tree = fewer PCS updates per path, but more expensive per-node commitment
+3. **dimension encoding**: separate polynomial per index (9 commitments, simple) vs unified polynomial with index selector (1 commitment, LogUp-free). phase 1 uses per-index; phase 3 unifies
+4. **update clustering**: power-law access patterns suggest high clustering for top particles. empirical analysis on real cyberlink workloads determines deduplication effectiveness
 
-see [[unified-polynomial-state]] for the endgame (all 13 sub-roots → 1 polynomial), [[cross-index]] for current LogUp protocol, [[indexes]] for NMT structure
+see [[unified-polynomial-state]] for the endgame, [[cross-index]] for current LogUp, [[indexes]] for NMT structure
