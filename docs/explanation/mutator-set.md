@@ -3,6 +3,12 @@ tags: cyber, computer science, cryptography
 crystal-type: entity
 crystal-domain: cyber
 alias: mutator sets
+diffusion: 0.00010722364868599256
+springs: 0.00046254928756903513
+heat: 0.00035816643606952395
+focus: 0.00026400989782760816
+gravity: 0
+density: 4.48
 ---
 # mutator set
 

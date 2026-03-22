@@ -2,6 +2,12 @@
 tags: cyber
 crystal-type: entity
 crystal-domain: cyber
+diffusion: 0.00010722364868599256
+springs: 0.0009058271674072284
+heat: 0.0006804941257485766
+focus: 0.00046145879971487417
+gravity: 0
+density: 2.3
 ---
 # design principles
 

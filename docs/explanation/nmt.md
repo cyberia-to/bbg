@@ -3,6 +3,12 @@ tags: cyber, computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: namespaced Merkle tree, namespaced Merkle trees, NMTs
+diffusion: 0.00010722364868599256
+springs: 0.0021780347003353987
+heat: 0.0015123942096783773
+focus: 0.0010095010763792782
+gravity: 0
+density: 1.96
 ---
 # NMT
 

@@ -2,6 +2,12 @@
 tags: cyber, cip
 crystal-type: entity
 crystal-domain: cyber
+diffusion: 0.00010722364868599256
+springs: 0.0016211605879495649
+heat: 0.0011493503835617823
+focus: 0.0007698300774402123
+gravity: 0
+density: 0.89
 ---
 # cross-index
 

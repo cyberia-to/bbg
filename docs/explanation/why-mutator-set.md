@@ -2,6 +2,12 @@
 tags: cyber
 crystal-type: entity
 crystal-domain: cyber
+diffusion: 0.00010722364868599256
+springs: 0.00005949812357480874
+heat: 0.0000781573173025835
+focus: 0.00008709272487595448
+gravity: 0
+density: 0.41
 ---
 # why mutator set over polynomial + nullifier
 

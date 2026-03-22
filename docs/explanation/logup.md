@@ -3,6 +3,12 @@ tags: cyber, computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: LogUp lookup argument, LogUp lookup arguments, lookup arguments
+diffusion: 0.00010722364868599256
+springs: 0.0012551963941872706
+heat: 0.0008861499621048
+focus: 0.0006074007350201296
+gravity: 0
+density: 1.5
 ---
 # LogUp
 

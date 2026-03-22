@@ -4,6 +4,12 @@ crystal-type: entity
 crystal-domain: computer science
 status: draft
 stake: 10577346440909906
+diffusion: 0.00010722364868599256
+springs: 0.0014565253095514628
+heat: 0.0010394716887343798
+focus: 0.0006984637549553021
+gravity: 0
+density: 2.35
 ---
 
 ## Authenticated State Architecture for [[nox]]

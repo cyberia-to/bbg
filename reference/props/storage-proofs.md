@@ -2,6 +2,12 @@
 title: "storage proofs: proving data retention at all tiers"
 status: draft
 date: 2026-03-17
+diffusion: 0.00010722364868599256
+springs: 0.00041965751464741007
+heat: 0.00032663046559973233
+focus: 0.0002448351718571626
+gravity: 0
+density: 0.87
 ---
 # storage proofs
 
