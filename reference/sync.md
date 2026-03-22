@@ -59,6 +59,40 @@ query             client requests namespace from BBG_root
 
 the signal structure is scale-invariant. device = neuron at different scales. the five verification layers apply identically. only the merge function varies.
 
+## signal structure
+
+the [[signal]] is s = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step, t). the ordering fields are part of the signal — not a separate envelope. the same fields serve local device sync and global [[foculus]] consensus.
+
+```
+signal = {
+  // payload — what the signal means
+  ν:              neuron_id                   subject (signing neuron)
+  l⃗:              [cyberlink]                 links (L⁺), each a 7-tuple (ν, p, q, τ, a, v, t)
+  π_Δ:            [(particle, F_p)]*          impulse: sparse focus update
+  σ:              zheng_proof                 recursive proof covering impulse + conviction
+
+  // ordering — where the signal sits in causal and physical time
+  device:         device_id                   which device within ν (local sync only)
+  prev:           H(author's previous signal) per-neuron hash chain
+  merkle_clock:   H(causal DAG root)          compact causal state
+  vdf_proof:      VDF(prev, T)               physical time proof
+  step:           u64                         monotonic logical clock
+
+  // finalization
+  t:              u64                         block height (assigned at network inclusion)
+
+  hash:           H(all above)
+}
+
+lifecycle:
+  created on device:    (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
+  synced between peers: full signal
+  submitted to network: full signal (ordering fields preserved)
+  included in block:    network assigns t (block height)
+
+signal size: ~1-5 KiB proof + impulse + 160 bytes ordering metadata
+```
+
 ## five verification layers
 
 every signal passes five layers. all layers apply at both local and global scale.
@@ -92,26 +126,69 @@ cost: 10-50 μs verification (zheng-2)
 
 ### layer 2: ordering
 
+four mechanisms establish temporal structure without consensus.
+
+**hash chain** — each neuron chains signals via the `prev` field:
+
 ```
-four ordering fields establish temporal structure:
+neuron's chain: s1 ← s3 ← s5 ← s8
+  prev(s3) = H(s1)
+  prev(s5) = H(s3)
 
-  prev:           H(author's previous signal)   per-neuron hash chain
-  merkle_clock:   H(causal DAG root)            compact causal state
-  vdf_proof:      VDF(prev, T_min)              physical time lower bound
-  step:           u64                           monotonic logical clock
-
-hash chain: immutable sequence. cannot insert, remove, or reorder.
+properties:
+  immutable: cannot insert, remove, or reorder past signals
+  verifiable: any peer can walk the chain and verify continuity
   fork-evident: two signals with same prev = cryptographic equivocation proof
+```
 
-VDF: proves minimum wall-clock time T_min between signals.
-  rate limiting: flood of N signals costs N × T_min sequential time
-  cannot be parallelized — VDF is inherently sequential
+at local scale, each device maintains its own chain. at global scale, the per-neuron chain is authoritative.
 
-Merkle clock: O(1) comparison, O(log n) divergence walk.
-  replaces vector clocks (which grow O(devices))
+**VDF** — physical time without clocks:
 
-step: gap-free monotonic counter.
-  gap in step sequence = missing signal = detectable
+```
+signal.vdf_proof = VDF(prev_signal_hash, T_min)
+
+T_min: minimum sequential computation between signals
+proves: "at least T_min wall-clock time elapsed since prev signal"
+no NTP, no clock sync, no trusted timestamps
+
+rate limiting:  flood of N signals costs N × T_min sequential time
+                cannot be parallelized — VDF is inherently sequential
+fork cost:      equivocation requires computing VDF twice from same prev
+                total VDF time doesn't match elapsed time → detectable
+ordering:       VDF proofs create partial physical time ordering
+                between causally independent signals
+```
+
+VDF parameters are per-device configurable. a phone sets longer T_min than a workstation.
+
+**Merkle clock** — causal history as Merkle DAG:
+
+```
+each signal's merkle_clock = H(root of all signals the device has seen)
+
+comparison:   O(1) — single hash comparison (equal = in sync)
+divergence:   O(log n) — walk DAG to find first difference
+merge:        union of both DAGs → H(merged root) — deterministic
+```
+
+replaces vector clocks (O(devices)) with O(1) comparison.
+
+**step** — monotonic logical clock:
+
+```
+gap-free counter per source
+gap in step sequence = missing signal = detectable
+```
+
+**deterministic total order** — given a signal DAG, all participants compute the same sequence:
+
+```
+1. causal order:   A in B's deps → A before B
+2. VDF order:      A.vdf_time < B.vdf_time (if not causally related) → A before B
+3. hash tiebreak:  concurrent signals same VDF epoch → H(A) < H(B) → A before B
+
+no negotiation, no leader, no timestamps
 ```
 
 ### layer 3: completeness
@@ -517,4 +594,4 @@ with unified polynomial state ([[unified-polynomial-state]]):
   cross-index consistency = structural (same polynomial)
 ```
 
-see [[architecture]] for BBG root structure, [[signal-sync explained|signal-sync]] for design rationale, [[data-availability explained|data-availability]] for DAS details, [[foculus-vs-crdt]] for merge layer comparison, [[algebraic-nmt]] for polynomial transition
+see [[architecture]] for BBG root structure, [[signal-sync explained|signal-sync]] for ordering design rationale, [[data-availability explained|data-availability]] for DAS details, [[foculus-vs-crdt]] for merge layer comparison, [[algebraic-nmt]] for polynomial transition

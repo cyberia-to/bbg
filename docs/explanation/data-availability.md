@@ -2,6 +2,12 @@
 tags: cyber
 crystal-type: entity
 crystal-domain: cyber
+diffusion: 0.00010722364868599256
+springs: 0.00025146291475061286
+heat: 0.00021215453851177208
+focus: 0.00017148160647053237
+gravity: 0
+density: 0.22
 ---
 # data availability and erasure coding
 
@@ -182,4 +188,4 @@ at local scale, DAS ensures a phone can verify its server has all files without 
 
 the same erasure coding over [[Goldilocks field]], the same 2D Reed-Solomon structure, the same NMT commitment scheme. the availability layer is scale-invariant.
 
-see [[signal-sync]] for the full sync specification, [[data-availability]] for the bbg reference spec, [[design-principles]] for the three laws, [[why-nmt]] for NMT design rationale
+see [[sync]] for the full sync specification, [[data-availability]] for the bbg reference spec, [[design-principles]] for the three laws, [[why-nmt]] for NMT design rationale

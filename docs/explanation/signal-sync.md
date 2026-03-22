@@ -2,6 +2,12 @@
 tags: cyber
 crystal-type: entity
 crystal-domain: cyber
+diffusion: 0.00010722364868599256
+springs: 0.00007019991600688145
+heat: 0.00003419142694206788
+focus: 0.00008151008453347325
+gravity: 0
+density: 0
 ---
 # why signal sync works
 
@@ -104,4 +110,4 @@ for personal sync this matters because:
 
 the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), NMT handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
 
-see [[signal-sync]] for the full specification, [[design-principles]] for the three laws, [[sync]] for public namespace sync, [[data-availability]] for DAS in bbg
+see [[sync]] for the full specification, [[design-principles]] for the three laws, [[data-availability]] for DAS in bbg
