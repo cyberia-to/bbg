@@ -1,6 +1,6 @@
 ---
 title: "storage proofs: proving data retention at all tiers"
-status: draft
+status: draft → resolved by signal-first
 date: 2026-03-17
 diffusion: 0.00010722364868599256
 springs: 0.00041965751464741007
@@ -62,10 +62,25 @@ L4: Archival (historical state snapshots, old proofs)
 - must compose with [[hemera]]-2 (32-byte hashes, 1 perm/node)
 - must integrate with temporal decay: expired content releases storage obligations
 
-## open questions
+## resolution: signal-first + structural sync
 
-1. is proof of storage (PoSt-style) needed, or is incentivized replication sufficient?
-2. how does storage pricing interact with focus economics?
-3. what is the minimum viable storage proof for pre-genesis?
-4. can DAS be extended to cover long-term L3 retention, or is a separate mechanism needed?
-5. what happens when particle content is lost? how does the graph degrade?
+[[signal-first]] reframes this problem: prove signal availability, derive everything else. [[structural sync|structural-sync]] provides the formal framework:
+
+```
+layer 3 (completeness):  per-neuron NMT proves signal set is complete
+layer 4 (availability):  DAS + erasure coding proves signals physically exist
+
+if signals are complete and available → BBG state is reconstructible
+→ L2, L3, L4 storage "proofs" reduce to signal availability proofs
+→ no separate PoSt or PoRep needed
+```
+
+the remaining gap: **content availability**. signals carry cyberlink CIDs but not the content behind them. if content is lost while signals survive, the graph structure is intact but content is gone. files.root + DAS addresses this, but long-term content retention still depends on [[pi-weighted-replication]] incentives.
+
+## original open questions (pre signal-first)
+
+1. is proof of storage (PoSt-style) needed, or is incentivized replication sufficient? → **resolved: signal availability + DAS is sufficient for state; π-weighted replication for content**
+2. how does storage pricing interact with focus economics? → **resolved: focus IS the storage payment via π**
+3. what is the minimum viable storage proof for pre-genesis? → **resolved: DAS over signal batches**
+4. can DAS be extended to cover long-term L3 retention, or is a separate mechanism needed? → **open: DAS proves availability at commitment time, not indefinitely**
+5. what happens when particle content is lost? how does the graph degrade? → **open: graph structure survives (signals), content may not**

@@ -70,6 +70,7 @@ light client join:    one zheng verification + namespace sync
 | [[signal-sync explained|signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
 | [[foculus-vs-crdt]] | why π convergence replaces CRDTs at global scale |
 | [[data-availability explained|data-availability]] | DAS, erasure coding, and provable availability |
+| [[structural-sync]] | CRDT + NMT + DAS = consensus without consensus (verified eventual consistency) |
 
 ## open design
 

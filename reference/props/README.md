@@ -19,7 +19,7 @@ migration: algebraic-nmt → mutator-set-polynomial → unified-polynomial-state
 |----------|--------|--------|
 | [[signal-first]] | draft | bbg state as materialized view over signal log, solves storage proofs |
 | [[pi-weighted-replication]] | draft | replication ∝ π, storage budget follows attention |
-| [[storage-proofs]] | draft | proving data retention at all 4 tiers |
+| [[storage-proofs]] | draft → resolved by signal-first | proving data retention at all 4 tiers |
 
 signal-first reframes storage-proofs: prove signal availability, derive everything else. π-weighted replication allocates resources by importance.
 
@@ -34,6 +34,22 @@ signal-first reframes storage-proofs: prove signal availability, derive everythi
 | proposal | status |
 |----------|--------|
 | [[valence]] | implemented — migrated to spec |
+
+## structural sync mapping
+
+every proposal serves one of the five [[structural sync|structural-sync]] layers:
+
+| layer | property | proposals |
+|-------|----------|-----------|
+| 1. validity | state transition correct | (served by zheng — see zheng props) |
+| 3. completeness | nothing omitted | [[algebraic-nmt]], [[unified-polynomial-state]], [[verifiable-query]] |
+| 4. availability | data physically exists | [[signal-first]], [[pi-weighted-replication]], [[storage-proofs]] |
+| temporal | state over time | [[temporal-polynomial]] |
+| privacy | private state | [[mutator-set-polynomial]] |
+
+layers 2 (ordering) and 5 (merge) are already specified in [[sync]] — no proposals needed.
+
+the polynomial proposals (algebraic-nmt → mutator-set → temporal → unified) form a single migration path: hash trees → polynomials across all layers. structural sync's completeness guarantee (layer 3) evolves from structural (NMT sorting invariant) to algebraic (PCS soundness) without losing the property.
 
 ## combined targets (all proposals)
 
@@ -71,6 +87,7 @@ phase 7: unified-polynomial-state   one polynomial for everything
 | [[universal-accumulator]] | checkpoint = 200 bytes, enables signal-first recovery |
 | [[folding-first]] | multi-hop queries fold per hop |
 | [[brakedown-pcs]] | updateable PCS enables incremental polynomial state |
+| [[structural-sync]] | defines the 5-layer sync model that bbg proposals implement (layers 1-5) |
 
 ## lifecycle
 

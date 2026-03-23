@@ -107,6 +107,22 @@ everything else is derivable:
   focus/π values    → recompute tri-kernel from graph state
 ```
 
+## structural sync relationship
+
+signal-first is the architectural expression of [[structural sync|structural-sync]]. the five verification layers map directly:
+
+```
+layer 1 (validity):      each signal carries zheng proof — verified on receipt
+layer 2 (ordering):      hash chain + VDF embedded in signal — self-ordering
+layer 3 (completeness):  per-neuron NMT over signals — nothing withheld
+layer 4 (availability):  DAS + erasure coding over signal log — data survives
+layer 5 (merge):         CRDT locally, foculus globally — convergence guaranteed
+```
+
+signal-first means: the signal log IS the canonical state. BBG_root is a derived commitment. this is not an optimization — it is the correct architecture for a system built on verified eventual consistency (VEC).
+
+the irreducible minimum per node (signal log + checkpoint) is exactly what structural sync requires: the complete set of operations (signals) plus proof of their validity (accumulator).
+
 ## open questions
 
 1. **signal content binding**: signals carry cyberlinks with particle CIDs (from, to). the CID references content. if the content behind a CID is lost but the signal is preserved, reconstruction restores the graph structure (which particles are linked) but not the content itself. content availability remains a separate concern (DAS via files.root)

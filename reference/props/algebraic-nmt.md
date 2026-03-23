@@ -409,11 +409,37 @@ implementation: BoundedMap for dirty-set. hemera remains sole mechanism. no PCS.
 | quantum threat to PCS | low | WHIR/Brakedown are hash-based (post-quantum) |
 | polynomial degree (9 × 2³²) | medium | sparse representation, per-index in phase 1 |
 
+## structural sync: layer 3 evolution
+
+algebraic NMT is the evolution of [[structural sync|structural-sync]] layer 3 (completeness). the completeness PROPERTY is preserved — the MECHANISM changes:
+
+```
+NMT (current):        structural completeness — sorting invariant prevents omission
+algebraic NMT:        algebraic completeness — PCS binding prevents omission
+```
+
+this has a cascade effect on layer 4 (availability). DAS currently uses NMT inclusion proofs for sampling verification. with algebraic NMT, DAS should use polynomial openings:
+
+```
+current DAS:          sample cell → NMT inclusion proof (~1 KiB per sample)
+algebraic DAS:        sample cell → PCS opening (~200 bytes per sample)
+verification:         O(log n) hemera hashes → O(1) field ops per sample
+
+20 samples for 99.9999% confidence:
+  current:   20 × 1 KiB = 20 KiB bandwidth, 20 × O(log n) hemera verifications
+  algebraic: 20 × 200B = 4 KiB bandwidth, 20 × O(1) field verifications
+```
+
+algebraic DAS is not a separate proposal — it is a natural consequence of algebraic NMT applied to layer 4. when the completeness layer becomes algebraic, the availability layer inherits the efficiency.
+
+with hemera-3's batched-proving ([[batched-proving]]), the remaining hemera costs (content identity, private records) are batched: 1000 hemera calls per block → 1 sumcheck. the combination: algebraic NMT eliminates hemera from state verification, batched-proving compresses hemera for identity operations.
+
 ## open questions
 
 1. **F_{p²} readiness**: LogUp challenge over extension field gives 2^{-96} Schwartz-Zippel error. nebu needs F_{p²} arithmetic. cost of extension field operations?
 2. **Verkle branching factor**: binary (like NMT) or wider (arity 256)? wider = shallower tree = fewer PCS updates per path, but more expensive per-node commitment
 3. **dimension encoding**: separate polynomial per index (9 commitments, simple) vs unified polynomial with index selector (1 commitment, LogUp-free). phase 1 uses per-index; phase 3 unifies
 4. **update clustering**: power-law access patterns suggest high clustering for top particles. empirical analysis on real cyberlink workloads determines deduplication effectiveness
+5. **algebraic DAS integration**: when NMTs → polynomials, DAS proofs should use PCS openings. does the existing 2D Reed-Solomon grid structure compose naturally with multivariate polynomial commitment? or does the erasure coding scheme need adaptation?
 
-see [[unified-polynomial-state]] for the endgame, [[cross-index]] for current LogUp, [[indexes]] for NMT structure
+see [[unified-polynomial-state]] for the endgame, [[cross-index]] for current LogUp, [[indexes]] for NMT structure, [[structural-sync]] for the five-layer framework
