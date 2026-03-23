@@ -361,6 +361,68 @@ this differs from existing consistency models:
 - **strong eventual consistency** (SEC, the [[CRDT]] model): convergence guaranteed on equal message sets, but no mechanism to verify set equality
 - **VEC**: convergence guaranteed (CRDT) + set equality verifiable ([[NMT]]) + data existence verifiable ([[DAS]])
 
+## consequences: what changes
+
+if structural sync works as described, the implications cascade through distributed systems, economics, and governance. this section separates what becomes possible from what remains impossible.
+
+### what was impossible, now possible
+
+1. consensus-free sovereign devices. a phone, laptop, and server sync without any coordinator. no cloud. no account. no server you do not control. each device is a full participant — creates [[signals]], proves validity ([[zheng]]), proves completeness ([[NMT]]), proves availability ([[DAS]]), merges deterministically ([[CRDT]]). losing a device loses nothing (erasure reconstruction). gaining a device requires zero permission. personal infrastructure with the same guarantees as a blockchain.
+
+2. light client in one proof. a new participant joins a network of millions and verifies ALL history with one [[zheng]] proof (~50 μs). no sync committee. no header chain. no "trust the first peer you connect to." the checkpoint is self-proving. this is qualitatively different from SPV (Bitcoin) or sync committees (Ethereum) — those trust some honest majority at sync time. structural sync trusts mathematics.
+
+3. offline-first with provable correctness. devices operate independently for days. when they reconnect, convergence is guaranteed ([[CRDT]]), completeness is verifiable ([[NMT]]), lost data is recoverable ([[DAS]]). no "conflict file." no "last write wins and hope for the best." no "sync failed, try again." the math prevents incorrect states.
+
+4. Byzantine detection without honest majority. traditional BFT requires 2/3 honest. structural sync detects equivocation from a single honest peer examining the [[hash chain]]. withholding is provable from NMT structure alone. no quorum needed for fault detection — one verifier is sufficient.
+
+5. scale-invariant protocol. the same five layers work for 2 devices and 10⁹ light clients. layers 1-4 are identical at all scales. only layer 5 (merge) adapts: [[CRDT]] locally, [[foculus]] globally. no separate protocol for "small scale" and "large scale." no bridges between them.
+
+### what was expensive, now cheap
+
+1. sync cost drops from O(N²) to O(|missing|). consensus protocols pay per-round communication proportional to validator count. structural sync pays only for data actually transferred — missing signals plus their proofs. two devices already in sync: one hash comparison (32 bytes). two devices one hour behind: exchange only the hour's signals.
+
+2. verification drops from O(chain_length) to O(1). classical blockchains verify by replaying all blocks. structural sync verifies by checking one recursive proof. the cost of joining is constant regardless of history length.
+
+3. storage drops from O(N × data) to O(data / N). full replication: every node holds everything. erasure coding: each node holds 2/N of the data, any k nodes reconstruct all of it. 100 devices storing 1 TB of files: 20 GB per device, not 1 TB.
+
+### what becomes unnecessary
+
+1. leaders. no block proposer. no round-robin. no leader election. no view change when the leader fails. signals are created independently and merged deterministically. "who goes first?" is answered by the data (causal order + [[VDF]] + hash tiebreak), not by a protocol.
+
+2. voting. no prepare/commit/finalize rounds. no 2/3 threshold. convergence follows from [[CRDT]] properties + set completeness ([[NMT]]). agreement is a mathematical consequence, not a social process.
+
+3. finality gadgets. no separate finality layer (Casper, Grandpa). finality is inherent: once a signal enters a neuron's chain, the [[hash chain]] makes it immutable. removing it requires breaking the chain — detectable by any peer.
+
+4. sync committees. no rotating committee to vouch for the chain tip. the chain tip is self-proving via recursive [[zheng]] proof.
+
+### what remains impossible
+
+1. real-time ordering across adversarial participants without some form of resource commitment. [[VDF]] provides physical rate limiting and partial ordering, but sybil resistance at global scale still requires stake. structural sync eliminates ordering COORDINATION but not the economic game of who gets to participate.
+
+2. instant global finality. [[CRDT]] convergence requires receiving all operations. until the last signal propagates, the state is potentially incomplete. structural sync provides VERIFIABLE incompleteness (you know when you are missing data) but cannot make light travel faster. latency is physics.
+
+3. semantic correctness. structural sync guarantees that all participants converge to the same state given the same signals. it says nothing about whether that state is TRUE. garbage signals produce garbage state — correctly, completely, and availably. the quality of knowledge depends on the quality of [[neurons]], not on the sync protocol. [[tri-kernel]] and [[karma]] address this at a higher layer.
+
+4. privacy without additional machinery. NMT proofs reveal namespace structure. DAS sampling reveals which data exists. individual signal content is private (encrypted), but metadata (who signals, when, to which namespace) is visible. privacy requires a separate layer — the mutator set in [[BBG]] provides this.
+
+### what proof + hash chain + VDF add to CRDT + NMT + DAS
+
+the base three layers (CRDT, NMT, DAS) provide convergence, completeness, and availability. adding proof ([[zheng]]), [[hash chain]], and [[VDF]] transforms "correct sync" into "sovereign computation":
+
+| capability | CRDT+NMT+DAS | + proof + chain + VDF |
+|---|---|---|
+| convergence | guaranteed | guaranteed + VALID (proof prevents invalid state transitions) |
+| history | unordered set | immutable chain (hash chain prevents rewriting) |
+| rate limiting | none (flood possible) | physical (VDF bounds signal creation to wall time) |
+| light client | must download all data | one proof verifies all history |
+| equivocation | undetectable | O(1) detectable (two signals with same prev) |
+| timestamp | none (no notion of time) | VDF provides physical time without trusted clocks |
+| recursive compression | impossible | possible (proof of proof of proof → constant size) |
+
+the composition CRDT + NMT + DAS is sync. adding proof + chain + VDF makes it a computer: a system that can execute programs (proved correct), order them (hash chain + VDF), and verify the entire execution history in constant time (recursive proof).
+
+this is the difference between a database that replicates and a machine that computes. structural sync is the former. structural sync + zheng + hash chain + VDF is the latter.
+
 ## open questions
 
 1. **formalization**: VEC needs formal treatment as a consistency model. the safety, completeness, availability, and liveness properties above are a starting point. a full formalization should define the adversary model, prove the properties hold under stated assumptions, and establish the relationship to existing consistency models (SEC, causal+, linearizability)
