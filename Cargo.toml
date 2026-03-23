@@ -1,3 +1,8 @@
+# ---
+# tags: bbg, config
+# crystal-type: source
+# crystal-domain: cyber
+# ---
 [package]
 name = "bbg"
 version = "0.1.0"
