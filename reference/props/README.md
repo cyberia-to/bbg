@@ -1,6 +1,12 @@
 # bbg proposals
 
-design proposals for bbg authenticated state layer evolution. proposals compose with zheng-2 proof architecture and hemera-2 hash.
+design proposals for bbg authenticated state layer evolution. proposals compose with zheng-2 proof architecture and hemera-2 hash. see [[full-pipeline]] for how all proposals across bbg, zheng, hemera, and nox integrate into one continuous fold from device to light client.
+
+## integrated architecture
+
+| proposal | status | target |
+|----------|--------|--------|
+| [[full-pipeline]] | draft | end-to-end: signal creation → light client in one continuous fold |
 
 ## polynomial state
 
