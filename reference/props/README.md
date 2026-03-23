@@ -24,6 +24,7 @@ migration: algebraic-nmt → mutator-set-polynomial → unified-polynomial-state
 | proposal | status | target |
 |----------|--------|--------|
 | [[signal-first]] | draft | bbg state as materialized view over signal log, solves storage proofs |
+| [[algebraic-das]] | draft | PCS openings replace NMT paths in DAS: 25 KiB → 9 KiB, 157× fewer constraints |
 | [[pi-weighted-replication]] | draft | replication ∝ π, storage budget follows attention |
 | [[storage-proofs]] | draft → resolved by signal-first | proving data retention at all 4 tiers |
 
@@ -49,7 +50,7 @@ every proposal serves one of the five [[structural sync|structural-sync]] layers
 |-------|----------|-----------|
 | 1. validity | state transition correct | (served by zheng — see zheng props) |
 | 3. completeness | nothing omitted | [[algebraic-nmt]], [[unified-polynomial-state]], [[verifiable-query]] |
-| 4. availability | data physically exists | [[signal-first]], [[pi-weighted-replication]], [[storage-proofs]] |
+| 4. availability | data physically exists | [[signal-first]], [[algebraic-das]], [[pi-weighted-replication]], [[storage-proofs]] |
 | temporal | state over time | [[temporal-polynomial]] |
 | privacy | private state | [[mutator-set-polynomial]] |
 
