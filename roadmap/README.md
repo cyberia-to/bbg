@@ -26,7 +26,7 @@ design proposals for bbg authenticated state layer. proposals compose with [[zhe
 | [[signal-first]] | **yes** → reference/sync.md, reference/storage.md | bbg state as materialized view over signal log |
 | [[algebraic-das]] | **yes** → reference/data-availability.md | PCS openings replace NMT paths: 157× fewer constraints |
 | [[pi-weighted-replication]] | **yes** → reference/storage.md | replication ∝ π, storage budget follows attention |
-| ~~storage-proofs~~ | **deleted** — resolved by signal-first + reference/storage.md | was: proving data retention. now: signal availability + π-weighted replication |
+| [[storage-proofs]] | **partial** → reference/storage.md (proof types table + π-weighted replication) | DAS + signal-first resolve state. per-node storage/replication proofs need full spec |
 
 ## query
 

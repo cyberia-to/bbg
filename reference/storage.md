@@ -31,48 +31,76 @@ the irreducible minimum per node:
 
 everything else is derivable: polynomial evaluation tables, particle data, axon aggregates, focus/π values — all reconstructible from signal replay.
 
-## why fjall
+## storage interface
 
-- pure [[Rust]], zero C dependencies (unlike RocksDB, LevelDB)
-- LSM-tree architecture suits append-heavy workloads (content-addressed particles are write-once)
-- partitions map to bbg's evaluation dimensions
-- range scans are the dominant access pattern for polynomial evaluation table updates and namespace sync — LSM-trees excel at sequential reads
-- single-binary deployment, no external database process
-- pluggable storage backend trait in [[CozoDB]] — fjall implements the same sorted key-value interface
+the polynomial commitment provides authentication. the local data structure provides access. they are INDEPENDENT — the store doesn't know about polynomials, the polynomial doesn't know about storage. see [[data structures for polynomial state]] for the full theory.
+
+```rust
+trait ShardStore {
+    fn get(&self, dimension: u8, key: &[u8; 32]) -> Option<&[FieldElement]>;
+    fn put(&mut self, dimension: u8, key: &[u8; 32], value: &[FieldElement]);
+    fn dirty_entries(&self) -> impl Iterator<Item = (u8, [u8; 32], &[FieldElement])>;
+    fn commit(&mut self) -> [u8; 32];  // returns shard sub-commitment
+}
+```
+
+three implementations, selected by scale:
+
+| backend | optimal for | local structure | latency | when to use |
+|---|---|---|---|---|
+| inmem | shard fits in RAM (≤ 64 GB) | flat array + HashMap + BitVec | 50 ns read | bostrom → city scale |
+| ssd (B+ tree) | shard exceeds RAM | B+ tree with RAM-cached top levels | 20 μs read | nation → planet scale |
+| archival | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
+
+the trend: as storage gets faster, data structures get simpler. trees compensate for slow storage. when access is O(1) (RAM), the tree adds cost without benefit. with GFP (field ops in silicon) + RAM: the data structure disappears. bytes and math.
+
+NMT survives — not for authentication (polynomial handles that) but for cold storage disk layout. sorted namespace = sequential reads = optimal for HDD.
 
 ## storage tiers
 
 ```
-L1: Hot state
-    polynomial commitments, aggregate data, polynomial mutator set state
-    contents: BBG_root (32 bytes), polynomial evaluation cache,
-              commitment polynomial A(x) state, nullifier polynomial N(x) state
-    size: O(commitments) — kilobytes to megabytes
-    latency: sub-millisecond (in-memory)
+HOT (current state, RAM):
+    polynomial evaluation tables for all dimensions
+    commitment polynomial A(x) state, nullifier polynomial N(x) state
+    BBG_root (32 bytes), shard sub-commitments
+    backend: inmem (flat array)
+    latency: 50 ns
 
-L2: Particle data
-    full particle and axon data, indexed by CID
-    contents: particle energy, π* values, axon weights, market state,
-              neuron focus/karma/stake, coin/card metadata
-    size: O(particles + axons + neurons) — gigabytes to terabytes
-    latency: milliseconds (SSD)
-    content-addressed, append-mostly (axon weights update on new cyberlinks)
+WARM (recent state, SSD):
+    full particle/axon data indexed by CID
+    particle energy, π*, axon weights, market state
+    neuron focus/karma/stake, coin/card metadata
+    backend: B+ tree with RAM cache (top 3-4 levels pinned)
+    latency: 20 μs
 
-L3: Content store
-    particle content (files), indexed by CID
-    contents: raw content bytes for each particle
-    size: unbounded — petabytes across network
-    latency: seconds (network retrieval)
+CONTENT (files, network):
+    particle content (raw bytes), indexed by CID
     DAS availability proofs via files dimension of BBG_poly
     self-authenticating: H(content) = CID
+    backend: distributed (π-weighted replication)
+    latency: seconds (network retrieval)
 
-L4: Archival
+COLD (full history, HDD/network):
     historical state via BBG_poly time dimension
-    contents: queryable at any past t via polynomial evaluation
-    size: unbounded
-    latency: minutes to hours
-    DAS ensures availability during active window
+    queryable at any past t via polynomial evaluation
+    backend: archival (sorted log + NMT layout index)
+    latency: sequential 200 MB/s (HDD), minutes for network
 ```
+
+## storage proofs
+
+six proof types ensure data retention across tiers:
+
+| proof | what it guarantees | mechanism | constraints |
+|---|---|---|---|
+| storage proof | content bytes exist on node | periodic challenge: offset → chunk + PCS opening | ~5,000 |
+| size proof | claimed size matches actual | hemera tree structure + padding check | ~2,000 |
+| replication proof | k independent copies exist | challenge k nodes, verify uniqueness | ~5,000 × k |
+| retrievability proof | content fetchable in bounded time | timed challenge-response | ~5,000 |
+| DAS proof | block data published and accessible | algebraic DAS: erasure + PCS samples | ~3,000 |
+| encoding fraud proof | erasure coding correct | decode k+1 cells vs polynomial commitment | O(k) field ops |
+
+signal-first resolves STATE retention: prove signal availability → derive everything via replay. CONTENT retention requires storage proofs + π-weighted replication. see [[cyber/proofs]] for the full taxonomy.
 
 ## π-weighted replication
 
