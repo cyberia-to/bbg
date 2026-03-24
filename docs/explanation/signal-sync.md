@@ -48,13 +48,13 @@ traditional distributed systems handle Byzantine faults with protocol: 2/3 major
 
 bbg eliminates each fault class with a data structure property:
 
-**forging** — every signal carries a zheng proof. the proof is ~40,000 constraints verifiable in 10-50 μs. an invalid state transition (overspending focus, creating energy from nothing, corrupting an NMT) cannot produce a valid proof. this is not "the network rejects invalid signals" — it is "invalid signals cannot be constructed." the constraint system is the security boundary, not the protocol.
+**forging** — every signal carries a zheng proof. the proof is ~40,000 constraints verifiable in 10-50 μs. an invalid state transition (overspending focus, creating energy from nothing, corrupting a polynomial commitment) cannot produce a valid proof. this is not "the network rejects invalid signals" — it is "invalid signals cannot be constructed." the constraint system is the security boundary, not the protocol.
 
 **equivocation** — each device chains its signals via `prev = H(previous_signal)`. two signals with the same `prev` is a cryptographic proof of double-signaling. detection is O(1) — compare `prev` fields. no protocol rounds needed. VDF adds physical cost: equivocating requires computing VDF twice, which takes twice the wall time. the extra time is measurable.
 
 **reordering** — the hash chain makes device-local history immutable. inserting, removing, or reordering a signal breaks the chain (subsequent hashes no longer verify). any peer walking the chain detects the break in O(n) where n is chain length.
 
-**withholding** — each device commits its signal chain to a per-device NMT (namespaced by step). a peer requesting "all signals in steps [100, 200]" gets an NMT completeness proof — the tree structure prevents omission. the device cannot hide signals in the requested range. content availability is verified via DAS — erasure-coded chunks sampled at O(√n) cost. withholding is not self-punishing — it is structurally detectable.
+**withholding** — each device commits its signal chain to a per-device polynomial commitment (evaluation points indexed by step). a peer requesting "all signals in steps [100, 200]" gets a PCS completeness proof — polynomial binding prevents omission. the device cannot hide signals in the requested range. content availability is verified via DAS — erasure-coded chunks sampled at O(√n) cost. withholding is not self-punishing — it is algebraically detectable.
 
 the result: no leader election, no quorum, no voting. a single device online is a fully functional system. any two devices can sync bilaterally. any subset works. this is exactly the topology that personal infrastructure needs.
 
@@ -66,7 +66,7 @@ no single layer is sufficient. each eliminates a different failure mode:
 |---|---|---|
 | validity | zheng proof per signal | forging (invalid operations) |
 | ordering | hash chain + VDF | reordering, equivocation, flooding |
-| completeness | per-device signal NMT | signal withholding |
+| completeness | per-device polynomial commitment | signal withholding |
 | availability | DAS + erasure coding | data loss from device failure |
 | merge | CRDT (G-Set) | content conflicts |
 
@@ -94,20 +94,20 @@ all three maintain independent signal chains with VDF proofs. when the laptop co
 
 the phone connects later. same protocol. it finds the laptop and server already in sync, downloads their signals, verifies, replays. three devices, identical state, no server-centric architecture, no timestamp trust.
 
-content (file blobs) syncs as three composed layers: CRDT merge (grow-only set of CIDs), NMT completeness proofs (provably all content received), and DAS availability (erasure-coded chunks survive device failure).
+content (file blobs) syncs as three composed layers: CRDT merge (grow-only set of CIDs), PCS completeness proofs (provably all content received), and DAS availability (erasure-coded chunks survive device failure).
 
 ## why DAS, not just CRDTs
 
 a CRDT guarantees convergence if all updates are delivered. delivery is assumed, not proven. a G-Set merge on incomplete data converges — to the wrong state.
 
-DAS adds the guarantee CRDTs lack: **provable completeness.** content chunks are erasure-coded across devices (2D Reed-Solomon). any device can sample O(√n) random chunks to verify that all data is available. the NMT commits each device's content set — a peer requests a namespace proof and knows structurally that nothing was withheld.
+DAS adds the guarantee CRDTs lack: **provable completeness.** content chunks are erasure-coded across devices (2D Reed-Solomon). any device can sample O(√n) random chunks to verify that all data is available. the PCS commits each device's content set — a peer requests a polynomial opening and knows algebraically that nothing was withheld.
 
 for personal sync this matters because:
 
-- a compromised device might selectively withhold files. CRDT: undetectable. DAS + NMT: structurally impossible.
+- a compromised device might selectively withhold files. CRDT: undetectable. DAS + PCS: algebraically impossible.
 - a device dies permanently. CRDT: data on that device is lost. DAS: erasure coding across the device set means any k-of-n surviving devices reconstruct everything.
 - a phone wants to verify all files exist without downloading them. CRDT: must download all. DAS: O(√n) samples for 99.9% confidence.
 
-the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), NMT handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
+the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), PCS handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
 
 see [[sync]] for the full specification, [[design-principles]] for the three laws, [[data-availability]] for DAS in bbg

@@ -42,21 +42,21 @@ consequence: any two nodes that receive the SAME SET of operations converge to t
 
 the gap: CRDTs guarantee convergence IF you have the same set. they cannot prove you DO have the same set. a [[Byzantine fault]] peer that withholds some operations causes you to converge on a different (incomplete) state. you converge, but on the wrong answer.
 
-**logic: Namespace Merkle Trees ([[NMTs]])**
+**algebra: Polynomial Commitment Schemes ([[PCS]])**
 
-an NMT is a binary hash tree where each internal node carries the minimum and maximum namespace labels of its subtree. this sorting invariant is structural — enforced by the tree construction itself.
+a PCS commits a polynomial such that the commitment uniquely determines all evaluation points. polynomial binding is algebraic — enforced by the commitment scheme itself.
 
-consequence: a completeness proof for namespace N is the set of sibling hashes along paths to all leaves in namespace N. the sorting invariant guarantees: if a leaf with namespace N exists anywhere in the tree, it MUST appear in this proof. omission is structurally impossible — the tree cannot represent a state where a leaf exists but is absent from the proof.
+consequence: a completeness proof for namespace N is a PCS opening over the evaluation points in that namespace. polynomial binding guarantees: if an evaluation point for namespace N exists in the committed polynomial, it MUST appear in the opening. omission is algebraically impossible — the commitment cannot represent a state where a point exists but is absent from the proof.
 
-the guarantee is unconditional. it does not depend on honest majorities, cryptographic assumptions beyond collision resistance, or correct protocol execution. the DATA STRUCTURE prevents lying.
+the guarantee is unconditional. it does not depend on honest majorities, only on the binding property of the polynomial commitment. the ALGEBRAIC STRUCTURE prevents lying.
 
-the gap: NMTs prove completeness but say nothing about whether the data is physically available. a node can prove "here is everything in namespace N" while the actual data has been lost or destroyed.
+the gap: PCS proves completeness but says nothing about whether the data is physically available. a node can prove "here is everything in namespace N" while the actual data has been lost or destroyed.
 
 **probability: Data Availability Sampling ([[DAS]])**
 
 data is [[erasure coding|erasure-coded]] using 2D Reed-Solomon: an n-element dataset is arranged in a √n × √n grid, extended with parity rows and columns. any √n × √n submatrix suffices to reconstruct the original.
 
-consequence: a verifier samples O(√n) random cells and checks each against an NMT inclusion proof. if all samples pass, the data is available with probability 1 - (1/2)^k where k is the sample count. at k=20: 99.9999% confidence without downloading the full dataset.
+consequence: a verifier samples O(√n) random cells and checks each against a PCS opening. if all samples pass, the data is available with probability 1 - (1/2)^k where k is the sample count. at k=20: 99.9999% confidence without downloading the full dataset.
 
 the guarantee is probabilistic but information-theoretic — it does not depend on computational hardness, only on sampling randomness.
 
@@ -67,21 +67,21 @@ the gap: DAS proves existence but provides no merge semantics. multiple versions
 each layer alone is incomplete. each pair covers more:
 
 ```
-CRDT + NMT:     converge on provably complete data — but if data is lost, gone
+CRDT + PCS:     converge on provably complete data — but if data is lost, gone
 CRDT + DAS:     converge on available data — but can't prove completeness
-NMT  + DAS:     provably complete and available — but no merge semantics
+PCS  + DAS:     provably complete and available — but no merge semantics
 ```
 
 all three together:
 
 ```
-CRDT + NMT + DAS:  converge on provably complete, provably available data
+CRDT + PCS + DAS:  converge on provably complete, provably available data
                     with zero coordination
 ```
 
 the three gaps cancel:
 
-| failure | CRDT alone | + NMT | + DAS | all three |
+| failure | CRDT alone | + PCS | + DAS | all three |
 |---------|-----------|-------|-------|-----------|
 | merge conflict | resolved | resolved | resolved | resolved |
 | selective withholding | undetectable | **provable** | detectable | **provable** |
@@ -93,7 +93,7 @@ each layer contributes a guarantee from a different mathematical universe:
 
 ```
 algebra:      deterministic convergence    (CRDT)
-logic:        unconditional completeness   (NMT)
+algebra:      unconditional completeness   (PCS)
 probability:  physical availability        (DAS)
 ```
 
@@ -103,10 +103,10 @@ this composition is not consensus. it is something that does not have a standard
 
 **consensus** solves STATE MACHINE REPLICATION: given a stream of operations, agree on their total order, execute in that order, arrive at the same state. the cost is coordination — nodes must agree on ORDER before they can agree on STATE.
 
-the CRDT+NMT+DAS composition solves a different problem: **VERIFIED SET CONVERGENCE**. given a universe of operations (unordered), every participant:
+the CRDT+PCS+DAS composition solves a different problem: **VERIFIED SET CONVERGENCE**. given a universe of operations (unordered), every participant:
 
 1. merges them independently ([[CRDT]] — order is irrelevant)
-2. proves they have the complete universe ([[NMT]] — nothing missing)
+2. proves they have the complete universe ([[PCS]] — nothing missing)
 3. proves the universe physically exists ([[DAS]] — data survives)
 
 the result: identical state on all participants with cryptographic certainty, without agreeing on any ordering, without any leader or quorum. data transfer still happens (gossip, pull, DAS sampling) — what vanishes is the ordering coordination. nodes exchange data and proofs, but never negotiate sequence.
@@ -155,23 +155,23 @@ ordering is local (derived from signal metadata), not global (derived from conse
 
 the key: ordering is embedded IN THE DATA ([[signal]] structure), not imposed BY THE PROTOCOL (consensus). signals carry their own causal relationships. the merge function extracts a deterministic total order from the signal set without any communication.
 
-ordering is necessary for mutable state. what is unnecessary is COORDINATED ordering — the expensive part where nodes exchange messages to agree on sequence. structural sync replaces coordinated ordering with deterministic local ordering: given the same signal set, every node independently computes the same total order. the ordering algorithm is local. the agreement is a consequence of set equality (guaranteed by [[NMT]] + [[DAS]]), not of protocol execution.
+ordering is necessary for mutable state. what is unnecessary is COORDINATED ordering — the expensive part where nodes exchange messages to agree on sequence. structural sync replaces coordinated ordering with deterministic local ordering: given the same signal set, every node independently computes the same total order. the ordering algorithm is local. the agreement is a consequence of set equality (guaranteed by [[PCS]] + [[DAS]]), not of protocol execution.
 
 ## relationship to impossibility results
 
 [[FLP impossibility]] (Fischer, Lynch, Paterson 1985): no deterministic consensus protocol can guarantee termination in an asynchronous network with even one crash failure.
 
-structural sync does not violate FLP because it solves a different problem. FLP constrains AGREEMENT: nodes must decide on the same value. structural sync provides VERIFIED CONVERGENCE: nodes that receive the same set converge to the same state ([[CRDT]] property), and can verify they have the same set ([[NMT]] property).
+structural sync does not violate FLP because it solves a different problem. FLP constrains AGREEMENT: nodes must decide on the same value. structural sync provides VERIFIED CONVERGENCE: nodes that receive the same set converge to the same state ([[CRDT]] property), and can verify they have the same set ([[PCS]] property).
 
-the distinction: FLP requires that all correct nodes eventually decide — a liveness guarantee. structural sync guarantees that any node with a complete set has the correct state — a safety guarantee conditional on receipt. NMT transforms the unconditional liveness question ("did everyone receive everything?") into a verifiable safety question ("do I have everything?"). a node can ANSWER the question locally, without waiting for other nodes to respond. this sidesteps FLP because no termination of a distributed protocol is required — only local verification.
+the distinction: FLP requires that all correct nodes eventually decide — a liveness guarantee. structural sync guarantees that any node with a complete set has the correct state — a safety guarantee conditional on receipt. PCS transforms the unconditional liveness question ("did everyone receive everything?") into a verifiable safety question ("do I have everything?"). a node can ANSWER the question locally, without waiting for other nodes to respond. this sidesteps FLP because no termination of a distributed protocol is required — only local verification.
 
 [[CAP theorem]] (Brewer 2000): a distributed system cannot simultaneously provide Consistency, Availability, and Partition tolerance.
 
 structural sync provides:
 - [[eventual consistency]] (CRDT convergence — weaker than strong consistency)
 - availability ([[DAS]] — data is reconstructible from any k-of-n)
-- partition tolerance (CRDT operates during partitions, NMT verifies after)
-- completeness (NMT — a fourth property not in CAP)
+- partition tolerance (CRDT operates during partitions, PCS verifies after)
+- completeness (PCS — a fourth property not in CAP)
 
 CAP constrains strong consistency. structural sync trades it for eventual consistency + verifiable completeness, gaining a property CAP doesn't even model.
 
@@ -184,7 +184,7 @@ layer           discipline      mechanism            property
 ─────           ──────────      ─────────            ────────
 1. validity     computation     zheng proof          state transition is correct
 2. ordering     data structure  hash chain + VDF     operations carry their own order
-3. completeness logic           NMT                  nothing was omitted
+3. completeness algebra         PCS                  nothing was omitted
 4. availability probability     DAS + erasure        data physically exists
 5. merge        algebra         CRDT / foculus       convergence is deterministic
 ```
@@ -209,35 +209,35 @@ system          consensus    completeness    availability    merge
 ──────          ─────────    ────────────    ────────────    ─────
 Bitcoin         Nakamoto     no proof        full nodes      N/A
 Ethereum        Casper       light clients   proposed DAS    N/A
-Celestia        Tendermint   NMT proofs      DAS             N/A
+Celestia        Tendermint   NMT proofs      DAS             N/A  (tree-based)
 IPFS            none         no proof        DHT             no merge
 Automerge       none         no proof        no guarantee    CRDT
 Git             none         hash chain      clone           manual merge
 
-bbg             none*        NMT proof       DAS + erasure   CRDT / foculus
+bbg             none*        PCS proof       DAS + erasure   CRDT / foculus
 ```
 
 \* [[foculus]] is π convergence, not a consensus protocol. no leader, no quorum, no voting rounds. convergence is a mathematical fixed point, not a protocol outcome.
 
-[[BBG|bbg]] is the first system to compose all three layers. [[Celestia]] has [[NMT]] + [[DAS]] but uses traditional consensus (Tendermint) for ordering and relies on external rollups for merge semantics. [[Automerge]] has [[CRDTs]] but no completeness proof and no availability guarantee. bbg's contribution is the composition and the recognition that the three layers are sufficient.
+[[BBG|bbg]] is the first system to compose all three layers with polynomial completeness. [[Celestia]] has tree-based [[NMT]] + [[DAS]] but uses traditional consensus (Tendermint) for ordering and relies on external rollups for merge semantics. [[Automerge]] has [[CRDTs]] but no completeness proof and no availability guarantee. bbg's contribution is the algebraic composition and the recognition that the three layers are sufficient.
 
 ## what structural sync enables
 
 **consensus-free light clients.** a light client joins the network by:
 1. downloading a checkpoint (~200 bytes: universal accumulator)
 2. verifying it (one [[zheng]] proof, 10-50 μs)
-3. syncing namespaces of interest ([[NMT]] completeness proof per namespace)
+3. syncing namespaces of interest ([[PCS]] completeness proof per namespace)
 4. sampling availability (O(√n) [[DAS]] samples)
 
-no consensus participation. no block header chain traversal. no sync committee. one verification proves all history. NMT proves completeness. DAS proves availability.
+no consensus participation. no block header chain traversal. no sync committee. one verification proves all history. PCS proves completeness. DAS proves availability.
 
-**byzantine detection, not tolerance.** traditional BFT tolerates up to f [[Byzantine fault]] nodes among 3f+1. structural sync detects and prevents Byzantine faults through data structure properties:
+**byzantine detection, not tolerance.** traditional BFT tolerates up to f [[Byzantine fault]] nodes among 3f+1. structural sync detects and prevents Byzantine faults through algebraic and data structure properties:
 
 | fault | mechanism | guarantee | after detection |
 |---|---|---|---|
 | forging | zheng proof | structurally impossible — invalid proof cannot be constructed | rejected by any peer |
 | equivocation | [[hash chain]] + [[VDF]] | O(1) detectable — two signals with same prev is cryptographic proof | misbehavior proof → key revocation at local scale, stake slashing at global scale |
-| withholding | NMT completeness | structurally provable — the tree cannot hide leaves in a requested range | peer excluded, data reconstructed from [[erasure coding]] |
+| withholding | PCS completeness | algebraically provable — polynomial binding cannot hide evaluation points in a requested range | peer excluded, data reconstructed from [[erasure coding]] |
 | data loss | DAS + erasure | recoverable from any k-of-n surviving chunks | automatic reconstruction |
 | flooding | VDF rate limit | physically bounded — each signal costs T_min sequential time | rate exceeded → signals queued, not processed |
 
@@ -250,27 +250,27 @@ forging is structurally impossible. equivocation and withholding are structurall
 
 layers 1-4 are identical at all scales. layer 5 adapts the merge function. no separate protocol for each scale.
 
-**offline-first operation.** devices operate independently, accumulate [[signals]], sync when they reconnect. convergence is guaranteed by CRDT. completeness is verifiable by NMT after reconnection. availability survives through erasure coding. no "online requirement" for correctness.
+**offline-first operation.** devices operate independently, accumulate [[signals]], sync when they reconnect. convergence is guaranteed by CRDT. completeness is verifiable by PCS after reconnection. availability survives through erasure coding. no "online requirement" for correctness.
 
 ## who builds the tree
 
-a common objection: [[NMT]] proves completeness relative to what is IN the tree. who constructs the tree? if the builder is [[Byzantine fault]], they can build a valid tree that omits operations.
+a common objection: [[PCS]] proves completeness relative to what is IN the committed polynomial. who constructs the polynomial? if the builder is [[Byzantine fault]], they can build a valid commitment that omits operations.
 
-the answer: each source builds its own tree. at local scale, each device commits its [[signal]] chain to a per-device NMT (namespaced by step). at global scale, each [[neurons|neuron]] commits its signals to a per-neuron NMT. no central tree builder exists.
+the answer: each source builds its own commitment. at local scale, each device commits its [[signal]] chain to a per-device polynomial commitment (evaluation points indexed by step). at global scale, each [[neurons|neuron]] commits its signals to a per-neuron polynomial commitment. no central commitment builder exists.
 
 completeness verification works peer-to-peer:
 
 ```
 device A requests: "all signals from device B in steps [100, 200]"
-device B returns:  NMT completeness proof for range [100, 200]
+device B returns:  PCS completeness proof (opening) for range [100, 200]
 
-the proof guarantees: within B's tree, nothing in [100, 200] was omitted.
-the proof does NOT guarantee: B's tree contains all signals B ever created.
+the proof guarantees: within B's committed polynomial, nothing in [100, 200] was omitted.
+the proof does NOT guarantee: B's polynomial contains all signals B ever created.
 ```
 
-the remaining question — "did B create signals it did not include in its tree?" — is answered by the ordering layer. B's [[hash chain]] is append-only. if B published signal at step 150 to device C but omitted it from the tree shown to device A, the hash chain fork is detectable: A and C compare chain hashes and discover divergence. equivocation = two trees from the same source with different contents at the same step range = cryptographic misbehavior proof.
+the remaining question — "did B create signals it did not include in its commitment?" — is answered by the ordering layer. B's [[hash chain]] is append-only. if B published signal at step 150 to device C but omitted it from the commitment shown to device A, the hash chain fork is detectable: A and C compare chain hashes and discover divergence. equivocation = two commitments from the same source with different contents at the same step range = cryptographic misbehavior proof.
 
-the composition: NMT proves per-tree completeness. hash chain + equivocation detection proves cross-tree consistency. together: completeness is not relative to one tree — it is global.
+the composition: PCS proves per-commitment completeness. hash chain + equivocation detection proves cross-commitment consistency. together: completeness is not relative to one commitment — it is global.
 
 see [[sync]] for the full protocol, [[signal-sync explained|signal-sync]] for ordering design rationale.
 
@@ -283,20 +283,20 @@ COMPUTATION (per signal):
   zheng proof generation:    ~100 ms (on device, amortized across batch)
   zheng proof verification:  10-50 μs (on any peer)
   VDF computation:           T_min configurable (default ~1s)
-  NMT update:                O(log n) hashes per signal
+  PCS update:                O(1) field ops per signal
   erasure encoding:          O(n log² n) field ops per file
 
 BANDWIDTH (per sync):
   merkle clock comparison:   O(1) — single hash (32 bytes)
   signal exchange:           O(|missing signals| × signal_size)
                              signal_size: 1-5 KiB (proof + impulse + metadata)
-  NMT completeness proof:    O(log n) × 32 bytes per namespace range
+  PCS completeness proof:    O(1) field elements per namespace range
   DAS sampling:              O(√n) samples × (chunk_size + proof_size)
                              ~20 samples for 99.9999% confidence
 
 STORAGE (per device):
   signal chain:              O(signals × signal_size)
-  NMT:                       O(signals × 32 bytes) for tree nodes
+  PCS:                       O(signals) field elements for commitment state
   erasure parity:            (n-k)/k overhead per file (default 2× at rate 1/2)
   total per-device:          2/N × total_data (distributed, not replicated)
 
@@ -311,11 +311,11 @@ the dominant cost is [[zheng]] proof generation (~100 ms). this is paid once by 
 
 ## the minimum structure theorem
 
-conjecture: [[CRDT]] + [[NMT]] + [[DAS]] is the MINIMUM composition that achieves verified convergence without coordination.
+conjecture: [[CRDT]] + [[PCS]] + [[DAS]] is the MINIMUM composition that achieves verified convergence without coordination.
 
 argument by elimination:
 - remove CRDT: no convergence guarantee (multiple valid states, no resolution)
-- remove NMT: no completeness guarantee (convergence on incomplete data)
+- remove PCS: no completeness guarantee (convergence on incomplete data)
 - remove DAS: no availability guarantee (complete but lost data)
 
 each removal loses a property that the other two cannot provide. no layer is redundant.
@@ -327,7 +327,7 @@ argument by coverage: every sync failure is a failure of exactly one layer:
 - invalid state → validity failure (layer 1)
 - reordered state → ordering failure (layer 2)
 
-no failure falls outside these categories. the five layers cover the failure space. the three core layers (CRDT, NMT, DAS) are the irreducible minimum for the agreement/completeness/availability properties.
+no failure falls outside these categories. the five layers cover the failure space. the three core layers (CRDT, PCS, DAS) are the irreducible minimum for the agreement/completeness/availability properties.
 
 ## verified eventual consistency
 
@@ -342,7 +342,7 @@ safety:     if two nodes have verified-complete signal sets S_A and S_B,
 
 completeness: a node can verify in O(log n) whether its signal set
               for a given source is complete
-              (NMT structural completeness proof)
+              (PCS polynomial completeness proof)
 
 availability: a node can verify in O(√n) whether the data underlying
               its signal set physically exists across the network
@@ -359,7 +359,7 @@ this differs from existing consistency models:
 - **eventual consistency**: convergence assumed, not verifiable
 - **causal consistency**: ordering guaranteed, completeness not verifiable
 - **strong eventual consistency** (SEC, the [[CRDT]] model): convergence guaranteed on equal message sets, but no mechanism to verify set equality
-- **VEC**: convergence guaranteed (CRDT) + set equality verifiable ([[NMT]]) + data existence verifiable ([[DAS]])
+- **VEC**: convergence guaranteed (CRDT) + set equality verifiable ([[PCS]]) + data existence verifiable ([[DAS]])
 
 ## consequences: what changes
 
@@ -367,13 +367,13 @@ if structural sync works as described, the implications cascade through distribu
 
 ### what was impossible, now possible
 
-1. consensus-free sovereign devices. a phone, laptop, and server sync without any coordinator. no cloud. no account. no server you do not control. each device is a full participant — creates [[signals]], proves validity ([[zheng]]), proves completeness ([[NMT]]), proves availability ([[DAS]]), merges deterministically ([[CRDT]]). losing a device loses nothing (erasure reconstruction). gaining a device requires zero permission. personal infrastructure with the same guarantees as a blockchain.
+1. consensus-free sovereign devices. a phone, laptop, and server sync without any coordinator. no cloud. no account. no server you do not control. each device is a full participant — creates [[signals]], proves validity ([[zheng]]), proves completeness ([[PCS]]), proves availability ([[DAS]]), merges deterministically ([[CRDT]]). losing a device loses nothing (erasure reconstruction). gaining a device requires zero permission. personal infrastructure with the same guarantees as a blockchain.
 
 2. light client in one proof. a new participant joins a network of millions and verifies ALL history with one [[zheng]] proof (~50 μs). no sync committee. no header chain. no "trust the first peer you connect to." the checkpoint is self-proving. this is qualitatively different from SPV (Bitcoin) or sync committees (Ethereum) — those trust some honest majority at sync time. structural sync trusts mathematics.
 
-3. offline-first with provable correctness. devices operate independently for days. when they reconnect, convergence is guaranteed ([[CRDT]]), completeness is verifiable ([[NMT]]), lost data is recoverable ([[DAS]]). no "conflict file." no "last write wins and hope for the best." no "sync failed, try again." the math prevents incorrect states.
+3. offline-first with provable correctness. devices operate independently for days. when they reconnect, convergence is guaranteed ([[CRDT]]), completeness is verifiable ([[PCS]]), lost data is recoverable ([[DAS]]). no "conflict file." no "last write wins and hope for the best." no "sync failed, try again." the math prevents incorrect states.
 
-4. Byzantine detection without honest majority. traditional BFT requires 2/3 honest. structural sync detects equivocation from a single honest peer examining the [[hash chain]]. withholding is provable from NMT structure alone. no quorum needed for fault detection — one verifier is sufficient.
+4. Byzantine detection without honest majority. traditional BFT requires 2/3 honest. structural sync detects equivocation from a single honest peer examining the [[hash chain]]. withholding is provable from PCS binding alone. no quorum needed for fault detection — one verifier is sufficient.
 
 5. scale-invariant protocol. the same five layers work for 2 devices and 10⁹ light clients. layers 1-4 are identical at all scales. only layer 5 (merge) adapts: [[CRDT]] locally, [[foculus]] globally. no separate protocol for "small scale" and "large scale." no bridges between them.
 
@@ -389,7 +389,7 @@ if structural sync works as described, the implications cascade through distribu
 
 1. leaders. no block proposer. no round-robin. no leader election. no view change when the leader fails. signals are created independently and merged deterministically. "who goes first?" is answered by the data (causal order + [[VDF]] + hash tiebreak), not by a protocol.
 
-2. voting. no prepare/commit/finalize rounds. no 2/3 threshold. convergence follows from [[CRDT]] properties + set completeness ([[NMT]]). agreement is a mathematical consequence, not a social process.
+2. voting. no prepare/commit/finalize rounds. no 2/3 threshold. convergence follows from [[CRDT]] properties + set completeness ([[PCS]]). agreement is a mathematical consequence, not a social process.
 
 3. finality gadgets. no separate finality layer (Casper, Grandpa). finality is inherent: once a signal enters a neuron's chain, the [[hash chain]] makes it immutable. removing it requires breaking the chain — detectable by any peer.
 
@@ -403,13 +403,13 @@ if structural sync works as described, the implications cascade through distribu
 
 3. semantic correctness. structural sync guarantees that all participants converge to the same state given the same signals. it says nothing about whether that state is TRUE. garbage signals produce garbage state — correctly, completely, and availably. the quality of knowledge depends on the quality of [[neurons]], not on the sync protocol. [[tri-kernel]] and [[karma]] address this at a higher layer.
 
-4. privacy without additional machinery. NMT proofs reveal namespace structure. DAS sampling reveals which data exists. individual signal content is private (encrypted), but metadata (who signals, when, to which namespace) is visible. privacy requires a separate layer — the mutator set in [[BBG]] provides this.
+4. privacy without additional machinery. PCS openings reveal evaluation points. DAS sampling reveals which data exists. individual signal content is private (encrypted), but metadata (who signals, when, to which namespace) is visible. privacy requires a separate layer — the mutator set in [[BBG]] provides this.
 
-### what proof + hash chain + VDF add to CRDT + NMT + DAS
+### what proof + hash chain + VDF add to CRDT + PCS + DAS
 
-the base three layers (CRDT, NMT, DAS) provide convergence, completeness, and availability. adding proof ([[zheng]]), [[hash chain]], and [[VDF]] transforms "correct sync" into "sovereign computation":
+the base three layers (CRDT, PCS, DAS) provide convergence, completeness, and availability. adding proof ([[zheng]]), [[hash chain]], and [[VDF]] transforms "correct sync" into "sovereign computation":
 
-| capability | CRDT+NMT+DAS | + proof + chain + VDF |
+| capability | CRDT+PCS+DAS | + proof + chain + VDF |
 |---|---|---|
 | convergence | guaranteed | guaranteed + VALID (proof prevents invalid state transitions) |
 | history | unordered set | immutable chain (hash chain prevents rewriting) |
@@ -419,15 +419,15 @@ the base three layers (CRDT, NMT, DAS) provide convergence, completeness, and av
 | timestamp | none (no notion of time) | VDF provides physical time without trusted clocks |
 | recursive compression | impossible | possible (proof of proof of proof → constant size) |
 
-the composition CRDT + NMT + DAS is sync. adding proof + chain + VDF makes it a computer: a system that can execute programs (proved correct), order them (hash chain + VDF), and verify the entire execution history in constant time (recursive proof).
+the composition CRDT + PCS + DAS is sync. adding proof + chain + VDF makes it a computer: a system that can execute programs (proved correct), order them (hash chain + VDF), and verify the entire execution history in constant time (recursive proof).
 
 this is the difference between a database that replicates and a machine that computes. structural sync is the former. structural sync + zheng + hash chain + VDF is the latter.
 
 ## open questions
 
 1. **formalization**: VEC needs formal treatment as a consistency model. the safety, completeness, availability, and liveness properties above are a starting point. a full formalization should define the adversary model, prove the properties hold under stated assumptions, and establish the relationship to existing consistency models (SEC, causal+, linearizability)
-2. **lower bounds**: is there a proof that three layers are necessary? or could a single mathematical structure provide all three guarantees simultaneously? [[algebraic-nmt]] with polynomial commitments may unify completeness and merge into one algebraic structure — reducing three layers to two. if completeness and merge can share a single polynomial commitment scheme, the minimum composition might be algebra+probability rather than algebra+logic+probability
-3. **composability**: do structural sync protocols compose? if system A uses structural sync and system B uses structural sync, does their combination automatically inherit all guarantees? this matters for cross-graph sync (multiple knowledge graphs sharing [[particles]]) and for [[BBG|bbg]]'s relationship to external chains. the [[NMT]] namespace structure suggests natural composability — each system occupies a namespace, cross-system proofs are namespace inclusion proofs
+2. **lower bounds**: is there a proof that three layers are necessary? or could a single mathematical structure provide all three guarantees simultaneously? polynomial commitments already unify completeness and merge into one algebraic structure — the minimum composition may be algebra+probability rather than three independent layers. the PCS architecture demonstrates this unification in practice
+3. **composability**: do structural sync protocols compose? if system A uses structural sync and system B uses structural sync, does their combination automatically inherit all guarantees? this matters for cross-graph sync (multiple knowledge graphs sharing [[particles]]) and for [[BBG|bbg]]'s relationship to external chains. the [[PCS]] namespace structure suggests natural composability — each system occupies a namespace dimension, cross-system proofs are PCS openings over shared evaluation points
 4. **sybil resistance without consensus**: consensus protocols use stake/PoW for sybil resistance. structural sync at local scale has no sybil problem (devices share one [[neurons|neuron]]). at global scale, [[foculus]] uses stake-weighted π convergence. but the general question remains: is sybil resistance possible without any form of resource commitment? [[VDF]] provides rate limiting but does not prevent identity multiplication
 
 see [[sync]] for the protocol specification, [[foculus-vs-crdt]] for the merge layer comparison (resolves the "foculus as CRDT" question — foculus is not a CRDT but serves the same role at global scale with different tradeoffs), [[algebraic-nmt]] for the completeness layer evolution, [[data-availability explained|data-availability]] for the availability layer

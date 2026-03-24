@@ -11,7 +11,7 @@ density: 0.74
 ---
 # foculus as merge layer
 
-the five verification layers of [[sync]] share four layers between local device sync and global network sync: validity ([[zheng]] proof), ordering (hash chain + VDF), completeness (per-neuron signal NMT), availability (DAS + erasure coding). the fifth layer — merge — is where local and global diverge. local sync uses a CRDT. global sync uses [[foculus]]. understanding why illuminates both.
+the five verification layers of [[sync]] share four layers between local device sync and global network sync: validity ([[zheng]] proof), ordering (hash chain + VDF), completeness (per-neuron signal polynomial commitment), availability (DAS + erasure coding). the fifth layer — merge — is where local and global diverge. local sync uses a CRDT. global sync uses [[foculus]]. understanding why illuminates both.
 
 ## what the merge layer does
 
@@ -29,7 +29,7 @@ for local device sync, CRDTs work because:
 - **content is content-addressed.** file blobs identified by CID have no conflicts — the G-Set union is the correct merge. two devices adding the same file get the same CID. deduplication is automatic
 - **name conflicts are rare.** concurrent name updates (two devices editing the same binding offline) are the exception. deterministic ordering (hash tiebreak on concurrent signals) resolves them without semantic reasoning
 
-CRDTs are sufficient for local merge because the failure modes they cannot handle (withholding, availability) are covered by other layers (NMT, DAS).
+CRDTs are sufficient for local merge because the failure modes they cannot handle (withholding, availability) are covered by other layers (PCS, DAS).
 
 ## foculus: merge by convergence
 
@@ -61,7 +61,7 @@ the other four layers are identical:
 |---|---|---|
 | validity | zheng proof per signal | zheng proof per signal |
 | ordering | prev chain + VDF | prev chain + VDF |
-| completeness | per-device signal NMT | per-neuron signal NMT |
+| completeness | per-device signal polynomial commitment | per-neuron signal polynomial commitment |
 | availability | DAS + erasure coding | DAS + erasure coding |
 
 device = neuron. at network level, a neuron IS a device in a larger sync group. the same signal structure — $(\nu, \vec\ell, \pi_\Delta, \sigma)$ with ordering fields (prev, merkle_clock, vdf_proof, step) — works at both scales. the only difference is which merge function resolves conflicts.

@@ -35,7 +35,7 @@ a cyberlink creates a private record and updates public aggregates — bounded-l
 - LogUp cross-index: O(k log k) proportional to axons touched, not |G|
 - sync: O(|my_namespace|) data transfer, not O(|all_data|)
 
-focus is public — it must be visible for [[cyberank]] computation. a cyberlink deducts focus proportional to weight, updates the axon aggregate (weight, market state, meta-score), updates neuron focus and particle energy, and recomputes O(log n) NMT paths in the affected sub-roots. no global structure is touched. individual cyberlinks remain private — only aggregates are committed publicly.
+focus is public — it must be visible for [[cyberank]] computation. a cyberlink deducts focus proportional to weight, updates the axon aggregate (weight, market state, meta-score), updates neuron focus and particle energy, and recomputes O(1) polynomial evaluations in the affected dimensions. no global structure is touched. individual cyberlinks remain private — only aggregates are committed publicly.
 
 ### economic operations (private transfers)
 
@@ -53,7 +53,7 @@ the mutator set (AOCL + SWBF) is a global structure. private transfers touch it.
 explicit conversion crosses the private→public boundary:
 
 - spend coin UTXO via mutator set (economic, O(log N))
-- credit focus NMT leaf (graph, O(log n))
+- credit focus polynomial dimension (graph, O(1) field ops)
 
 this is the only operation that touches both layers. it is explicit — a neuron chooses when to convert private coins into public focus. the two worlds do not leak into each other otherwise.
 
@@ -73,14 +73,14 @@ this enables planetary-scale delegation: any node can verify any other node's co
 
 security guarantees emerge from data structure invariants, not from protocol correctness.
 
-a protocol can have bugs. a tree whose internal nodes carry min/max namespace labels cannot lie about completeness — the structure itself prevents it.
+a protocol can have bugs. a polynomial commitment whose binding property prevents fabricating evaluation points cannot lie about completeness — the algebraic structure itself prevents it.
 
 examples in bbg:
-- NMT sorting invariant: misordered leaves produce an invalid root (structural)
+- PCS binding: polynomial commitment uniquely determines all evaluation points (structural)
 - SWBF double-spend: second spend sets already-set bits → rejection (structural)
 - content addressing: H(e) → e means identity IS hash (structural)
 - AOCL append-only: MMR structure physically prevents modification of past entries (structural)
 
-the ZK circuit enforces the privacy boundary (see [[privacy]]). but the completeness guarantees come from the tree, not the circuit.
+the ZK circuit enforces the privacy boundary (see [[privacy]]). but the completeness guarantees come from PCS binding, not the circuit.
 
 see [[architecture]] for the full layer model

@@ -82,17 +82,17 @@ DAS answers: "is the data available?" without downloading it. a verifier samples
 ```
 DAS PROTOCOL:
 
-  1. device commits encoded chunks to a per-device NMT
-     (namespace = chunk position, sorted)
+  1. device commits encoded chunks to a per-device polynomial commitment
+     (chunk positions encoded as evaluation points)
 
-  2. device publishes NMT root (signed by device key)
+  2. device publishes PCS commitment (signed by device key)
 
   3. verifier selects s random positions from [0, n)
 
   4. for each position i:
-     request chunk[i] + NMT inclusion proof from device
+     request chunk[i] + PCS opening from device
      verify: H(chunk[i]) matches commitment
-     verify: NMT proof valid against published root
+     verify: PCS opening valid against published commitment
 
   5. if all s samples verify:
      data is available with probability ≥ 1 - (1/2)^s
@@ -101,8 +101,8 @@ DAS PROTOCOL:
      s = 30 → 99.99999999% confidence
 
 COST:
-  verifier downloads: s chunks + s NMT proofs
-  = O(s × chunk_size × log n)
+  verifier downloads: s chunks + s PCS openings
+  = O(s × chunk_size)
   = O(√n) for s = O(√n) samples
 
   vs full download: O(n × chunk_size)
@@ -120,33 +120,34 @@ withholding less than 50% means reconstruction succeeds anyway — the withheld 
 
 this creates a binary: either the data is available (and sampling confirms it) or reconstruction fails (and sampling detects it). there is no middle ground where partial withholding goes undetected.
 
-## NMT completeness proofs
+## PCS completeness proofs
 
-DAS proves chunks exist. NMT completeness proves the full set was committed — no chunks were omitted from the commitment.
+DAS proves chunks exist. PCS completeness proves the full set was committed — no chunks were omitted from the commitment.
 
 ```
-NMT COMMITMENT:
+PCS COMMITMENT:
 
-  device commits all chunks to NMT:
-    content_nmt.root = NMT(chunk_position → chunk_hash)
+  device commits all chunks to a polynomial:
+    content_commitment = PCS.commit(chunk_poly)
 
-  namespace: chunk position (u64, sorted)
-  root: signed by device key
+  chunk_poly encodes chunk positions and hashes as evaluation points
+  commitment: signed by device key
 
 COMPLETENESS PROOF:
 
   verifier requests: "all chunks in positions [a, b]"
-  device returns: chunks + NMT namespace proof
+  device returns: chunks + PCS opening for the range
 
-  NMT guarantee:
-    the tree structure carries min/max namespace labels at internal nodes
-    a proof for range [a, b] structurally cannot omit a leaf in that range
-    the device cannot hide a chunk position that exists in the tree
+  PCS guarantee:
+    polynomial binding means the commitment uniquely determines
+    all evaluation points. a PCS opening for range [a, b]
+    cannot omit a point that the polynomial encodes.
+    the device cannot hide a chunk position that was committed.
 
   if the device committed 200 chunks but only reveals 150:
-    the NMT proof for range [0, 199] will fail
-    the missing positions create a gap in the namespace
-    structural — the tree cannot lie about its contents
+    the PCS opening for range [0, 199] will fail
+    the missing positions violate polynomial binding
+    algebraic — the commitment cannot lie about its contents
 ```
 
 ## three layers composed
@@ -154,18 +155,18 @@ COMPLETENESS PROOF:
 each layer solves a different failure mode. no single layer is sufficient:
 
 ```
-FAILURE                  CRDT alone    DAS alone    NMT alone    ALL THREE
+FAILURE                  CRDT alone    DAS alone    PCS alone    ALL THREE
 ─────────                ──────────    ─────────    ─────────    ─────────
 device dies              data lost     recoverable  no help      recoverable
 selective withholding    undetectable  detectable   provable     provable + detectable
 merge conflict           resolved      no help      no help      resolved
 incomplete transfer      undetectable  no help      provable     provable
-verification cost        O(n)          O(√n)        O(log n)     O(√n)
+verification cost        O(n)          O(√n)        O(1)         O(√n)
 ```
 
 **CRDT (G-Set merge)** — handles merge semantics. content-addressed chunks have no conflicts. the grow-only set union is commutative, associative, idempotent. "do you have CID X? no? here." deduplication automatic. verification: H(received) == CID.
 
-**NMT completeness** — handles provable completeness per namespace. a device commits its chunk set to a namespaced Merkle tree. a peer requests a namespace range and gets structural proof that nothing was omitted. O(log n) proof size.
+**PCS completeness** — handles provable completeness per namespace. a device commits its chunk set to a polynomial commitment. a peer requests a namespace range and gets an algebraic proof that nothing was omitted. O(1) proof size.
 
 **DAS + erasure coding** — handles physical availability. data survives permanent device failure through k-of-n reconstruction. O(√n) sampling cost to verify availability without downloading. no single point of failure.
 
@@ -181,11 +182,11 @@ the mechanism is identical at both scales. the parameters differ:
 | chunk distribution | capacity-weighted | stake-weighted |
 | sampling peers | all devices sample each other | random validator subset |
 | reconstruction | any k-of-n devices | any k-of-n neurons in namespace |
-| commitment | per-device NMT | per-neuron NMT (files.root) |
+| commitment | per-device polynomial commitment | per-neuron polynomial commitment (files.root) |
 | fraud proofs | device key revocation | stake slashing |
 
 at local scale, DAS ensures a phone can verify its server has all files without downloading them. at global scale, DAS ensures light clients can verify block data availability without running a full node.
 
-the same erasure coding over [[Goldilocks field]], the same 2D Reed-Solomon structure, the same NMT commitment scheme. the availability layer is scale-invariant.
+the same erasure coding over [[Goldilocks field]], the same 2D Reed-Solomon structure, the same PCS commitment scheme. the availability layer is scale-invariant.
 
-see [[sync]] for the full sync specification, [[data-availability]] for the bbg reference spec, [[design-principles]] for the three laws, [[why-nmt]] for NMT design rationale
+see [[sync]] for the full sync specification, [[data-availability]] for the bbg reference spec, [[design-principles]] for the three laws, [[nmt]] for NMT's surviving role in cold storage
