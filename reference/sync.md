@@ -192,17 +192,25 @@ no negotiation, no leader, no timestamps
 
 ### layer 3: completeness
 
+two distinct signal commitments operate at different scales:
+
+**per-neuron signal commitment (LOCAL):** each neuron commits its own signal chain to a local polynomial indexed by step. this is a per-neuron PCS commitment used in the sync protocol — not part of BBG_poly. each neuron maintains and extends its own commitment as it produces signals.
+
+**BBG_poly(signals) (NETWORK-LEVEL):** the signals dimension of BBG_poly is the finalized index maintained by validators after block inclusion. when a signal batch is included in a block, validators update BBG_poly(signals, step, t) with the finalized batch.
+
 ```
-each neuron commits its signal chain to a polynomial indexed by step.
+LOCAL (per-neuron):
+  each neuron commits its signal chain via its own PCS commitment
+  proves: "these are ALL signals from source S in step range [a, b]"
+  PCS binding: source cannot hide a signal in the requested range
+  updated: on every new signal (extend polynomial, recommit)
+  cost: O(1) per signal (polynomial extension)
 
-  BBG_poly(signals, step, t) for each source
-
-proves: "these are ALL signals from source S in step range [a, b]"
-PCS binding: source cannot hide a signal in the requested range
-the polynomial commitment algebraically prevents omission
-
-updated: on every new signal (extend polynomial, recommit)
-cost: O(1) per signal (polynomial extension)
+NETWORK (BBG_poly dimension):
+  BBG_poly(signals, step, t) = finalized signal batch at step
+  maintained by validators after block inclusion
+  proves: "signal batch at step S was accepted at block height t"
+  updated: per block (validators extend BBG_poly)
 ```
 
 ### layer 4: availability
@@ -347,7 +355,7 @@ signals flow from local sync to the network.
 5. foculus merges (layer 5): π-weighted convergence
 6. block producer includes signals → assigns t (block height)
 7. state transitions applied to BBG_poly evaluation dimensions
-8. BBG_root = PCS.commit(BBG_poly) updated → time dimension records snapshot
+8. BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)) updated → time dimension records snapshot
 ```
 
 ## query sync protocol
@@ -559,7 +567,7 @@ STALE NEURON         snapshot + fast sync    reconnect → find common snapshot 
 
 ## polynomial state summary
 
-BBG_root = PCS.commit(BBG_poly) — one polynomial, one commitment, 32 bytes. every query is a PCS opening. every verification is O(1) field operations.
+BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)) — three polynomial commitments hashed into one 32-byte root. every public query is a PCS opening against BBG_poly. every private query is a PCS opening against A(x) or N(x). every verification is O(1) field operations.
 
 the five verification layers:
 

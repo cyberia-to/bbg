@@ -16,11 +16,12 @@ all authenticated state committed under a single polynomial commitment. individu
 ## BBG root
 
 ```
-BBG_root = PCS.commit(BBG_poly)    one Brakedown commitment, 32 bytes
+BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N))
+
+three 32-byte Brakedown commitments hashed together → one 32-byte root
 
 BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
-
-10 evaluation dimensions (public):
+10 public evaluation dimensions:
   particles     all particles: content + axons
   axons_out     directional index by source
   axons_in      directional index by target
@@ -32,42 +33,39 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
   time          temporal snapshots (continuous, replaces 7-namespace NMT)
   signals       finalized signal batches
 
-2 evaluation dimensions (private):
-  commitments   commitment polynomial A(x) — private record commitments
-  nullifiers    nullifier polynomial N(x) — spent record tracking
+2 independent private polynomial commitments (NOT dimensions of BBG_poly):
+  A(x)          commitment polynomial — private record commitments
+  N(x)          nullifier polynomial — spent record tracking
 ```
 
 ## state diagram
 
 ```
-                          ┌──────────────────────┐
-                          │      BBG_root         │
-                          │ PCS.commit(BBG_poly)  │
-                          │     32 bytes          │
-                          └──────────┬────────────┘
-                                     │
-          ┌──────────────────────────┼──────────────────────────┐
-          │                          │                          │
-    ┌─────┴──────┐            ┌──────┴──────┐           ┌──────┴───────┐
-    │  10 public │            │  2 private  │           │   time       │
-    │ dimensions │            │ dimensions  │           │  dimension   │
-    └─────┬──────┘            └──────┬──────┘           └──────┬───────┘
-          │                          │                          │
-  ┌───┬───┼───┬───┐          ┌───────┼───────┐                 │
-  │   │   │   │   │          │               │          historical query
-  p  a_o a_i  n  ...    commitments    nullifiers     = BBG_poly(i, k, t_past)
-                          A(x)          N(x)
+                          ┌────────────────────────────────────────────────────┐
+                          │                    BBG_root                        │
+                          │ H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)) │
+                          │                   32 bytes                         │
+                          └─────────┬──────────────────┬──────────────┬───────┘
+                                    │                  │              │
+                          ┌─────────┴────────┐  ┌──────┴─────┐ ┌─────┴──────┐
+                          │   BBG_poly       │  │   A(x)     │ │   N(x)     │
+                          │ 10 public dims   │  │ commitment │ │ nullifier  │
+                          │ PCS.commit: 32 B │  │ PCS: 32 B  │ │ PCS: 32 B  │
+                          └─────────┬────────┘  └────────────┘ └────────────┘
+                                    │
+                  ┌───┬───┬───┬───┬─┴─┬───┬───┬───┬───┐
+                  p  a_o a_i  n  loc coin card file time sig
 ```
 
-public dimensions (polynomial evaluations): particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals.
-private dimensions (polynomial evaluations): commitments A(x), nullifiers N(x).
+BBG_poly: 10 public evaluation dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals).
+A(x), N(x): independent private polynomial commitments, each with its own Brakedown PCS commitment.
 cross-index consistency: structural — same polynomial, different evaluation dimensions. LogUp eliminated.
 
 ## checkpoint
 
 ```
 CHECKPOINT = (
-  BBG_root,           ← PCS.commit(BBG_poly), 32 bytes
+  BBG_root,           ← H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), 32 bytes
   folding_acc,        ← zheng-2 accumulator (constant size, ~30 field elements)
   block_height        ← current height
 )
@@ -91,7 +89,7 @@ TRANSACTION TYPES:
 1. CYBERLINK — create private record + update public aggregates
    input:  (neuron, from_particle, to_particle, token, amount, valence, zk_proof)
    private effect:
-     - extend commitment polynomial A(x) at new point (O(1) PCS update)
+     - extend independent commitment polynomial A(x) at new point (O(1) PCS update)
    public effect:
      - update BBG_poly(particles, H(from,to), t): axon weight
      - update BBG_poly(axons_out, from, t): outgoing index

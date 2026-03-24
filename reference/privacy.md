@@ -49,6 +49,10 @@ the tri-kernel operates on axons — aggregate weights — not individual cyberl
 
 ## polynomial mutator set
 
+A(x) and N(x) are independent polynomial commitments, NOT dimensions of BBG_poly. each has its own Brakedown PCS commitment (32 bytes). BBG_root combines all three: H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)).
+
+all hash functions are hemera with domain separation: H_commit uses capacity[11]=DOMAIN_COMMIT, H_nullifier uses capacity[11]=DOMAIN_NULLIFIER.
+
 two polynomial commitments replace AOCL (MMR) and SWBF (bitmap + archived MMR).
 
 ### commitment polynomial A(x)
@@ -181,6 +185,6 @@ the polynomial commitment reveals nothing about individual records. PCS opening 
 
 - SWBF: bloom filter bits leak probabilistic information about nullifier density
 - polynomial: commitment is one opaque 32-byte digest. no density leakage
-- dimension isolation: opening BBG_poly at (commitments, c, t) reveals nothing about (nullifiers, n, t) — standard PCS zero-knowledge property
+- commitment isolation: opening A(c) reveals nothing about N(n) — A(x) and N(x) are independent polynomial commitments with separate PCS instances
 
 see [[architecture]] for the layer model, [[state]] for transaction types, [[cross-index]] for why LogUp is eliminated

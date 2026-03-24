@@ -65,13 +65,13 @@ light client join:    one zheng verification + namespace sync
 | document | question |
 |----------|----------|
 | [[architecture-overview]] | one polynomial, one root — the full architecture at a glance |
-| [[design-principles]] | the three laws explained in depth |
+| [[why-polynomial-state]] | why polynomial > hash trees: 33x fewer constraints, 5 TB eliminated |
+| [[polynomial-privacy]] | the privacy boundary: commitment and nullifier polynomials |
+| [[why-signal-first]] | state is derived from signals: fold(genesis, signals[0..h]) |
 | [[nmt explained|nmt]] | NMT's surviving role: cold storage optimization, not authentication |
-| [[mutator-set explained|mutator-set]] | polynomial mutator set: two polynomials for privacy |
 | [[signal-sync explained|signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
 | [[foculus-vs-crdt]] | why π convergence replaces CRDTs at global scale |
 | [[data-availability explained|data-availability]] | algebraic DAS, erasure coding, and provable availability |
-| [[structural-sync]] | CRDT + NMT + DAS = consensus without consensus (verified eventual consistency) |
 
 ## open design
 

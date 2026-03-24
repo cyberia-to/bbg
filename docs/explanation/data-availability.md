@@ -2,191 +2,150 @@
 tags: cyber
 crystal-type: entity
 crystal-domain: cyber
-diffusion: 0.00010722364868599256
-springs: 0.00025146291475061286
-heat: 0.00021215453851177208
-focus: 0.00017148160647053237
-gravity: 0
-density: 0.22
 ---
-# data availability and erasure coding
+# data availability and algebraic DAS
 
-DAS (Data Availability Sampling) and erasure coding are the availability layer in [[bbg]]. they answer a question no other layer answers: is the data physically present across the neuron set? validity proves correctness. ordering proves sequence. completeness proves nothing was withheld. availability proves the data survives.
+DAS (Data Availability Sampling) proves data physically exists across the neuron set without downloading it. validity proves correctness. ordering proves sequence. completeness proves nothing was withheld. availability proves the data survives.
 
 ## the availability problem
 
-a neuron stores a file. the neuron dies. the file is gone. this is the simplest availability failure — and the one every sync system must solve.
+a neuron stores a file. the neuron dies. the file is gone. no amount of proof verifies data that no longer exists.
 
-the naive solution: replicate everything everywhere. every neuron holds a full copy. this works for small data sets but fails at scale — 3 neurons × 1 TB = 3 TB total storage. a phone cannot hold what a workstation holds. full replication is wasteful for neurons that overlap heavily and catastrophic for neurons with limited storage.
-
-the sophisticated failure: a neuron is online but selectively withholds data. it responds to some requests and ignores others. a CRDT merge converges — to incomplete state. the receiving neuron has no way to know data is missing. withholding is invisible without a completeness proof.
+the harder failure: a neuron is online but selectively withholds data. it responds to some requests, ignores others. a CRDT merge converges — to incomplete state. the receiving neuron has no way to know data is missing without a completeness proof and an availability check.
 
 ## erasure coding
 
-erasure coding splits data into $k$ data chunks and generates $n - k$ parity chunks such that any $k$ of $n$ chunks reconstruct the original. the encoding is 2D Reed-Solomon over [[Goldilocks field]].
+erasure coding splits data into k data chunks and generates n - k parity chunks such that any k of n chunks reconstruct the original. the encoding is 2D Reed-Solomon over Goldilocks field (p = 2^64 - 2^32 + 1).
 
 ```
-ENCODING:
+original data:  √n × √n grid of field elements
+extended:       2√n × 2√n with parity rows and columns
+reconstruction: any √n × √n submatrix of original dimension is sufficient
 
-  file → content-defined chunks → each chunk is a particle
-  chunks arranged in √n × √n matrix
-
-  row encoding:   k data elements → n elements per row (Reed-Solomon)
-  column encoding: k data elements → n elements per column (Reed-Solomon)
-
-  result: 2D encoded matrix where any √n × √n submatrix
-          of original-dimension is sufficient for reconstruction
-
-PARAMETERS:
-  chunk size:     256 KiB (content-defined boundaries)
-  rate:           k/n configurable per neuron group (default 1/2)
-  field:          Goldilocks (p = 2^64 - 2^32 + 1)
-
-  at rate 1/2: any 50% of chunks → full reconstruction
-  storage overhead: 2× per file (distributed across N neurons)
-  per-neuron overhead: 2/N × file_size (much less than full replication)
+parameters:
+  chunk size:   256 KiB (content-defined boundaries)
+  rate:         k/n configurable per neuron group (default 1/2)
+  at rate 1/2:  any 50% of chunks → full reconstruction
+  per-neuron:   2/N × file_size (distributed, not replicated)
 ```
 
-### why 2D Reed-Solomon
+2D encoding enables row-level and column-level fraud proofs. a single incorrectly encoded cell is provable by downloading one row and one column — O(sqrt(n)) data instead of O(n). this is the foundation of efficient sampling.
 
-1D erasure coding (k-of-n chunks) provides reconstruction but not efficient fraud proofs. if a neuron publishes a commitment to encoded data and the encoding is incorrect, detecting the error requires downloading the entire row.
+## algebraic DAS
 
-2D encoding enables row-level and column-level fraud proofs. a single incorrectly encoded cell can be proven invalid by downloading one row and one column — O(√n) data instead of O(n). this is the foundation of efficient DAS.
-
-### distribution across neurons
-
-chunks are distributed across the local neuron group (for local sync) or the network (for global sync). each neuron holds a subset of chunks — not a full replica.
+the 2D Reed-Solomon grid maps naturally to a bivariate polynomial P(row, col). each cell in the extended grid is an evaluation of P at a grid point. the commitment is a single PCS digest:
 
 ```
-DISTRIBUTION (local sync, 3 neurons):
-
-  file: 100 chunks → 200 encoded chunks (rate 1/2)
-
-  neuron A (server):   chunks 0-199  (full set, always-on)
-  neuron B (laptop):   chunks 0-99   (data chunks, work neuron)
-  neuron C (phone):    chunks 100-149 (50 parity chunks, light neuron)
-
-  any 100 chunks reconstruct the file
-  neuron A dies → B + C have 150 chunks → reconstruction succeeds
-  neuron B dies → A has everything → reconstruction trivial
-  neuron C dies → A has everything → reconstruction trivial
-  all three alive → verification without full download
+each row     → polynomial over Goldilocks
+all rows     → bivariate polynomial P(row, col)
+commitment   = PCS.commit(P)    32 bytes
 ```
 
-the distribution strategy adapts to neuron capacity. a server holds more chunks. a phone holds fewer. the erasure coding guarantee is that any $k$ chunks from any combination of surviving neurons is sufficient.
+### sampling
 
-## data availability sampling (DAS)
-
-DAS answers: "is the data available?" without downloading it. a verifier samples random chunk positions, requests each chunk with a Merkle proof, and checks consistency. if all samples verify, the data is available with high probability.
+a verifier picks random grid positions and requests each cell with a PCS opening proof:
 
 ```
-DAS PROTOCOL:
+per sample:
+  request:      cell value at (row, col)
+  proof:        PCS opening of P(row, col)    ~200 bytes
+  verification: PCS.verify(commitment, (row, col), value, proof)    O(1) field ops
 
-  1. neuron commits encoded chunks to a per-neuron polynomial commitment
-     (chunk positions encoded as evaluation points)
+20 samples → 99.9999% confidence data is available
+30 samples → 99.99999999% confidence
 
-  2. neuron publishes PCS commitment (signed by neuron key)
-
-  3. verifier selects s random positions from [0, n)
-
-  4. for each position i:
-     request chunk[i] + PCS opening from neuron
-     verify: H(chunk[i]) matches commitment
-     verify: PCS opening valid against published commitment
-
-  5. if all s samples verify:
-     data is available with probability ≥ 1 - (1/2)^s
-
-     s = 20 → 99.9999% confidence
-     s = 30 → 99.99999999% confidence
-
-COST:
-  verifier downloads: s chunks + s PCS openings
-  = O(s × chunk_size)
-  = O(√n) for s = O(√n) samples
-
-  vs full download: O(n × chunk_size)
-
-  a phone verifies 1 TB of data with ~30 random samples
+total bandwidth:    20 × (256 + 200) = ~9 KiB
+total computation:  20 × O(1) field verifications
+total constraints:  ~3K
 ```
+
+a phone verifies 1 TB of data with ~20 random samples and ~9 KiB of bandwidth.
 
 ### why sampling works
 
-the key insight: if a neuron withholds even a single chunk, the 2D erasure coding means that chunk's absence affects an entire row and column. the probability that a random sample misses all affected positions decreases exponentially with sample count.
+if a neuron withholds even one chunk, the 2D erasure structure means the chunk's absence affects an entire row and column. the probability that random samples miss all affected positions decreases exponentially.
 
-with rate 1/2 encoding, withholding more than 50% of chunks means reconstruction fails. but withholding 50% of chunks means a random sample has 50% chance of hitting a withheld position. after 20 independent samples, the probability of missing all withheld positions is $(0.5)^{20} < 10^{-6}$.
+with rate 1/2 encoding, withholding more than 50% means reconstruction fails — and a random sample has 50% chance per try of hitting a withheld position. after 20 samples: probability of missing all withheld = (0.5)^20 < 10^-6.
 
-withholding less than 50% means reconstruction succeeds anyway — the withheld chunks are recoverable from parity. the neuron gains nothing by withholding.
+withholding less than 50% means reconstruction succeeds anyway — the withheld chunks are recoverable from parity. the neuron gains nothing.
 
-this creates a binary: either the data is available (and sampling confirms it) or reconstruction fails (and sampling detects it). there is no middle ground where partial withholding goes undetected.
+binary outcome: either data is available (sampling confirms) or reconstruction fails (sampling detects). no middle ground where partial withholding goes undetected.
 
-## PCS completeness proofs
+### fraud proofs
 
-DAS proves chunks exist. PCS completeness proves the full set was committed — no chunks were omitted from the commitment.
+incorrect encoding is detected when k+1 cells on a row or column fail to lie on a degree-k polynomial:
 
 ```
-PCS COMMITMENT:
+fraud proof:    k+1 cells + PCS openings
+size:           (k+1) × (256 + ~200 bytes)
+verification:   O(k) field operations
+```
 
-  neuron commits all chunks to a polynomial:
-    content_commitment = PCS.commit(chunk_poly)
+### namespace completeness
 
-  chunk_poly encodes chunk positions and hashes as evaluation points
-  commitment: signed by neuron key
+"give me all chunks in namespace N" uses the same PCS mechanism as algebraic NMT — a completeness proof is a PCS opening over the evaluation points in that namespace. DAS adds: "and here is proof the chunks are correctly erasure-coded." both proofs are polynomial evaluations against the same commitment.
 
-COMPLETENESS PROOF:
+## PCS completeness
 
+DAS proves chunks exist. PCS completeness proves the full set was committed — no chunks omitted from the commitment.
+
+```
+neuron commits all chunks to polynomial:
+  content_commitment = PCS.commit(chunk_poly)
+
+completeness proof:
   verifier requests: "all chunks in positions [a, b]"
   neuron returns: chunks + PCS opening for the range
 
-  PCS guarantee:
-    polynomial binding means the commitment uniquely determines
-    all evaluation points. a PCS opening for range [a, b]
-    cannot omit a point that the polynomial encodes.
-    the neuron cannot hide a chunk position that was committed.
-
-  if the neuron committed 200 chunks but only reveals 150:
-    the PCS opening for range [0, 199] will fail
-    the missing positions violate polynomial binding
-    algebraic — the commitment cannot lie about its contents
+polynomial binding guarantees:
+  the commitment uniquely determines all evaluation points.
+  a PCS opening for range [a, b] cannot omit a point
+  that the polynomial encodes. algebraic — the commitment
+  cannot lie about its contents.
 ```
 
 ## three layers composed
 
-each layer solves a different failure mode. no single layer is sufficient:
+each layer solves a different failure mode:
 
-```
-FAILURE                  CRDT alone    DAS alone    PCS alone    ALL THREE
-─────────                ──────────    ─────────    ─────────    ─────────
-neuron dies              data lost     recoverable  no help      recoverable
-selective withholding    undetectable  detectable   provable     provable + detectable
-merge conflict           resolved      no help      no help      resolved
-incomplete transfer      undetectable  no help      provable     provable
-verification cost        O(n)          O(√n)        O(1)         O(√n)
-```
+| failure | CRDT alone | DAS alone | PCS alone | all three |
+|---------|-----------|-----------|-----------|-----------|
+| neuron dies | data lost | recoverable | no help | recoverable |
+| selective withholding | undetectable | detectable | provable | provable + detectable |
+| merge conflict | resolved | no help | no help | resolved |
+| incomplete transfer | undetectable | no help | provable | provable |
 
-**CRDT (G-Set merge)** — handles merge semantics. content-addressed chunks have no conflicts. the grow-only set union is commutative, associative, idempotent. "do you have CID X? no? here." deduplication automatic. verification: H(received) == CID.
+**CRDT** — merge semantics. content-addressed chunks have no conflicts. grow-only set union is commutative, associative, idempotent.
 
-**PCS completeness** — handles provable completeness per namespace. a neuron commits its chunk set to a polynomial commitment. a peer requests a namespace range and gets an algebraic proof that nothing was omitted. O(1) proof size.
+**PCS completeness** — provable completeness per namespace. one commitment, one opening, algebraic proof that nothing was omitted. O(1) proof size.
 
-**DAS + erasure coding** — handles physical availability. data survives permanent neuron failure through k-of-n reconstruction. O(√n) sampling cost to verify availability without downloading. no single point of failure.
+**DAS + erasure coding** — physical availability. data survives permanent neuron failure through k-of-n reconstruction. O(sqrt(n)) sampling cost.
 
-together: **provably complete, provably available, correctly merged.**
+together: provably complete, provably available, correctly merged.
 
-## DAS in local sync vs global sync
+## local vs global
 
-the mechanism is identical at both scales. the parameters differ:
+the mechanism is identical at both scales. parameters differ:
 
 | parameter | local (1-20 neurons) | global (network) |
-|---|---|---|
-| participants | 1-20 neurons (same identity) | 10^3-10^6 neurons (different identities) |
+|-----------|---------------------|------------------|
+| participants | same identity | different identities |
 | chunk distribution | capacity-weighted | stake-weighted |
-| sampling peers | all local neurons sample each other | random validator subset |
-| reconstruction | any k-of-n local neurons | any k-of-n neurons in namespace |
-| commitment | per-neuron polynomial commitment | per-neuron polynomial commitment (files.root) |
-| fraud proofs | neuron key revocation | stake slashing |
+| reconstruction | any k-of-n local neurons | any k-of-n in namespace |
+| fraud response | neuron key revocation | stake slashing |
 
-at local scale, DAS ensures a phone can verify its server has all files without downloading them. at global scale, DAS ensures light clients can verify block data availability without running a full node.
+the same erasure coding, the same 2D Reed-Solomon, the same PCS commitment scheme. the availability layer is scale-invariant.
 
-the same erasure coding over [[Goldilocks field]], the same 2D Reed-Solomon structure, the same PCS commitment scheme. the availability layer is scale-invariant.
+## cost summary
 
-see [[sync]] for the full sync specification, [[data-availability]] for the bbg reference spec, [[design-principles]] for the three laws, [[nmt]] for NMT's surviving role in cold storage
+```
+                        algebraic DAS
+commitment:             32 bytes (one PCS)
+per-sample proof:       ~200 bytes (PCS opening)
+per-sample verify:      O(1) field operations
+20-sample verification: ~9 KiB bandwidth, ~3K constraints
+fraud proof (k=64):     ~30 KiB
+namespace completeness: O(range) field operations
+```
+
+see [[data-availability]] for the reference specification, [[why-polynomial-state]] for why polynomial over hash tree, [[architecture-overview]] for the full pipeline

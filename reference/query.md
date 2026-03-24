@@ -126,16 +126,8 @@ arbitrary CozoDB        varies         ~5-10 KiB    10-50 μs
 
 verification is ALWAYS 10-50 μs (one zheng decider). proof size is always < 10 KiB. query complexity affects PROVER cost, not verifier cost.
 
-## gravity-weighted queries
+## query cost optimization
 
-[[gravity commitment]] makes common queries cheaper:
-
-```
-high-π particle query (hot layer):     ~1 KiB proof, ~10 μs
-low-π particle query (cold layer):     ~8 KiB proof, ~200 μs
-average query (power-law weighted):    ~2 KiB proof, ~30 μs
-```
-
-the query compiler routes openings to the cheapest polynomial layer based on the queried key's π.
+query cost optimization via polynomial layering is a roadmap item (see roadmap/).
 
 see [[architecture]] for BBG_poly structure, [[state]] for evaluation dimensions, [[sync]] for namespace query protocol, [[data-availability]] for algebraic DAS queries

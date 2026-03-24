@@ -60,9 +60,11 @@ NMT survives — not for authentication (polynomial handles that) but for cold s
 
 ```
 HOT (current state, RAM):
-    polynomial evaluation tables for all dimensions
-    commitment polynomial A(x) state, nullifier polynomial N(x) state
-    BBG_root (32 bytes), shard sub-commitments
+    three polynomial data structures, each with its own PCS commitment:
+      BBG_poly (10 public evaluation dimensions) — evaluation table
+      A(x) (commitment polynomial) — evaluation table
+      N(x) (nullifier polynomial) — evaluation table
+    BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), 32 bytes
     backend: inmem (flat array)
     latency: 50 ns
 
@@ -187,16 +189,15 @@ fjall keyspace: "bbg"
 ├── partition: "commitments"
 │   key:   commitment_point                    F_p
 │   value: commitment_value                    F_p
-│   commitment polynomial A(x) evaluation table
+│   independent polynomial A(x) evaluation table (NOT a BBG_poly dimension)
 │   append-only — new records extend the polynomial
-│   PCS commitment stored as metadata entry
+│   own PCS commitment: PCS.commit(A), 32 bytes
 │
 ├── partition: "nullifiers"
 │   key:   nullifier_point                     F_p
 │   value: zero_marker                         indicates spent
-│   nullifier polynomial N(x) evaluation table
-│   N(x) = ∏(x - n_i), committed via PCS
-│   PCS commitment stored as metadata entry
+│   independent polynomial N(x) evaluation table (NOT a BBG_poly dimension)
+│   N(x) = ∏(x - n_i), own PCS commitment: PCS.commit(N), 32 bytes
 │
 ├── partition: "time"
 │   key:   (boundary_index)
@@ -275,11 +276,11 @@ signals arrive in batches. each batch triggers:
 4. update BBG_poly(neurons): focus, karma, stake
 5. process spending: extend nullifier polynomial N(x) for spent records
 6. update BBG_poly for coins, cards, files, locations as needed
-7. recommit BBG_poly via PCS (batch all evaluation changes, one recommitment)
+7. recommit all three polynomials: BBG_poly, A(x), N(x) via PCS (batch evaluation changes, one recommitment each)
 8. fold into [[zheng]]-2 accumulator (constant-size checkpoint)
 9. emit changeset — CozoDB applies incremental updates
 
-step 7 is the polynomial recommitment. batch all changed evaluations and recommit once per block. cost: O(|changes|) field operations — no tree path rehashing.
+step 7 is the polynomial recommitment. batch all changed evaluations and recommit each polynomial (BBG_poly, A(x), N(x)) once per block. recompute BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)). cost: O(|changes|) field operations — no tree path rehashing.
 
 ## storage reclamation
 
@@ -374,7 +375,7 @@ bbg answers: is this data authentic? (proofs)
 
 every query CAN become a proof — [[Ask]] formulates the Datalog query, bbg proves the result via [[zheng]]. the boundary is not about what is provable, but about responsibility:
 
-- bbg stores particles, maintains polynomial evaluation tables, runs the polynomial [[mutator set]], commits signal batches, computes BBG_root = PCS.commit(BBG_poly), generates and verifies proofs, serves namespace sync. it is the authenticated storage engine.
+- bbg stores particles, maintains polynomial evaluation tables, runs the polynomial [[mutator set]], commits signal batches, computes BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), generates and verifies proofs, serves namespace sync. it is the authenticated storage engine.
 - [[Ask]] compiles Datalog, optimizes query plans, runs graph algorithms (PageRank, Dijkstra, Louvain), manages HNSW vector indices, bridges interactive queries to provable queries. it is the reasoning engine.
 
 bbg does not know what a query means. [[Ask]] does not know how a proof works. when a provable query is requested, [[Ask]] formulates it and hands the execution plan to bbg, which generates the proof via [[zheng]].
