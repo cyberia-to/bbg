@@ -71,7 +71,7 @@ files.root         NMT[CID → availability_record]     leaf: 76 bytes
 time.root          NMT[time_ns → BBG_root_snapshot]   leaf: 72 bytes
 ```
 
-each NMT is a binary Merkle tree with hemera-2 hash nodes (32 bytes, 1 permutation per node). NMT internal nodes carry namespace min/max labels for completeness proofs.
+each NMT is a binary Merkle tree with hemera hash nodes (32 bytes, 1 permutation per node). NMT internal nodes carry namespace min/max labels for completeness proofs.
 
 ## cost analysis: NMT
 
@@ -92,7 +92,7 @@ each path update rehashes from leaf to root:
 ```
 at n = 2³² (4 billion entries per index):
   tree depth: 32
-  hemera calls per path: 32 (one per level, hemera-2: 1 perm/node)
+  hemera calls per path: 32 (one per level, 1 perm/node)
   constraints per path: 32 × 736 = 23,552
 
   per cyberlink: ~4.5 paths × 23,552 = ~106,000 constraints
@@ -432,7 +432,7 @@ verification:         O(log n) hemera hashes → O(1) field ops per sample
 
 algebraic DAS is not a separate proposal — it is a natural consequence of algebraic NMT applied to layer 4. when the completeness layer becomes algebraic, the availability layer inherits the efficiency.
 
-with hemera-3's batched-proving ([[batched-proving]]), the remaining hemera costs (content identity, private records) are batched: 1000 hemera calls per block → 1 sumcheck. the combination: algebraic NMT eliminates hemera from state verification, batched-proving compresses hemera for identity operations.
+with batched-proving ([[batched-proving]]), the remaining hemera costs (content identity, private records) are batched: 1000 hemera calls per block → 1 sumcheck. the combination: algebraic NMT eliminates hemera from state verification, batched-proving compresses hemera for identity operations.
 
 ## open questions
 

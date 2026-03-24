@@ -25,7 +25,7 @@ current DAS per sample:
 20 samples for 99.9999% confidence:
   bandwidth:  20 × (256 + 1024) = ~25 KiB
   compute:    20 × 32 hemera verifications = 640 hemera calls
-  constraints: 640 × 736 = ~471K constraints (hemera-2)
+  constraints: 640 × 736 = ~471K constraints (hemera)
 ```
 
 when the commitment structure is a polynomial instead of a tree, the inclusion proof is a PCS opening:
