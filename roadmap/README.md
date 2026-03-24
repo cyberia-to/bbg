@@ -1,53 +1,25 @@
 # bbg roadmap
 
-design proposals for bbg authenticated state layer. proposals compose with [[zheng]] proof architecture and [[hemera]] hash. see [[full-pipeline]] for how all proposals integrate into one continuous fold from device to light client.
+only unfinished proposals remain here. executed proposals have moved to:
+- **reference/** — the spec (WHAT and HOW)
+- **docs/explanation/** — the rationale (WHY)
 
-## status: in reference = proposal is now the canonical spec
+## remaining proposals
 
-## integrated architecture
+| proposal | in reference? | what's missing |
+|----------|--------------|----------------|
+| [[storage-proofs]] | **partial** → reference/storage.md has proof types table | per-node storage/size/replication proof circuits need full spec |
+| [[verifiable-query]] | **partial** → reference/query.md has interface + cost model | query compiler algorithm (CozoDB → CCS) needs implementation detail |
 
-| proposal | in reference? | target |
-|----------|--------------|--------|
-| [[full-pipeline]] | **yes** → reference/architecture.md (pipeline section) | end-to-end: signal creation → light client in one continuous fold |
+## executed (now in reference + explanation)
 
-## polynomial state
-
-| proposal | in reference? | target |
-|----------|--------------|--------|
-| [[algebraic-nmt]] | **yes** → reference/indexes.md, reference/state.md | 9 NMTs → 1 polynomial, 33× fewer constraints per cyberlink |
-| [[mutator-set-polynomial]] | **yes** → reference/privacy.md | SWBF + MMR → polynomial, O(1) non-membership proofs |
-| [[temporal-polynomial]] | **yes** → reference/temporal.md | continuous time queries, time.root eliminated |
-| [[unified-polynomial-state]] | **yes** → reference/state.md, reference/architecture.md | 13 sub-roots → 1 polynomial, LogUp eliminated |
-
-## storage and replication
-
-| proposal | in reference? | target |
-|----------|--------------|--------|
-| [[signal-first]] | **yes** → reference/sync.md, reference/storage.md | bbg state as materialized view over signal log |
-| [[algebraic-das]] | **yes** → reference/data-availability.md | PCS openings replace NMT paths: 157× fewer constraints |
-| [[pi-weighted-replication]] | **yes** → reference/storage.md | replication ∝ π, storage budget follows attention |
-| [[storage-proofs]] | **partial** → reference/storage.md (proof types table + π-weighted replication) | DAS + signal-first resolve state. per-node storage/replication proofs need full spec |
-
-## query
-
-| proposal | in reference? | target |
-|----------|--------------|--------|
-| [[verifiable-query]] | **yes** → reference/query.md | arbitrary CozoDB queries → polynomial opening proofs |
-
-## structural sync mapping
-
-| layer | property | proposals |
-|-------|----------|-----------|
-| 1. validity | state transition correct | (served by zheng) |
-| 3. completeness | nothing omitted | [[algebraic-nmt]], [[unified-polynomial-state]], [[verifiable-query]] |
-| 4. availability | data physically exists | [[signal-first]], [[algebraic-das]], [[pi-weighted-replication]] |
-| temporal | state over time | [[temporal-polynomial]] |
-| privacy | private state | [[mutator-set-polynomial]] |
-
-## lifecycle
-
-| status | meaning |
-|--------|---------|
-| **in reference** | merged into canonical spec — this is the architecture |
-| draft | idea captured, open for discussion |
-| resolved | addressed by another proposal |
+| former proposal | reference | explanation |
+|---|---|---|
+| algebraic-nmt | indexes.md, state.md, architecture.md | why-polynomial-state.md |
+| unified-polynomial-state | state.md, architecture.md | why-polynomial-state.md |
+| mutator-set-polynomial | privacy.md | polynomial-privacy.md |
+| signal-first | sync.md, storage.md | why-signal-first.md |
+| algebraic-das | data-availability.md | data-availability.md |
+| full-pipeline | architecture.md (pipeline section) | architecture-overview.md |
+| temporal-polynomial | temporal.md | (absorbed into reference) |
+| pi-weighted-replication | storage.md | (absorbed into reference) |
