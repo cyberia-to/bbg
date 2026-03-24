@@ -13,13 +13,9 @@ density: 2.54
 
 the authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private — who linked what is never disclosed. the [[cybergraph]] is the public aggregate: [[axons]] (directed weights between [[particles]]), [[neuron]] summaries, [[particle]] energy, [[token]] supplies, π* distribution. all derived from cyberlinks, revealing no individual contribution.
 
-## three laws
+## design constraints
 
-**law 1: bounded locality.** no global recompute for local change. every operation's cost is proportional to what it touches, not to the total graph size. at 10^15 nodes, global operations are physically impossible — light-speed delays across Earth exceed any acceptable latency bound. cyberlinks update the BBG polynomial at affected evaluation dimensions — O(1) field operations per dimension touched. private record lifecycle (creation, spending) updates the commitment and nullifier polynomials — O(1) PCS operations. bridge operations (coin → focus) cross the private→public boundary explicitly.
-
-**law 2: constant-cost verification.** verification cost is O(1) — bounded by a constant independent of computation size. any computation produces a proof verifiable in 10-50 μs via [[zheng]]-2 folding. any state query produces a PCS opening verifiable in O(1) field operations. the verifier's work is independent of the prover's work.
-
-**law 3: structural security.** security guarantees emerge from the commitment scheme's binding property, not from protocol correctness. a protocol can have bugs. a polynomial commitment scheme whose binding is rooted in hemera collision resistance cannot produce two different openings for the same evaluation point — the algebra itself prevents it. completeness shifts from data structure invariants (NMT sorting) to algebraic binding (PCS soundness), both rooted in the same trust foundation: hemera.
+bbg follows the design principles described in [[design-principles]]: bounded locality (no global recompute), constant-cost verification (O(1) proof checking), structural security (algebraic binding). these are properties of the [[cyber]] architecture — bbg implements them via polynomial state and PCS openings.
 
 ## ontology
 

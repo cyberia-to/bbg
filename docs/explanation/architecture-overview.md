@@ -14,13 +14,9 @@ $$\text{BBG\_root} = \text{Brakedown.commit}(\text{BBG\_poly}) \quad \text{(32 b
 
 BBG_poly(index, key, t) has three dimensions: WHAT (12 evaluation dimensions), WHERE (namespace key), WHEN (block height). every query is a polynomial opening. every verification is O(1) field operations. a 240-byte checkpoint proves all history from genesis in 10–50 μs.
 
-## the three laws
+## design constraints
 
-**law 1: bounded locality.** operation cost $\propto$ what it touches. a single [[cyberlinks|cyberlink]] at $10^{15}$ [[particles]] costs the same as at $10^3$. no global recomputation. ever.
-
-**law 2: constant-cost verification.** one PCS opening (~200 bytes, 10–50 μs) verifies any claim. independent of graph size, history length, or computation complexity. a phone verifies what a datacenter computes.
-
-**law 3: structural security.** guarantees from mathematical structure, not protocol correctness. polynomial binding prevents lying. [[Brakedown]] PCS is post-quantum. privacy from polynomial mutator set (see [[mutator-set|polynomial mutator set]]).
+bbg follows [[design-principles|three design principles]] from the [[cyber]] architecture: bounded locality (O(log n) per change, not O(n)), constant-cost verification (10–50 μs for any claim), structural security (polynomial binding, not protocol correctness). these are not bbg-specific — they govern the entire stack.
 
 ## the 12 dimensions
 
