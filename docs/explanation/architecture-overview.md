@@ -95,7 +95,7 @@ cards.root           NMT (names and knowledge assets)
 files.root           NMT (content availability, DAS)
 cyberlinks.root      MMR peaks hash (private record commitments)
 spent.root           MMR root (archived consumption proofs)
-balance.root         hemera-2 hash (active consumption bitmap)
+balance.root         hemera hash (active consumption bitmap)
 time.root            NMT (temporal index, 7 namespaces)
 signals.root         MMR (finalized signal batches)
 ```
@@ -143,7 +143,7 @@ bbg is the authenticated state layer. it depends on and is used by:
 | [[zheng]] | ~/git/zheng/ | proof system (folding-first, algebraic opening, 1-5 KiB proofs) |
 | [[mudra]] | ~/git/mudra/ | crypto primitives (signatures, key derivation) |
 
-## Key Numbers (hemera-2 + zheng-2)
+## Key Numbers (hemera + zheng-2)
 
 ```
 hash output:          32 bytes (4 Goldilocks elements)

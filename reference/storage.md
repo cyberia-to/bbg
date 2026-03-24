@@ -313,7 +313,7 @@ the noun store holds trees with different-sized leaves depending on the algebra.
 | F₂ | 1 bit | Bt programs | compact, massive trees |
 | F_p | 64 bits / 8 bytes | field programs | standard |
 | word | 32 bits / 4 bytes | word-type | fits in F_p |
-| hash | 256 bits / 32 bytes | 4 × F_p identity | CIDs, content addresses (hemera-2) |
+| hash | 256 bits / 32 bytes | 4 × F_p identity | CIDs, content addresses (hemera) |
 
 the content-addressed store handles all leaf widths. `H(noun)` hashes the canonical serialization regardless of leaf size — a noun with bit-leaves and a noun with field-leaves both live in the same "particles" partition, keyed by their hash.
 

@@ -38,7 +38,7 @@ FINALIZATION (1 root)
 ## key numbers
 
 ```
-hash output:          32 bytes (hemera-2, 24 rounds, ~736 constraints/perm)
+hash output:          32 bytes (hemera, 24 rounds, ~736 constraints/perm)
 proof size:           1-5 KiB (zheng-2)
 verification:         10-50 μs
 private transfer:     ~40,000 constraints, sub-second proving
