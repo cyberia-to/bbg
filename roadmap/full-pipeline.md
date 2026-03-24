@@ -8,12 +8,12 @@ depends: [algebraic-nmt.md, signal-first.md, unified-polynomial-state.md, mutato
 ---
 # full pipeline — from cyberlink to light client in one continuous fold
 
-the endgame architecture. every proposal in bbg, zheng, hemera, and nox composes into one pipeline where computation, hashing, proving, and syncing are a single continuous fold. no separate proving phase. no separate sync protocol. no separate verification step. signals flow from device to light client through five structural sync layers, each optimized by its corresponding proposals.
+the endgame architecture. every proposal in bbg, zheng, hemera, and nox composes into one pipeline where computation, hashing, proving, and syncing are a single continuous fold. no separate proving phase. no separate sync protocol. no separate verification step. signals flow from neuron to light client through five structural sync layers, each optimized by its corresponding proposals.
 
 ## the pipeline
 
 ```
-DEVICE                          NETWORK                         CLIENT
+NEURON                          NETWORK                         CLIENT
 ──────                          ───────                         ──────
 create cyberlinks               include in block                download checkpoint
   ↓                               ↓                               ↓
@@ -29,9 +29,9 @@ submit to network
   ↓ foculus π convergence
 ```
 
-## stage 1: signal creation (device)
+## stage 1: signal creation (neuron)
 
-a neuron creates cyberlinks on a device. computation, hashing, and proving happen in one pass.
+a neuron creates cyberlinks. computation, hashing, and proving happen in one pass.
 
 ### nox execution with proof-carrying
 
@@ -92,9 +92,9 @@ creation cost: computation time + VDF time (T_min)
 proof cost: ZERO additional (proof-carrying)
 ```
 
-## stage 2: local sync (device ↔ device)
+## stage 2: local sync (neuron ↔ neuron)
 
-same neuron's devices sync without coordination. structural sync layers 1-5.
+local neurons (same identity) sync without coordination. structural sync layers 1-5.
 
 ```
 1. COMPARE  merkle_clock roots                       O(1), 32 bytes

@@ -11,12 +11,12 @@ density: 1.13
 ---
 # sync
 
-one mechanism at three scales. a [[signal]] is the universal unit of state change — created on a device, merged between devices, submitted to the network, queried by clients. the signal structure is identical at every scale. only the merge function changes.
+one mechanism at three scales. a [[signal]] is the universal unit of state change — created on a neuron, merged between neurons, submitted to the network, queried by clients. the signal structure is identical at every scale. only the merge function changes.
 
 ## signal lifecycle
 
 ```
-creation          device creates cyberlinks → signal batch with zheng proof
+creation          neuron creates cyberlinks → signal batch with zheng proof
                   signal = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
 
 ordering          hash chain (prev) establishes per-neuron sequence
@@ -24,15 +24,15 @@ ordering          hash chain (prev) establishes per-neuron sequence
                   Merkle clock captures full causal state
                   step counter provides monotonic logical clock
 
-completeness      per-device polynomial commits signal set — withholding detectable
-                  per-neuron polynomial at network scale — same guarantee
+completeness      per-neuron polynomial commits signal set — withholding detectable
+                  same guarantee at local and global scale
 
 availability      algebraic DAS + 2D Reed-Solomon erasure coding
                   any k-of-n chunks reconstruct original
                   O(√n) PCS opening samples verify availability
 
-merge             LOCAL:  CRDT (G-Set union) — devices of same neuron
-                  GLOBAL: foculus (π convergence) — neurons in network
+merge             LOCAL:  CRDT (G-Set union) — 1-20 neurons, same identity
+                  GLOBAL: foculus (π convergence) — 10³-10⁹ neurons, different identities
 
 finalization      network includes signal in block → assigns t (block height)
                   signal enters BBG_poly(signals, step, t)
@@ -46,21 +46,21 @@ query             client requests namespace from BBG_root
 
 | | local | global | query |
 |---|---|---|---|
-| **who** | neuron's devices (1-20) | network's neurons | light client ↔ peer |
+| **who** | 1-20 neurons (same identity) | 10^3-10^9 neurons (different identities) | light client ↔ peer |
 | **direction** | bidirectional merge | neuron → network | pull (client reads) |
 | **data** | private cyberlinks, files, names | signals (public aggregate) | BBG state (public) |
 | **privacy** | private (individual records) | public (aggregate) | public (PCS proofs) |
-| **trust** | same neuron, semi-trusted | different neurons, untrusted | peer untrusted, only BBG_root |
+| **trust** | same identity, semi-trusted | different identities, untrusted | peer untrusted, only BBG_root |
 | **merge** | CRDT (G-Set union) | foculus (π convergence) | N/A (read-only) |
 | **ordering** | VDF + hash chain + Merkle clock | VDF + hash chain + Merkle clock | block height (t) |
 | **statefulness** | ongoing DAG | ongoing accumulator | stateless query-response |
 | **signal structure** | identical | identical | N/A (queries BBG_root) |
 
-the signal structure is scale-invariant. device = neuron at different scales. the five verification layers apply identically. only the merge function varies.
+the unit is always neuron. local sync = small group of neurons (1-20, same identity). global sync = large group of neurons (10^3-10^9, different identities). the five verification layers apply identically. only the merge function varies.
 
 ## signal structure
 
-the [[signal]] is s = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step, t). the ordering fields are part of the signal — not a separate envelope. the same fields serve local device sync and global [[foculus]] consensus.
+the [[signal]] is s = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step, t). the ordering fields are part of the signal — not a separate envelope. the same fields serve local sync and global [[foculus]] consensus.
 
 ```
 signal = {
@@ -71,7 +71,7 @@ signal = {
   σ:              zheng_proof                 recursive proof covering impulse + conviction
 
   // ordering — where the signal sits in causal and physical time
-  device:         device_id                   which device within ν (local sync only)
+  device:         device_id                   which instance within ν (local sync only)
   prev:           H(author's previous signal) per-neuron hash chain
   merkle_clock:   H(causal DAG root)          compact causal state
   vdf_proof:      VDF(prev, T)               physical time proof
@@ -84,7 +84,7 @@ signal = {
 }
 
 lifecycle:
-  created on device:    (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
+  created on neuron:    (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
   synced between peers: full signal
   submitted to network: full signal (ordering fields preserved)
   included in block:    network assigns t (block height)
@@ -140,7 +140,7 @@ properties:
   fork-evident: two signals with same prev = cryptographic equivocation proof
 ```
 
-at local scale, each device maintains its own chain. at global scale, the per-neuron chain is authoritative.
+at local scale, each neuron maintains its own chain. at global scale, the per-neuron chain is authoritative.
 
 **VDF** — physical time without clocks:
 
@@ -159,19 +159,19 @@ ordering:       VDF proofs create partial physical time ordering
                 between causally independent signals
 ```
 
-VDF parameters are per-device configurable. a phone sets longer T_min than a workstation.
+VDF parameters are per-neuron configurable. a phone sets longer T_min than a workstation.
 
 **Merkle clock** — causal history as Merkle DAG:
 
 ```
-each signal's merkle_clock = H(root of all signals the device has seen)
+each signal's merkle_clock = H(root of all signals the neuron has seen)
 
 comparison:   O(1) — single hash comparison (equal = in sync)
 divergence:   O(log n) — walk DAG to find first difference
 merge:        union of both DAGs → H(merged root) — deterministic
 ```
 
-replaces vector clocks (O(devices)) with O(1) comparison.
+replaces vector clocks (O(neurons)) with O(1) comparison.
 
 **step** — monotonic logical clock:
 
@@ -193,8 +193,7 @@ no negotiation, no leader, no timestamps
 ### layer 3: completeness
 
 ```
-each source (device at local scale, neuron at global scale) commits its
-signal chain to a polynomial indexed by step.
+each neuron commits its signal chain to a polynomial indexed by step.
 
   BBG_poly(signals, step, t) for each source
 
@@ -237,7 +236,7 @@ mechanism: G-Set union (grow-only set of signals)
   idempotent: A ∪ A = A
 
 works because:
-  - single neuron — no adversarial stake to manipulate
+  - same identity — no adversarial stake to manipulate
   - content-addressed signals — no semantic conflicts
   - deterministic ordering from hash chain + VDF + hash tiebreak
 
@@ -275,12 +274,12 @@ a step is a logical clock tick. steps advance on cyberlink production and heartb
 
 ```
 cyberlink step:
-  device creates cyberlinks → step increments
+  neuron creates cyberlinks → step increments
   signal contains the cyberlink batch + zheng proof
 
 heartbeat step:
   no cyberlinks within heartbeat interval
-  device emits empty signal (liveness attestation)
+  neuron emits empty signal (liveness attestation)
   contains: device_id, capacity, VDF proof, merkle_clock, step
 
 snapshot step:
@@ -291,12 +290,12 @@ snapshot step:
 step properties:
   per-source monotonic, gap-free
   does not tick without either cyberlinks or heartbeat
-  heartbeat interval: device-configurable (e.g. 60s)
+  heartbeat interval: per-neuron configurable (e.g. 60s)
 ```
 
 ## local sync protocol
 
-two devices of the same neuron reconnect.
+two neurons of the same identity reconnect.
 
 ```
 1. COMPARE merkle_clock roots                    O(1)
@@ -304,7 +303,7 @@ two devices of the same neuron reconnect.
    different → continue
 
 2. EXCHANGE signal polynomial commitments          O(1)
-   each device sends its current signal commitment
+   each neuron sends its current signal commitment
 
 3. REQUEST missing step ranges                   O(1) per range
    with PCS batch opening proofs
@@ -338,11 +337,11 @@ FAST SYNC (snapshot available):
 
 ## global sync: signal submission
 
-signals flow from local device sync to the network.
+signals flow from local sync to the network.
 
 ```
-1. neuron creates signals on devices
-2. devices sync locally (protocol above)
+1. neuron creates signals across local instances
+2. local neurons sync (protocol above)
 3. neuron submits finalized signals to network
 4. network verifies (layers 1-4)
 5. foculus merges (layer 5): π-weighted convergence
@@ -465,10 +464,10 @@ chunk size: configurable (default 256 KiB)
 erasure coding:
   k data chunks + (n-k) parity chunks
   any k-of-n reconstructs original
-  distributed across N devices
+  distributed across N neurons
 
 sampling (algebraic DAS):
-  device commits content to per-device polynomial (keyed by CID)
+  neuron commits content to per-neuron polynomial (keyed by CID)
   verifier samples O(√n) random chunk positions
   each sample: chunk + PCS opening (~200 bytes, was ~1 KiB NMT path)
   99.9999% confidence at 20 samples
@@ -478,7 +477,7 @@ sampling (algebraic DAS):
 ### polynomial completeness
 
 ```
-device commits content set to polynomial:
+neuron commits content set to polynomial:
   content_commitment = PCS.commit(content_poly)
 
 peer requests namespace proof:
@@ -496,7 +495,7 @@ layer           mechanism       guarantees
 ─────           ─────────       ──────────
 merge           CRDT (G-Set)    convergence, commutative, idempotent
 completeness    PCS opening     provable completeness, withholding impossible
-availability    algebraic DAS   data survives device failure, O(√n) verification
+availability    algebraic DAS   data survives neuron failure, O(√n) verification
 
 CRDT alone:  converges on possibly incomplete data
 DAS alone:   proves availability, no merge semantics
@@ -509,8 +508,8 @@ together:    provably complete, provably available, correctly merged
 name bindings (cards) are mutable state. concurrent updates resolved deterministically.
 
 ```
-device A offline: ~/paper.md → CID_v2  (signal sA)
-device B offline: ~/paper.md → CID_v3  (signal sB)
+neuron A offline: ~/paper.md → CID_v2  (signal sA)
+neuron B offline: ~/paper.md → CID_v3  (signal sB)
 
 sA and sB are concurrent (neither in other's deps)
 
@@ -519,7 +518,7 @@ resolution:
   replay: paper.md = CID_v2, then paper.md = CID_v3
   result: paper.md → CID_v3
 
-both devices agree. both versions exist as particles. full history in commitment polynomial.
+both neurons agree. both versions exist as particles. full history in commitment polynomial.
 ```
 
 ## fault handling
@@ -549,11 +548,11 @@ FLOODING             VDF rate limiting       each signal costs T_min wall time
 (signal spam)                                inherently sequential
                                              cost: T_min × signal_count
 
-COMPROMISED DEVICE   key revocation signal  neuron revokes device key →
+COMPROMISED NEURON   key revocation signal  identity revokes neuron key →
                                              future signals rejected →
                                              past signals remain (commitment polynomial immutable)
 
-STALE DEVICE         snapshot + fast sync    reconnect → find common snapshot →
+STALE NEURON         snapshot + fast sync    reconnect → find common snapshot →
 (long offline)                               replay from snapshot
                                              VDF on received signals verifies time
 ```

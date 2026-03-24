@@ -189,7 +189,7 @@ layer           discipline      mechanism            property
 5. merge        algebra         CRDT / foculus       convergence is deterministic
 ```
 
-layers 1-4 are scale-invariant — they work identically for two devices or two billion nodes. layer 5 adapts to trust context: [[CRDT]] (same [[neurons|neuron]], cooperative devices) or [[foculus]] (different neurons, adversarial).
+layers 1-4 are scale-invariant — they work identically for two neurons or two billion neurons. layer 5 adapts to trust context: [[CRDT]] (same identity, local neurons) or [[foculus]] (different identities, adversarial).
 
 the stack is modular: each layer can be verified independently. a verifier can check any subset:
 
@@ -244,31 +244,31 @@ no consensus participation. no block header chain traversal. no sync committee. 
 forging is structurally impossible. equivocation and withholding are structurally detectable with cryptographic proof of misbehavior. the key distinction from BFT: detection does not require a protocol round — it is a property of the data received. any single peer can independently verify and produce a misbehavior proof. no honest majority assumption.
 
 **scale-invariant sync.** the same protocol works for:
-- 2 devices of one user (local [[CRDT]] sync)
-- 1000 validators (global [[foculus]] convergence)
+- 1-20 local neurons of one identity ([[CRDT]] sync)
+- 10^3 neurons (global [[foculus]] convergence)
 - 10^9 light clients (query sync with proofs)
 
 layers 1-4 are identical at all scales. layer 5 adapts the merge function. no separate protocol for each scale.
 
-**offline-first operation.** devices operate independently, accumulate [[signals]], sync when they reconnect. convergence is guaranteed by CRDT. completeness is verifiable by PCS after reconnection. availability survives through erasure coding. no "online requirement" for correctness.
+**offline-first operation.** neurons operate independently, accumulate [[signals]], sync when they reconnect. convergence is guaranteed by CRDT. completeness is verifiable by PCS after reconnection. availability survives through erasure coding. no "online requirement" for correctness.
 
 ## who builds the tree
 
 a common objection: [[PCS]] proves completeness relative to what is IN the committed polynomial. who constructs the polynomial? if the builder is [[Byzantine fault]], they can build a valid commitment that omits operations.
 
-the answer: each source builds its own commitment. at local scale, each device commits its [[signal]] chain to a per-device polynomial commitment (evaluation points indexed by step). at global scale, each [[neurons|neuron]] commits its signals to a per-neuron polynomial commitment. no central commitment builder exists.
+the answer: each source builds its own commitment. at local scale, each neuron commits its [[signal]] chain to a per-neuron polynomial commitment (evaluation points indexed by step). at global scale, each [[neurons|neuron]] commits its signals to a per-neuron polynomial commitment. no central commitment builder exists.
 
 completeness verification works peer-to-peer:
 
 ```
-device A requests: "all signals from device B in steps [100, 200]"
-device B returns:  PCS completeness proof (opening) for range [100, 200]
+neuron A requests: "all signals from neuron B in steps [100, 200]"
+neuron B returns:  PCS completeness proof (opening) for range [100, 200]
 
 the proof guarantees: within B's committed polynomial, nothing in [100, 200] was omitted.
 the proof does NOT guarantee: B's polynomial contains all signals B ever created.
 ```
 
-the remaining question — "did B create signals it did not include in its commitment?" — is answered by the ordering layer. B's [[hash chain]] is append-only. if B published signal at step 150 to device C but omitted it from the commitment shown to device A, the hash chain fork is detectable: A and C compare chain hashes and discover divergence. equivocation = two commitments from the same source with different contents at the same step range = cryptographic misbehavior proof.
+the remaining question — "did B create signals it did not include in its commitment?" — is answered by the ordering layer. B's [[hash chain]] is append-only. if B published signal at step 150 to neuron C but omitted it from the commitment shown to neuron A, the hash chain fork is detectable: A and C compare chain hashes and discover divergence. equivocation = two commitments from the same source with different contents at the same step range = cryptographic misbehavior proof.
 
 the composition: PCS proves per-commitment completeness. hash chain + equivocation detection proves cross-commitment consistency. together: completeness is not relative to one commitment — it is global.
 
@@ -280,7 +280,7 @@ structural sync replaces coordination cost with computation and bandwidth:
 
 ```
 COMPUTATION (per signal):
-  zheng proof generation:    ~100 ms (on device, amortized across batch)
+  zheng proof generation:    ~100 ms (on neuron, amortized across batch)
   zheng proof verification:  10-50 μs (on any peer)
   VDF computation:           T_min configurable (default ~1s)
   PCS update:                O(1) field ops per signal
@@ -294,11 +294,11 @@ BANDWIDTH (per sync):
   DAS sampling:              O(√n) samples × (chunk_size + proof_size)
                              ~20 samples for 99.9999% confidence
 
-STORAGE (per device):
+STORAGE (per neuron):
   signal chain:              O(signals × signal_size)
   PCS:                       O(signals) field elements for commitment state
   erasure parity:            (n-k)/k overhead per file (default 2× at rate 1/2)
-  total per-device:          2/N × total_data (distributed, not replicated)
+  total per-neuron:          2/N × total_data (distributed, not replicated)
 
 COMPARISON:
   Tendermint:     O(N) messages per round × round_time × validators
@@ -367,23 +367,23 @@ if structural sync works as described, the implications cascade through distribu
 
 ### what was impossible, now possible
 
-1. consensus-free sovereign devices. a phone, laptop, and server sync without any coordinator. no cloud. no account. no server you do not control. each device is a full participant — creates [[signals]], proves validity ([[zheng]]), proves completeness ([[PCS]]), proves availability ([[DAS]]), merges deterministically ([[CRDT]]). losing a device loses nothing (erasure reconstruction). gaining a device requires zero permission. personal infrastructure with the same guarantees as a blockchain.
+1. consensus-free sovereign neurons. a phone, laptop, and server — each a neuron — sync without any coordinator. no cloud. no account. no server you do not control. each neuron is a full participant — creates [[signals]], proves validity ([[zheng]]), proves completeness ([[PCS]]), proves availability ([[DAS]]), merges deterministically ([[CRDT]]). losing a neuron loses nothing (erasure reconstruction). gaining a neuron requires zero permission. personal infrastructure with the same guarantees as a blockchain.
 
 2. light client in one proof. a new participant joins a network of millions and verifies ALL history with one [[zheng]] proof (~50 μs). no sync committee. no header chain. no "trust the first peer you connect to." the checkpoint is self-proving. this is qualitatively different from SPV (Bitcoin) or sync committees (Ethereum) — those trust some honest majority at sync time. structural sync trusts mathematics.
 
-3. offline-first with provable correctness. devices operate independently for days. when they reconnect, convergence is guaranteed ([[CRDT]]), completeness is verifiable ([[PCS]]), lost data is recoverable ([[DAS]]). no "conflict file." no "last write wins and hope for the best." no "sync failed, try again." the math prevents incorrect states.
+3. offline-first with provable correctness. neurons operate independently for days. when they reconnect, convergence is guaranteed ([[CRDT]]), completeness is verifiable ([[PCS]]), lost data is recoverable ([[DAS]]). no "conflict file." no "last write wins and hope for the best." no "sync failed, try again." the math prevents incorrect states.
 
 4. Byzantine detection without honest majority. traditional BFT requires 2/3 honest. structural sync detects equivocation from a single honest peer examining the [[hash chain]]. withholding is provable from PCS binding alone. no quorum needed for fault detection — one verifier is sufficient.
 
-5. scale-invariant protocol. the same five layers work for 2 devices and 10⁹ light clients. layers 1-4 are identical at all scales. only layer 5 (merge) adapts: [[CRDT]] locally, [[foculus]] globally. no separate protocol for "small scale" and "large scale." no bridges between them.
+5. scale-invariant protocol. the same five layers work for 2 local neurons and 10^9 light clients. layers 1-4 are identical at all scales. only layer 5 (merge) adapts: [[CRDT]] locally, [[foculus]] globally. no separate protocol for "small scale" and "large scale." no bridges between them.
 
 ### what was expensive, now cheap
 
-1. sync cost drops from O(N²) to O(|missing|). consensus protocols pay per-round communication proportional to validator count. structural sync pays only for data actually transferred — missing signals plus their proofs. two devices already in sync: one hash comparison (32 bytes). two devices one hour behind: exchange only the hour's signals.
+1. sync cost drops from O(N^2) to O(|missing|). consensus protocols pay per-round communication proportional to validator count. structural sync pays only for data actually transferred — missing signals plus their proofs. two neurons already in sync: one hash comparison (32 bytes). two neurons one hour behind: exchange only the hour's signals.
 
 2. verification drops from O(chain_length) to O(1). classical blockchains verify by replaying all blocks. structural sync verifies by checking one recursive proof. the cost of joining is constant regardless of history length.
 
-3. storage drops from O(N × data) to O(data / N). full replication: every node holds everything. erasure coding: each node holds 2/N of the data, any k nodes reconstruct all of it. 100 devices storing 1 TB of files: 20 GB per device, not 1 TB.
+3. storage drops from O(N x data) to O(data / N). full replication: every node holds everything. erasure coding: each node holds 2/N of the data, any k nodes reconstruct all of it. 100 neurons storing 1 TB of files: 20 GB per neuron, not 1 TB.
 
 ### what becomes unnecessary
 
@@ -428,6 +428,6 @@ this is the difference between a database that replicates and a machine that com
 1. **formalization**: VEC needs formal treatment as a consistency model. the safety, completeness, availability, and liveness properties above are a starting point. a full formalization should define the adversary model, prove the properties hold under stated assumptions, and establish the relationship to existing consistency models (SEC, causal+, linearizability)
 2. **lower bounds**: is there a proof that three layers are necessary? or could a single mathematical structure provide all three guarantees simultaneously? polynomial commitments already unify completeness and merge into one algebraic structure — the minimum composition may be algebra+probability rather than three independent layers. the PCS architecture demonstrates this unification in practice
 3. **composability**: do structural sync protocols compose? if system A uses structural sync and system B uses structural sync, does their combination automatically inherit all guarantees? this matters for cross-graph sync (multiple knowledge graphs sharing [[particles]]) and for [[BBG|bbg]]'s relationship to external chains. the [[PCS]] namespace structure suggests natural composability — each system occupies a namespace dimension, cross-system proofs are PCS openings over shared evaluation points
-4. **sybil resistance without consensus**: consensus protocols use stake/PoW for sybil resistance. structural sync at local scale has no sybil problem (devices share one [[neurons|neuron]]). at global scale, [[foculus]] uses stake-weighted π convergence. but the general question remains: is sybil resistance possible without any form of resource commitment? [[VDF]] provides rate limiting but does not prevent identity multiplication
+4. **sybil resistance without consensus**: consensus protocols use stake/PoW for sybil resistance. structural sync at local scale has no sybil problem (local neurons share one identity). at global scale, [[foculus]] uses stake-weighted π convergence. but the general question remains: is sybil resistance possible without any form of resource commitment? [[VDF]] provides rate limiting but does not prevent identity multiplication
 
 see [[sync]] for the protocol specification, [[foculus-vs-crdt]] for the merge layer comparison (resolves the "foculus as CRDT" question — foculus is not a CRDT but serves the same role at global scale with different tradeoffs), [[algebraic-nmt]] for the completeness layer evolution, [[data-availability explained|data-availability]] for the availability layer
