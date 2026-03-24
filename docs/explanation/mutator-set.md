@@ -3,33 +3,51 @@ tags: cyber, computer science, cryptography
 crystal-type: entity
 crystal-domain: cyber
 alias: mutator sets
-diffusion: 0.00010722364868599256
-springs: 0.00046254928756903513
-heat: 0.00035816643606952395
-focus: 0.00026400989782760816
-gravity: 0
-density: 4.48
 ---
-# mutator set
+# polynomial mutator set
 
-a privacy primitive that replaces both UTXO commitment sets and nullifier sets with two linked structures: [[AOCL]] and [[SWBF]]. invented by the [[neptune]] team (Alan Szepieniec, COSIC/KU Leuven). [[neptune]] launched mainnet February 2025.
+## what it does
 
-## the problem it solves
+every private record in [[BBG]] — individual [[cyberlinks]], UTXO transfers, market positions — is hidden from the public graph. the polynomial mutator set proves membership ("this record exists") and non-membership ("this record hasn't been spent") without revealing which record.
 
-the standard approach (Zcash model) uses polynomial commitments for the UTXO set and a sorted nullifier set for double-spend prevention. the nullifier set grows monotonically with every spend, forever. the mutator set eliminates unbounded nullifier growth by replacing the nullifier set with a sliding-window [[bloom filter]] that compacts old data into an [[MMR]].
+## two polynomials
 
-## architecture
+**commitment polynomial A(x):** all committed private records. $A(c_i) = v_i$ for commitment $c_i$.
 
-AOCL (Append-Only Commitment List) — an MMR storing addition records. appended when a UTXO is created, never modified. accumulator = O(log N) peak hashes. membership proof = Merkle path from leaf to peak.
+- membership proof: PCS opening of $A(c)$ → O(1), ~200 bytes
+- new record: extend $A$ at new evaluation point → O(1)
 
-SWBF (Sliding-Window Bloom Filter) — tracks which UTXOs have been spent by setting pseudorandom bit positions derived from the record. double-spend = all bits already set = verifier rejects. active window (128 KB) handles recent removals directly; older chunks compact into an MMR.
+**nullifier polynomial N(x):** all spent records. $N(x) = \prod(x - n_i)$ for all nullifiers $n_i$.
 
-## unlinkability
+- non-membership proof: PCS opening showing $N(c) \neq 0$ → O(1), ~200 bytes
+- double-spend detection: $N(n) = 0$ → record already spent → rejection
+- new nullifier: $N'(x) = N(x) \times (x - n_{\text{new}})$ → O(1) polynomial extension
 
-addition record = `H_commit(record ‖ ρ)`, removal record = SWBF bit positions derived from `H_nullifier(record ‖ aocl_index ‖ ρ)`. these share zero structural similarity. the ZK proof establishes validity without revealing which AOCL entry is being spent.
+## the heritage
 
-## use in cyber
+the polynomial mutator set descends from Neptune's AOCL + SWBF (Append-Only Commitment List + Sliding Window Bloom Filter). the original used:
 
-[[cyber]] inherits the primitive with its own hash ([[hemera]]-2 instead of Tip5) and its own VM ([[nox]] instead of Triton VM). same field ([[Goldilocks field]]). same architecture. different instantiation. the mutator set is the unified privacy layer for all private records in the [[BBG]]: cyberlinks, coin transfers, card operations.
+- AOCL (MMR): O(log N) hemera hashes for membership
+- SWBF (128 KB bitmap): constant-size non-membership check + O(log N) archived MMR walk
 
-see [[privacy]] for the full specification, [[BBG]] for graph architecture, [[AOCL]] for the commitment list, [[SWBF]] for the bloom filter
+the polynomial replacement:
+
+| operation | AOCL + SWBF | polynomial |
+|---|---|---|
+| membership proof | O(log N) hemera | O(1) PCS opening |
+| non-membership proof | 128 KB witness + O(log N) MMR | ~200 bytes PCS opening |
+| witness size | 128 KB | 32 bytes |
+| update cost | O(1) bitmap + periodic archive | O(1) polynomial extend |
+| constraints per spend | ~40,000 | ~5,000 |
+
+## why polynomial over SWBF
+
+the SWBF was a practical compromise: constant-size active window, but archived chunks grew unboundedly as an MMR. the polynomial has no window — $N(x)$ encodes ALL nullifiers at ALL times. no archival, no chunks, no growing MMR. the entire nullifier history is one 32-byte PCS commitment.
+
+the tradeoff: the polynomial has degree equal to the number of nullifiers (at $10^9$ nullifiers, degree $10^9$). PCS commitment of such a polynomial is feasible but the initial commitment requires O(N log N) work. incremental updates are O(1). batch updates (1000 spends per block) use vanishing polynomial: $N' = N \times \prod(x - n_i)$ — one polynomial multiply instead of 1000 sequential extensions.
+
+## privacy preservation
+
+the PCS opening proofs are zero-knowledge. opening $A(c_i)$ reveals nothing about other commitments. opening $N(n)$ reveals nothing about other nullifiers. the privacy guarantees match or exceed SWBF — which leaked probabilistic density information via bloom filter bits. the polynomial commitment is one opaque 32-byte digest.
+
+see [[privacy]] for the privacy boundary specification, [[state]] for how the mutator set integrates with BBG_poly, [[storage]] for how polynomials are stored
