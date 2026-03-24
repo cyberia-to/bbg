@@ -11,14 +11,32 @@ density: 0.43
 ---
 # storage
 
-physical storage architecture for [[bbg]]. one storage engine ([[fjall]]) backs everything: particle data, directional indexes, cryptographic commitments, [[mutator set]] state, temporal indexes, and [[CozoDB]] query relations. validators and light clients use the same format — the difference is quantity of data, not how it is stored.
+physical storage architecture for [[bbg]]. the signal log is the primary data — all state is derived from deterministic replay. one storage engine ([[fjall]]) backs everything: particle data, directional indexes, polynomial evaluation tables, [[mutator set]] polynomials, and [[CozoDB]] query relations. validators and light clients use the same format — the difference is quantity of data, not how it is stored.
+
+## signal-first model
+
+bbg state is a deterministic function of the signal log. signals are append-only and self-certifying. the entire L1-L3 state is a materialized view, not primary data.
+
+```
+BBG_state(h) = fold(genesis, signals[0..h])
+
+for any height h:
+  replay signals[0..h] → deterministic BBG_root
+  compare with claimed BBG_root → fraud detection
+```
+
+the irreducible minimum per node:
+- signal log: append-only, DAS-protected, completeness-proved
+- latest checkpoint: ~232 bytes (BBG_root + universal accumulator + height)
+
+everything else is derivable: polynomial evaluation tables, particle data, axon aggregates, focus/π values — all reconstructible from signal replay.
 
 ## why fjall
 
 - pure [[Rust]], zero C dependencies (unlike RocksDB, LevelDB)
 - LSM-tree architecture suits append-heavy workloads (content-addressed particles are write-once)
-- partitions map to bbg's 13-root architecture
-- range scans are the dominant access pattern for NMT recomputation and namespace sync — LSM-trees excel at sequential reads
+- partitions map to bbg's evaluation dimensions
+- range scans are the dominant access pattern for polynomial evaluation table updates and namespace sync — LSM-trees excel at sequential reads
 - single-binary deployment, no external database process
 - pluggable storage backend trait in [[CozoDB]] — fjall implements the same sorted key-value interface
 
@@ -26,10 +44,10 @@ physical storage architecture for [[bbg]]. one storage engine ([[fjall]]) backs 
 
 ```
 L1: Hot state
-    NMT roots, aggregate data, mutator set state
-    contents: 13 sub-roots (32 bytes each), active SWBF window (128 KB),
-              MMR peaks for cyberlinks.root and spent.root
-    size: O(roots + SWBF_window) — kilobytes to megabytes
+    polynomial commitments, aggregate data, polynomial mutator set state
+    contents: BBG_root (32 bytes), polynomial evaluation cache,
+              commitment polynomial A(x) state, nullifier polynomial N(x) state
+    size: O(commitments) — kilobytes to megabytes
     latency: sub-millisecond (in-memory)
 
 L2: Particle data
@@ -45,15 +63,48 @@ L3: Content store
     contents: raw content bytes for each particle
     size: unbounded — petabytes across network
     latency: seconds (network retrieval)
-    DAS availability proofs via files.root
+    DAS availability proofs via files dimension of BBG_poly
     self-authenticating: H(content) = CID
 
 L4: Archival
-    historical state via time.root snapshots
-    contents: BBG_root snapshots at epoch boundaries
+    historical state via BBG_poly time dimension
+    contents: queryable at any past t via polynomial evaluation
     size: unbounded
     latency: minutes to hours
     DAS ensures availability during active window
+```
+
+## π-weighted replication
+
+storage replication factor is proportional to π (cyberank). the network spends storage budget where attention goes.
+
+```
+replication_factor(particle) = max(R_min, R_base × π(particle) / π_median)
+
+  R_min  = minimum replication (e.g., 3 — survival guarantee)
+  R_base = baseline replication at median π (e.g., 10)
+
+particle class        π estimate    replication factor
+top-100 particle      ~10⁻²        ~1000 (effectively everywhere)
+top-10K particle      ~10⁻⁴        ~100
+median particle       ~10⁻⁶        10 (baseline)
+tail particle         ~10⁻¹²       3 (minimum)
+```
+
+no explicit storage market needed. focus IS the storage payment. π IS the replication signal. the economics emerge from the graph topology.
+
+DAS parameters scale with replication:
+
+```
+high-π particle (1000 replicas):
+  base availability very high → fewer DAS samples needed
+  5 samples sufficient for 99.99% confidence
+  bandwidth: ~2.3 KiB
+
+low-π particle (3 replicas):
+  base availability minimal → standard sampling
+  20 samples for 99.9999% confidence
+  bandwidth: ~9 KiB
 ```
 
 ## fjall keyspace layout
@@ -64,77 +115,71 @@ fjall keyspace: "bbg"
 ├── partition: "particles"
 │   key:   CID                                 32 bytes
 │   value: (energy, π*, axon fields)           particle/axon data
-│   NMT leaf data: CID, energy, π*, axon fields
+│   polynomial evaluation table for particles dimension
 │   content-particles and axon-particles share namespace
 │   axon-particles carry: weight A_{pq}, market state (s_YES, s_NO), meta-score
 │
 ├── partition: "axons_out"
 │   key:   (source_particle, axon_CID)         sorted by source
 │   value: ()                                  presence (pointer to particles)
-│   NMT by source — "all outgoing from p" is a single namespace proof
+│   polynomial evaluation table for axons_out dimension
+│   "all outgoing from p" = PCS batch opening over this dimension
 │
 ├── partition: "axons_in"
 │   key:   (target_particle, axon_CID)         sorted by target
 │   value: ()                                  presence (pointer to particles)
-│   NMT by target — "all incoming to q" is a single namespace proof
-│   LogUp proves consistency: every axon in axons_out/axons_in exists in particles
+│   polynomial evaluation table for axons_in dimension
+│   cross-index consistency: structural (same polynomial, no LogUp)
 │
 ├── partition: "neurons"
 │   key:   neuron_id                           hash of public key
 │   value: (focus, karma, stake)               per-neuron aggregates
-│   NMT over (neuron_id, focus, karma, stake)
+│   polynomial evaluation table for neurons dimension
 │
 ├── partition: "locations"
 │   key:   (neuron_id | validator_id)
 │   value: (lat, lon, proof_data)              proof of location
-│   NMT — enables spatial queries, geo-sharding, latency guarantees
+│   polynomial evaluation table for locations dimension
 │
 ├── partition: "coins"
 │   key:   denomination_hash                   token type τ
 │   value: (total_supply, params)              fungible token denominations
-│   NMT over denominations
+│   polynomial evaluation table for coins dimension
 │
 ├── partition: "cards"
 │   key:   card_CID                            content hash
 │   value: (owner, metadata, name_binding)     non-fungible knowledge assets
-│   NMT — names are cards bound to axon-particles (A6)
 │   names resolve through card lookup, not a separate partition
 │
 ├── partition: "files"
 │   key:   CID                                 content hash
 │   value: (availability_proof, DAS_metadata)  content availability records
-│   NMT — proves content is retrievable, not just that CIDs exist
+│   polynomial evaluation table for files dimension
 │
-├── partition: "cyberlinks"
-│   key:   leaf_index                          u64
-│   value: commitment                          hemera-2 hash
-│   AOCL (MMR) — private record commitments for all record types
-│   append-only — never modified after write
-│   MMR peaks stored as metadata entry
+├── partition: "commitments"
+│   key:   commitment_point                    F_p
+│   value: commitment_value                    F_p
+│   commitment polynomial A(x) evaluation table
+│   append-only — new records extend the polynomial
+│   PCS commitment stored as metadata entry
 │
-├── partition: "spent"
-│   key:   chunk_index                         u64
-│   value: MMR node hash                       archived consumption proofs
-│   SWBF inactive archive MMR
-│   old window chunks compacted here
-│
-├── partition: "balance"
-│   key:   "active_window"                     single entry
-│   value: bitmap                              2²⁰ bits (128 KB)
-│   SWBF active window — directly accessible
-│   committed as hemera-2(window_bits)
-│   slides forward periodically: oldest chunk → spent partition
+├── partition: "nullifiers"
+│   key:   nullifier_point                     F_p
+│   value: zero_marker                         indicates spent
+│   nullifier polynomial N(x) evaluation table
+│   N(x) = ∏(x - n_i), committed via PCS
+│   PCS commitment stored as metadata entry
 │
 ├── partition: "time"
-│   key:   (namespace, boundary_index)         7 namespaces
-│   value: BBG_root snapshot                   32 bytes
-│   NMT with 7 namespaces: steps, seconds, hours, days, weeks, moons, years
-│   one 32-byte hash per boundary — no full state duplication
+│   key:   (boundary_index)
+│   value: BBG_poly evaluation snapshot        queryable at any past t
+│   time is a native dimension of BBG_poly
+│   any historical query = one PCS opening at (index, key, t_past)
 │
 ├── partition: "signals"
 │   key:   batch_index                         u64
 │   value: (signal_batch, recursive_proof)     finalized signal batches
-│   MMR — commits which batches were accepted and in what order
+│   the primary data — all other state is derived from signals
 │
 └── partition: "cozo_*"
     CozoDB internal relations via fjall backend trait
@@ -152,42 +197,44 @@ fjall keyspace: "bbg"
 |-----------|-----------|-------------|-------------|
 | store new particle | particles | point write | validator |
 | update directional index | axons_out, axons_in | sorted insert | validator |
-| recompute NMT root | particles, axons_*, neurons, etc. | full range scan | validator (per block) |
-| generate NMT namespace proof | any NMT partition | range scan + path | validator (on demand) |
-| verify NMT proof | — | proof verification | light client |
-| namespace sync response | any NMT partition | range scan | validator |
-| namespace sync receive | NMT partitions | batch write | light client |
-| append private record | cyberlinks | append | validator |
-| set removal bits | balance, spent | point write + append | validator |
+| update polynomial evaluation | affected partitions | point write | validator (per block) |
+| recommit BBG_poly | all polynomial partitions | batch read + PCS commit | validator (per block) |
+| generate PCS opening | polynomial state | proof generation | validator (on demand) |
+| verify PCS opening | — | proof verification | light client |
+| namespace sync response | any partition | range scan | validator |
+| namespace sync receive | partitions | batch write | light client |
+| extend commitment polynomial | commitments | append | validator |
+| extend nullifier polynomial | nullifiers | append | validator |
 | Datalog query | cozo_* | CozoDB query plan | both |
 | name resolution | cards | point lookup by name binding | both |
-| temporal query | time | range scan within namespace | both |
+| temporal query | any dimension | PCS opening at (index, key, t_past) | both |
 | signal finalization | signals | append | validator |
 
 ## private record lifecycle
 
-individual cyberlinks exist only as private records in the mutator set. the public layer never sees the 7-tuple.
+individual cyberlinks exist only as private records in the polynomial mutator set. the public layer never sees the 7-tuple.
 
 ```
 creation:
   1. neuron constructs cyberlink c = (ν, p, q, τ, a, v, t)
-  2. addition record ar = H_commit(c ‖ ρ) appended to cyberlinks.root (AOCL)
-  3. public aggregates updated:
-     - axon H(p,q) weight incremented by a in particles.root
-     - axon entry updated in axons_out.root and axons_in.root
-     - neuron ν focus decremented in neurons.root
-     - particle p and q energy updated in particles.root
-  4. LogUp proof: aggregate deltas consistent across all three NMTs
+  2. commitment added to A(x): A'(c) = v (O(1) polynomial extension)
+  3. public aggregates updated in BBG_poly:
+     - BBG_poly(particles, H(p,q), t): axon weight incremented by a
+     - BBG_poly(axons_out, p, t): outgoing index updated
+     - BBG_poly(axons_in, q, t): incoming index updated
+     - BBG_poly(neurons, ν, t): focus decremented
+     - BBG_poly(particles, q, t): energy updated
+  4. cross-index consistency: structural (same polynomial, no separate proof)
 
 active:
-  private record exists in mutator set (provable via AOCL membership)
+  private record exists in commitment polynomial (provable via PCS opening of A(c))
   public aggregates reflect the sum of all active private records
 
 spending:
-  1. neuron proves ownership of the private record (AOCL membership + secret)
-  2. nullifier bits set in SWBF (balance.root)
+  1. neuron proves ownership of the private record (PCS opening of A(c) + secret)
+  2. nullifier added to N(x): N'(x) = N(x) × (x - n) (O(1) polynomial extension)
   3. public aggregates decremented accordingly
-  4. double-spend = all SWBF bits already set = structural rejection
+  4. double-spend = N(n) = 0 = structural rejection
 ```
 
 ## state transitions
@@ -195,29 +242,31 @@ spending:
 signals arrive in batches. each batch triggers:
 
 1. verify recursive [[zheng]]-2 proof covering the signal batch
-2. for each cyberlink in the batch: append private record commitment to "cyberlinks" (AOCL)
-3. update public aggregates: "particles" (energy), "axons_out", "axons_in" (directional indexes)
-4. update "neurons" (focus, karma, stake)
-5. process spending: set removal bits in "balance" (SWBF active window), update "spent" (inactive archive)
-6. update "coins", "cards", "files", "locations" as needed
-7. recompute NMT roots for all affected partitions
-8. compute new BBG_root = H(all 13 sub-roots)
-9. fold into [[zheng]]-2 accumulator (constant-size checkpoint)
-10. emit changeset — CozoDB applies incremental updates
+2. for each cyberlink in the batch: extend commitment polynomial A(x) at new point
+3. update public aggregates in BBG_poly: particles (energy), axons_out, axons_in (directional indexes)
+4. update BBG_poly(neurons): focus, karma, stake
+5. process spending: extend nullifier polynomial N(x) for spent records
+6. update BBG_poly for coins, cards, files, locations as needed
+7. recommit BBG_poly via PCS (batch all evaluation changes, one recommitment)
+8. fold into [[zheng]]-2 accumulator (constant-size checkpoint)
+9. emit changeset — CozoDB applies incremental updates
 
-step 7 is the expensive one. for incremental efficiency, NMT updates touch only the changed leaves and their paths to the root — O(log n) per affected leaf.
+step 7 is the polynomial recommitment. batch all changed evaluations and recommit once per block. cost: O(|changes|) field operations — no tree path rehashing.
 
 ## storage reclamation
 
 when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 
 ```
-1. axon-particle removed from particles.root
-2. axon entry removed from axons_out.root and axons_in.root
-3. LogUp proof of consistent removal across all three NMTs
-4. if particle has zero remaining energy (no other axons reference it),
+1. prove w_eff < ε (~20 constraints for decay calculation)
+2. update BBG_poly(particles, axon, t): remove axon-particle
+3. update BBG_poly(axons_out, source, t): remove entry
+4. update BBG_poly(axons_in, target, t): remove entry
+5. return decayed weight to decay pool
+6. consistency: structural (same polynomial, no separate LogUp proof)
+7. if particle has zero remaining energy (no other axons reference it),
    particle eligible for L3 content reclamation
-5. L4 archival snapshots remain valid at their height
+8. historical state preserved in time dimension — past queries still work
 ```
 
 ## validator vs light client
@@ -229,9 +278,9 @@ when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 | neurons | full | full (public data) |
 | locations | full | synced ranges |
 | coins, cards, files | full | synced namespaces |
-| cyberlinks (AOCL) | full | headers + own paths |
-| spent, balance (SWBF) | full | headers + own paths |
-| time | full | queried ranges |
+| commitments (A(x)) | full | own PCS proofs only |
+| nullifiers (N(x)) | full | own PCS proofs only |
+| time | full (all evaluations) | queried via PCS openings |
 | signals | full | headers + verified proofs |
 | cozo_* | full materialized view | partial view over synced data |
 | fjall keyspace | same layout | same layout, less data |
@@ -249,11 +298,11 @@ Ask query:  "all axons where source = X"
 
 network query:  "prove all axons where source = X"
   → same fjall range scan on axons_out
-  → NMT namespace proof generation from particles + axons_out
+  → PCS batch opening proof generation from BBG_poly
   → returns results + proof (trustless)
 ```
 
-same data, same storage, two access modes. interactive queries go through CozoDB/[[Ask]]. provable queries go through [[zheng]]/NMT. both read from fjall.
+same data, same storage, two access modes. interactive queries go through CozoDB/[[Ask]]. provable queries go through [[zheng]]/PCS. both read from fjall.
 
 ## algebra-adaptive storage
 
@@ -297,9 +346,9 @@ bbg answers: is this data authentic? (proofs)
 
 every query CAN become a proof — [[Ask]] formulates the Datalog query, bbg proves the result via [[zheng]]. the boundary is not about what is provable, but about responsibility:
 
-- bbg stores particles, maintains NMT indexes, runs the [[mutator set]], commits signal batches, computes the 13-root BBG_root, generates and verifies proofs, serves namespace sync. it is the authenticated storage engine.
+- bbg stores particles, maintains polynomial evaluation tables, runs the polynomial [[mutator set]], commits signal batches, computes BBG_root = PCS.commit(BBG_poly), generates and verifies proofs, serves namespace sync. it is the authenticated storage engine.
 - [[Ask]] compiles Datalog, optimizes query plans, runs graph algorithms (PageRank, Dijkstra, Louvain), manages HNSW vector indices, bridges interactive queries to provable queries. it is the reasoning engine.
 
 bbg does not know what a query means. [[Ask]] does not know how a proof works. when a provable query is requested, [[Ask]] formulates it and hands the execution plan to bbg, which generates the proof via [[zheng]].
 
-see [[architecture]] for the layer model, [[cross-index]] for LogUp consistency, [[temporal]] for axon decay, [[indexes]] for NMT leaf structures
+see [[architecture]] for the layer model, [[cross-index]] for why LogUp is eliminated, [[temporal]] for axon decay, [[indexes]] for polynomial evaluation dimensions

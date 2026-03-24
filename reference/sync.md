@@ -24,23 +24,22 @@ ordering          hash chain (prev) establishes per-neuron sequence
                   Merkle clock captures full causal state
                   step counter provides monotonic logical clock
 
-completeness      per-device NMT commits signal set — withholding detectable
-                  per-neuron NMT at network scale — same guarantee
+completeness      per-device polynomial commits signal set — withholding detectable
+                  per-neuron polynomial at network scale — same guarantee
 
-availability      DAS + 2D Reed-Solomon erasure coding
+availability      algebraic DAS + 2D Reed-Solomon erasure coding
                   any k-of-n chunks reconstruct original
-                  O(√n) sampling verifies availability
+                  O(√n) PCS opening samples verify availability
 
 merge             LOCAL:  CRDT (G-Set union) — devices of same neuron
                   GLOBAL: foculus (π convergence) — neurons in network
 
 finalization      network includes signal in block → assigns t (block height)
-                  signal enters signals.root (MMR)
-                  state transitions applied to BBG sub-roots
+                  signal enters BBG_poly(signals, step, t)
+                  state transitions applied to BBG_poly evaluation dimensions
 
 query             client requests namespace from BBG_root
-                  NMT completeness proof (current) or PCS opening (algebraic NMT)
-                  provably complete response
+                  PCS opening proof — provably complete response
 ```
 
 ## three scales
@@ -50,7 +49,7 @@ query             client requests namespace from BBG_root
 | **who** | neuron's devices (1-20) | network's neurons | light client ↔ peer |
 | **direction** | bidirectional merge | neuron → network | pull (client reads) |
 | **data** | private cyberlinks, files, names | signals (public aggregate) | BBG state (public) |
-| **privacy** | private (individual records) | public (aggregate) | public (NMT/PCS proofs) |
+| **privacy** | private (individual records) | public (aggregate) | public (PCS proofs) |
 | **trust** | same neuron, semi-trusted | different neurons, untrusted | peer untrusted, only BBG_root |
 | **merge** | CRDT (G-Set union) | foculus (π convergence) | N/A (read-only) |
 | **ordering** | VDF + hash chain + Merkle clock | VDF + hash chain + Merkle clock | block height (t) |
@@ -102,8 +101,8 @@ layer           mechanism               guarantee
 ─────           ─────────               ─────────
 1. validity     zheng proof per signal  invalid state transition → rejected
 2. ordering     hash chain + VDF        reordering/flooding → structurally prevented
-3. completeness NMT per source          withholding → structurally detectable
-4. availability DAS + erasure coding    data loss → recoverable from k-of-n
+3. completeness PCS per source          withholding → algebraically detectable
+4. availability algebraic DAS + erasure data loss → recoverable from k-of-n
 5. merge        CRDT or foculus         convergence → deterministic final state
 ```
 
@@ -195,16 +194,16 @@ no negotiation, no leader, no timestamps
 
 ```
 each source (device at local scale, neuron at global scale) commits its
-signal chain to an NMT namespaced by step.
+signal chain to a polynomial indexed by step.
 
-  NMT[ step → signal_hash ]
+  BBG_poly(signals, step, t) for each source
 
 proves: "these are ALL signals from source S in step range [a, b]"
-NMT completeness: source cannot hide a signal in the requested range
-the tree's sorting invariant structurally prevents omission
+PCS binding: source cannot hide a signal in the requested range
+the polynomial commitment algebraically prevents omission
 
-updated: on every new signal (append to NMT, update root)
-cost: O(log n) per signal
+updated: on every new signal (extend polynomial, recommit)
+cost: O(1) per signal (polynomial extension)
 ```
 
 ### layer 4: availability
@@ -216,12 +215,14 @@ cost: O(log n) per signal
   extended: 2×(√n × √n) with parity rows and columns
   any √n × √n submatrix sufficient for reconstruction
 
-sampling: O(√n) random cells with NMT inclusion proofs
-  99.9% confidence at ~20 samples
-  verifies availability without downloading full data
+sampling: O(√n) random cells with PCS openings (algebraic DAS)
+  ~9 KiB for 20 samples (was ~25 KiB with NMT paths)
+  O(1) field verifications per sample (was O(log n) hemera)
+  99.9999% confidence at 20 samples
 
-fraud proofs: bad encoding detectable with k+1 cells
+fraud proofs: bad encoding detectable with k+1 cells + PCS openings
   decoded polynomial degree mismatch → fraud proof generated
+  verification: O(k) field operations
 ```
 
 ### layer 5: merge
@@ -302,15 +303,16 @@ two devices of the same neuron reconnect.
    equal → done (already in sync)
    different → continue
 
-2. EXCHANGE signal NMT roots                     O(1)
-   each device sends its current signal NMT root
+2. EXCHANGE signal polynomial commitments          O(1)
+   each device sends its current signal commitment
 
-3. REQUEST missing step ranges                   O(log n)
-   with NMT completeness proofs
+3. REQUEST missing step ranges                   O(1) per range
+   with PCS batch opening proofs
    → provably ALL signals in range received
    → no withholding possible
 
 4. DAS SAMPLE content chunks                     O(√n)
+   algebraic DAS — PCS openings per sample (~200 bytes each)
    verify content availability
    request missing chunks by CID
 
@@ -320,7 +322,7 @@ two devices of the same neuron reconnect.
    c) no equivocation? (no duplicate prev)       layer 2: ordering
    d) VDF proof valid?                           layer 2: ordering
    e) step counter monotonic?                    layer 2: ordering
-   f) NMT inclusion proof valid?                 layer 3: completeness
+   f) PCS opening proof valid?                   layer 3: completeness
 
 6. MERGE signal DAGs                             O(signals)
    compute deterministic total order (CRDT)
@@ -345,8 +347,8 @@ signals flow from local device sync to the network.
 4. network verifies (layers 1-4)
 5. foculus merges (layer 5): π-weighted convergence
 6. block producer includes signals → assigns t (block height)
-7. state transitions applied to BBG sub-roots
-8. BBG_root updated → enters time.root for historical queries
+7. state transitions applied to BBG_poly evaluation dimensions
+8. BBG_root = PCS.commit(BBG_poly) updated → time dimension records snapshot
 ```
 
 ## query sync protocol
@@ -355,43 +357,44 @@ light clients and full nodes query BBG state. read-only — no signals produced.
 
 ### namespace queries
 
-five query types, each backed by NMT completeness proof.
+five query types, each backed by PCS opening proofs.
 
 **outgoing axons from particle P:**
 ```
-client → peer: (axons_out, namespace=P, state_root=BBG_root)
-peer → client: NMT completeness proof + all axon entries in namespace P
-client verifies: proof valid, all entries in namespace, nothing withheld
+client → peer: (axons_out, key=P, state_root=BBG_root)
+peer → client: PCS batch opening + all axon entries for P
+client verifies: PCS.verify(BBG_root, (axons_out, P, t), entries, proof)
 guarantee: "ALL outgoing axons from P. nothing hidden."
+proof size: ~200 bytes (was ~1 KiB NMT path)
 ```
 
 **incoming axons to particle Q:**
 ```
-client → peer: (axons_in, namespace=Q, state_root=BBG_root)
-peer → client: NMT completeness proof + all axon entries in namespace Q
+client → peer: (axons_in, key=Q, state_root=BBG_root)
+peer → client: PCS batch opening + all axon entries for Q
 guarantee: "ALL incoming axons to Q. nothing hidden."
 ```
 
 **neuron public state:**
 ```
-client → peer: (neurons, namespace=N, state_root=BBG_root)
-peer → client: NMT proof + neuron data (focus, karma, stake)
+client → peer: (neurons, key=N, state_root=BBG_root)
+peer → client: PCS opening + neuron data (focus, karma, stake)
 guarantee: "neuron N's complete public state."
 ```
 
 **particle data:**
 ```
-client → peer: (particles, namespace=P, state_root=BBG_root)
-peer → client: NMT proof + particle data (energy, π*, axon fields)
+client → peer: (particles, key=P, state_root=BBG_root)
+peer → client: PCS opening + particle data (energy, π*, axon fields)
 guarantee: "particle P's complete public data."
 ```
 
 **state at time T:**
 ```
-client → peer: (time, namespace=<unit>, key=T, state_root=BBG_root)
-peer → client: NMT proof + BBG_root snapshot at time T
-guarantee: "authenticated state root at time T."
-client can then query any namespace against the historical root.
+client → peer: (index, key, t=T, state_root=BBG_root)
+peer → client: PCS opening at (index, key, T)
+guarantee: "authenticated state at time T."
+any index, any key, any time — one polynomial opening.
 ```
 
 ### incremental sync
@@ -400,12 +403,13 @@ client can then query any namespace against the historical root.
 client has state at height h₁, wants updates through h₂:
 
 1. REQUEST time range [h₁, h₂] with BBG_root at h₂
-2. RESPONSE: time.root entries between h₁ and h₂
+2. RESPONSE: polynomial update deltas between h₁ and h₂
    + per monitored namespace: diff of added/removed/updated entries
-   + updated NMT proofs at height h₂
-3. VERIFY: time.root NMT completeness + namespace diffs against updated roots
+   + batch PCS opening at height h₂
+3. VERIFY: batch PCS opening against BBG_root at h₂
 
 data transferred: O(|changes since h₁|) — NOT O(|total state|)
+cost: O(|changes|) field ops (was O(|changes| × log n) hemera hashes)
 ```
 
 ## light client protocol
@@ -425,12 +429,12 @@ new client joins with no history:
 
 4. MAINTAIN:
    - fold each new block into local folding_acc (~30 field ops)
-   - update mutator set proofs for owned private records
-   - update NMT proofs for monitored namespaces
+   - update polynomial mutator set proofs for owned private records (O(1) per block)
+   - update PCS proofs for monitored namespaces
 
-join cost:     ONE zheng verification + namespace sync
-ongoing cost:  O(log N) per block
-storage:       O(|monitored_namespaces| + |owned_records| × log N)
+join cost:     ONE zheng verification + namespace sync (~200 bytes per namespace)
+ongoing cost:  O(1) per block
+storage:       O(|monitored_namespaces| + |owned_records|)
 ```
 
 trust: only BBG_root (from consensus). peer is completely untrusted.
@@ -463,24 +467,26 @@ erasure coding:
   any k-of-n reconstructs original
   distributed across N devices
 
-sampling:
-  device commits content to per-device NMT (namespace = CID)
+sampling (algebraic DAS):
+  device commits content to per-device polynomial (keyed by CID)
   verifier samples O(√n) random chunk positions
-  each sample: chunk + NMT inclusion proof
-  99.9% confidence at O(√n) samples
+  each sample: chunk + PCS opening (~200 bytes, was ~1 KiB NMT path)
+  99.9999% confidence at 20 samples
+  total bandwidth: ~9 KiB (was ~25 KiB)
 ```
 
-### NMT completeness
+### polynomial completeness
 
 ```
-device commits content set to NMT:
-  content_nmt.root = NMT(all CIDs held)
+device commits content set to polynomial:
+  content_commitment = PCS.commit(content_poly)
 
 peer requests namespace proof:
   "give me ALL CIDs in range [X, Y] with proof"
 
-NMT completeness: device cannot hide a CID in range
-structural guarantee — tree cannot lie
+polynomial completeness: PCS binding prevents hiding a CID in range
+algebraic guarantee — polynomial cannot lie
+proof: PCS batch opening over the evaluation region
 ```
 
 ### three layers composed
@@ -489,12 +495,12 @@ structural guarantee — tree cannot lie
 layer           mechanism       guarantees
 ─────           ─────────       ──────────
 merge           CRDT (G-Set)    convergence, commutative, idempotent
-completeness    NMT proof       provable completeness, withholding impossible
-availability    DAS + erasure   data survives device failure, O(√n) verification
+completeness    PCS opening     provable completeness, withholding impossible
+availability    algebraic DAS   data survives device failure, O(√n) verification
 
 CRDT alone:  converges on possibly incomplete data
 DAS alone:   proves availability, no merge semantics
-NMT alone:   proves completeness, no availability
+PCS alone:   proves completeness, no availability
 together:    provably complete, provably available, correctly merged
 ```
 
@@ -513,7 +519,7 @@ resolution:
   replay: paper.md = CID_v2, then paper.md = CID_v3
   result: paper.md → CID_v3
 
-both devices agree. both versions exist as particles. full history in AOCL.
+both devices agree. both versions exist as particles. full history in commitment polynomial.
 ```
 
 ## fault handling
@@ -534,10 +540,10 @@ REORDERING           hash chain              prev hashes break →
 (changing history)                           detectable by any peer
                                              cost: O(1) detection
 
-WITHHOLDING          NMT + DAS               NMT completeness proof →
+WITHHOLDING          PCS + algebraic DAS     PCS completeness proof →
 (hiding signals)                             withheld signals detectable
-                                             DAS: availability verifiable
-                                             cost: O(√n) sampling
+                                             algebraic DAS: availability verifiable
+                                             cost: O(√n) sampling, ~9 KiB
 
 FLOODING             VDF rate limiting       each signal costs T_min wall time
 (signal spam)                                inherently sequential
@@ -545,53 +551,37 @@ FLOODING             VDF rate limiting       each signal costs T_min wall time
 
 COMPROMISED DEVICE   key revocation signal  neuron revokes device key →
                                              future signals rejected →
-                                             past signals remain (AOCL immutable)
+                                             past signals remain (commitment polynomial immutable)
 
 STALE DEVICE         snapshot + fast sync    reconnect → find common snapshot →
 (long offline)                               replay from snapshot
                                              VDF on received signals verifies time
 ```
 
-## algebraic NMT impact
+## polynomial state summary
 
-when algebraic NMT ([[algebraic-nmt]]) replaces NMT trees with polynomial commitments, the query sync protocol changes:
+BBG_root = PCS.commit(BBG_poly) — one polynomial, one commitment, 32 bytes. every query is a PCS opening. every verification is O(1) field operations.
 
-```
-current (NMT):
-  query: (namespace, key, BBG_root)
-  response: NMT completeness proof + entries
-  proof size: O(log n) × 32 bytes ≈ 1 KiB per namespace
-  verify: walk NMT path, check sorting invariant
-
-algebraic NMT:
-  query: (namespace, key, BBG_commitment)
-  response: PCS opening proof + entries
-  proof size: O(1) ≈ 200 bytes per namespace
-  verify: one PCS verification, 10-50 μs
-
-the five verification layers remain identical.
-layer 3 (completeness) shifts from structural (NMT sorting) to algebraic (PCS binding).
-layers 1, 2, 4, 5 are unaffected.
-```
-
-incremental sync also changes:
+the five verification layers:
 
 ```
-current: exchange NMT diffs, recompute paths
-algebraic: exchange polynomial update deltas, verify batch opening
-cost: O(|changes|) field ops instead of O(|changes| × log n) hemera hashes
+layer 1 (validity):      zheng proof per signal — unchanged
+layer 2 (ordering):      hash chain + VDF — unchanged
+layer 3 (completeness):  PCS binding — algebraic completeness, O(1) proof, ~200 bytes
+layer 4 (availability):  algebraic DAS — PCS openings, ~9 KiB for 20 samples
+layer 5 (merge):         CRDT / foculus — unchanged
 ```
 
-the light client protocol benefits most:
+cross-index consistency: structural — same polynomial, different evaluation dimensions. LogUp eliminated.
+
+light client join:
 
 ```
-current: ONE zheng verify + NMT namespace sync (~1 KiB per namespace)
-algebraic: ONE zheng verify + PCS namespace sync (~200 bytes per namespace)
-
-with unified polynomial state ([[unified-polynomial-state]]):
-  BBG_root = single PCS commitment (32 bytes)
-  every query = one PCS opening
-  cross-index consistency = structural (same polynomial)
+1. download checkpoint: ~232 bytes (BBG_root + accumulator + height)
+2. verify: ONE zheng decider, 10-50 μs
+3. sync namespaces: ~200 bytes per PCS opening
+4. DAS verify: ~9 KiB (20 algebraic samples)
+total: < 10 KiB
 ```
 
-see [[architecture]] for BBG root structure, [[signal-sync explained|signal-sync]] for ordering design rationale, [[data-availability explained|data-availability]] for DAS details, [[foculus-vs-crdt]] for merge layer comparison, [[algebraic-nmt]] for polynomial transition
+see [[architecture]] for BBG root structure, [[signal-sync explained|signal-sync]] for ordering design rationale, [[data-availability]] for algebraic DAS, [[foculus-vs-crdt]] for merge layer comparison

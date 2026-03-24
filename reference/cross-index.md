@@ -11,101 +11,95 @@ density: 0.89
 ---
 # cross-index
 
-consistency proofs between the three public NMTs that index [[axons]]: particles.root, axons_out.root, and axons_in.root. [[LogUp]] lookup arguments prove that these three trees contain the same set of axon-particles and that aggregate weight deltas are correct across all three.
+consistency between the three public evaluation dimensions that index [[axons]]: particles, axons_out, and axons_in. with the unified polynomial architecture, cross-index consistency is structural — a property of the commitment, not a separate proof obligation.
 
-## LogUp protocol
+## why LogUp is eliminated
 
-LogUp proves "set {f₁, ..., f_m} is contained in table {t₁, ..., t_n}" via the algebraic identity:
+LogUp was required when particles.root, axons_out.root, and axons_in.root were three independent NMT trees. three separate data structures could disagree. LogUp lookup arguments proved they contained the same set of axon-particles and that aggregate weight deltas matched across all three.
 
-```
-Σ 1/(β - f_i) = Σ m_j/(β - t_j)
-```
-
-evaluated at a random challenge β via [[sumcheck]].
-
-## cross-index consistency
-
-three NMTs index the same set of axon-particles from different perspectives:
-
-| tree | namespace key | stores |
-|------|---------------|--------|
-| particles.root | CID | all particles including axon-particles |
-| axons_out.root | source particle | outgoing axon references |
-| axons_in.root | target particle | incoming axon references |
-
-the lookup statement:
+with BBG_poly, all three indexes are evaluation dimensions of the SAME polynomial:
 
 ```
-"every axon in axons_out.root exists in particles.root,
- AND every axon in axons_in.root exists in particles.root,
- AND every axon-particle in particles.root appears in both
-     axons_out.root and axons_in.root"
+BBG_poly(particles, H(from, to), t)    axon data
+BBG_poly(axons_out, from, t)           outgoing index
+BBG_poly(axons_in, to, t)              incoming index
 ```
 
-LogUp proof structure:
+these are evaluations of one committed object. consistency is definitional — they cannot disagree because they are the same polynomial evaluated at different points. the PCS commitment binds all dimensions simultaneously.
 
 ```
-given axon-particle a = H(from, to) with weight A_{pq}:
+previous architecture:
+  axons_out.root ←LogUp→ axons_in.root ←LogUp→ particles.root
+  cost: ~500 constraints per lookup × 3 lookups per cyberlink = ~1,500
+  per block (K=4000 axons): ~6M constraints
 
-  1. f = {a, a, a}  (same axon hash, looked up in 3 trees)
-  2. t₁ = particles.root leaf evaluations (axon-particles subset)
-  3. t₂ = axons_out.root leaf evaluations
-  4. t₃ = axons_in.root leaf evaluations
-
-  prover constructs the sumcheck polynomial and commits.
-  verifier checks the identity at random β.
+current architecture:
+  BBG_poly(axons_out, P, t) and BBG_poly(axons_in, P, t) and BBG_poly(particles, P, t)
+  are evaluations of the same committed polynomial
+  consistency: free (same commitment)
+  cost: 0 additional constraints
 ```
 
 ## aggregate weight consistency
 
-when a [[cyberlink]] updates an axon's aggregate weight, LogUp proves the delta is correct across all three trees:
+when a [[cyberlink]] updates an axon's aggregate weight, the update modifies BBG_poly at multiple evaluation points in one operation:
 
 ```
 transaction: new cyberlink adds weight δ to axon H(p, q)
 
-lookup statement:
-  "the weight delta +δ applied to axon H(p,q) in particles.root
-   equals the delta applied in axons_out.root[p]
-   equals the delta applied in axons_in.root[q]"
+polynomial update:
+  BBG_poly(particles, H(p,q), t):  weight += δ
+  BBG_poly(axons_out, p, t):       pointer updated
+  BBG_poly(axons_in, q, t):        pointer updated
 
-the prover commits:
-  1. old weight A_{pq} in all three trees (must match)
-  2. delta δ (from the cyberlink's public aggregate contribution)
-  3. new weight A_{pq} + δ in all three trees (must match)
-
-LogUp verifies all three trees transition from the same old value
-to the same new value via the same delta.
+all three are updates to the same polynomial.
+the PCS recommitment covers all changes in one operation.
+no separate consistency proof needed.
 ```
 
-## batch verification
+## batch updates
 
-LogUp batches naturally. a block containing B transactions updating K distinct axons:
+a block containing B transactions updating K distinct axons:
 
 ```
-all K axon updates → one LogUp proof for all 3K lookups
+all K axon updates → polynomial update at affected evaluation points
 
-prover: O(K log K) — linear in number of affected axons
-verifier: O(log K) — logarithmic in number of affected axons
+prover: O(K) field operations for polynomial updates + O(1) PCS recommit
+verifier: O(1) — one PCS verification per batch opening
 
-constraints for cross-index consistency of entire block:
-  ~500 × K + O(log K) amortization
+constraints for cross-index consistency of entire block: 0
+(was ~500 × K + O(log K) with LogUp)
 
 for a block updating 10,000 axons:
-  ~5,000,000 constraints (vs. 75,000,000 without LogUp)
+  cross-index cost: 0 (was ~5,000,000 constraints)
 ```
-
-cost is proportional to the number of axons touched, not to the total number of cyberlinks in the block (many cyberlinks may aggregate into the same axon).
 
 ## decay batch consistency
 
-at epoch boundaries, batch decay recomputes axon weights across all three trees (see [[temporal]]). LogUp proves the decayed weights are consistent:
+at epoch boundaries, batch decay recomputes axon weights. all evaluation dimensions update simultaneously as part of the same polynomial modification:
 
 ```
 for each axon with old weight A and new weight A' = A × α^Δt:
-  particles.root, axons_out.root, and axons_in.root
-  all transition from A to A'
+  BBG_poly(particles, axon, t_new) = updated weight
+  BBG_poly(axons_out, source, t_new) = updated pointer
+  BBG_poly(axons_in, target, t_new) = updated pointer
 
-one LogUp proof covers all decayed axons in the epoch.
+one polynomial recommitment covers all decayed axons in the epoch.
+consistency is structural — no separate proof.
 ```
 
-see [[architecture]] for the NMT structure, [[temporal]] for decay protocol, [[storage]] for the storage model
+## architectural improvement
+
+the elimination of LogUp is a qualitative change, not just an optimization:
+
+| property | separate NMTs + LogUp | unified polynomial |
+|----------|----------------------|-------------------|
+| consistency model | proved per transaction | structural (free) |
+| cost per cyberlink | ~1,500 constraints | 0 |
+| cost per block (K=4000) | ~6M constraints | 0 |
+| failure mode | LogUp proof error → inconsistency | impossible (same object) |
+| complexity | three trees + sumcheck protocol | one polynomial |
+
+the guarantee is stronger: with LogUp, consistency depends on the prover correctly constructing the sumcheck polynomial. with unified polynomial, consistency depends only on PCS binding — the same assumption that authenticates ALL state. no additional mechanism, no additional trust.
+
+see [[architecture]] for evaluation dimensions, [[temporal]] for decay protocol, [[storage]] for the storage model

@@ -15,7 +15,7 @@ the [[cyberlink]] is private — who linked what is never disclosed. individual 
 
 the [[cybergraph]] is public — it is the aggregate. [[axons]] (total weight between particle pairs), [[neuron]] summaries (total focus, karma), [[particle]] energy, [[token]] supplies, π distribution — all derived from cyberlinks but revealing no individual contribution.
 
-the [[mutator set]] provides: private ownership, unlinkable transactions, no trusted parties, and logarithmic verification — simultaneously.
+the polynomial mutator set provides: private ownership, unlinkable transactions, no trusted parties, and O(1) verification — simultaneously.
 
 ## privacy boundary
 
@@ -37,8 +37,8 @@ AXON               H(from, to) exists              which neurons contributed
 TOKEN              denominations                   individual UTXO values
                    total supply per τ               owner identity
 RECORD                                             value, owner, nonce, randomness
-TRANSACTION        SWBF bit indices                which records spent
-                   addition records                who spent them
+TRANSACTION        nullifier polynomial update     which records spent
+                   commitment polynomial extend    who spent them
                    Δ per particle                  new owners
                    proof validity                  link between add & remove
 FOCUS              π distribution
@@ -47,64 +47,67 @@ FOCUS              π distribution
 
 the tri-kernel operates on axons — aggregate weights — not individual cyberlinks. the effective adjacency A^eff_{pq} sums contributions from many neurons. no individual contribution is visible. enough transparency for [[consensus]], enough privacy for participation.
 
-## mutator set architecture
+## polynomial mutator set
 
-replaces both UTXO commitment polynomials and nullifier sets with two linked structures.
+two polynomial commitments replace AOCL (MMR) and SWBF (bitmap + archived MMR).
 
-### AOCL — Append-Only Commitment List
+### commitment polynomial A(x)
 
-an MMR (Merkle Mountain Range) storing addition records:
+a polynomial over all committed records:
 
 ```
-addition record for UTXO u:
-  ar = H_commit(u.particle ‖ u.value ‖ u.owner ‖ u.nonce ‖ ρ)
+A(x) encodes all commitments:
+  A(c_i) = v_i for commitment c_i with value v_i
 
+commitment for UTXO u:
+  c = H_commit(u.particle ‖ u.value ‖ u.owner ‖ u.nonce ‖ ρ)
   where ρ is hiding randomness contributed by the recipient
 
 properties:
-  - appended when a UTXO is created. never modified.
-  - MMR structure: forest of perfect binary trees
-  - peaks = O(log N) hash digests (each 32 bytes)
-  - membership proof: Merkle path from leaf to peak, O(log N) hashes
-  - append cost: O(1) amortized (merge adjacent equal-height peaks)
+  - extended when a UTXO is created: A'(x) includes new evaluation point
+  - append-only in semantic — polynomial degree grows monotonically
+  - commitment update: O(1) field operations per new record
+  - membership proof: PCS.open(A, c_i) → v_i, one opening, O(1)
 ```
 
-### SWBF — Sliding-Window Bloom Filter
+### nullifier polynomial N(x)
 
-tracks which UTXOs have been spent by setting pseudorandom bit positions:
+tracks which records have been spent:
 
 ```
-removal record for UTXO u (with AOCL index l, randomness ρ):
-  bit_indices = derive_indices(H_nullifier(u ‖ l ‖ ρ))
+N(x) = ∏(x - n_i) for all nullifiers n_i
 
-spending u:
-  1. compute bit_indices from (u, l, ρ)
-  2. for each index in active window: set the bit
-  3. for each index in inactive window: provide MMR membership proof
-  4. provide ZK proof that indices were correctly derived from a valid AOCL entry
+spending UTXO u (with commitment c, randomness ρ):
+  1. compute nullifier n = H_nullifier(u ‖ c ‖ ρ)
+  2. prove A(c) ≠ 0           (commitment exists — one PCS opening)
+  3. prove N(n) ≠ 0           (not yet spent — one PCS opening)
+  4. extend: N'(x) = N(x) × (x - n)   (O(1) polynomial update)
+  5. provide ZK proof that nullifier derives from valid commitment
 
 double-spend prevention:
-  second spend attempt → all bits already set → verifier rejects
+  second spend attempt → N(n) = 0 → structural rejection
 
 unlinkability:
-  addition record: H_commit(record ‖ ρ) — hash commitment
-  removal record: bit positions in Bloom filter
+  commitment: A(c) — polynomial evaluation at commitment point
+  nullifier: N(n) — polynomial zero at nullifier point
   these share ZERO structural similarity visible to any observer
 ```
 
-### sliding window
+### comparison with SWBF
 
 ```
-◄──── Inactive (compacted in MMR) ────►◄── Active Window ──►
+                          SWBF + MMR (previous)           polynomial
+witness size:             128 KB (active window)          32 bytes (PCS commitment)
+non-membership proof:     O(1) bitmap + O(log N) MMR     O(1) PCS opening
+membership proof:         O(log N) MMR                   O(1) PCS opening
+update (add nullifier):   O(1) bitmap + periodic archive O(1) polynomial extend
+archived state:           growing MMR chunks              absorbed in polynomial
+constraints per spend:    ~40,000                         ~5,000
+density leakage:          bloom filter bits leak density  none (opaque commitment)
 
-┌──────┬──────┬──────┬──────┐  ┌──────────────────────────┐
-│chunk₀│chunk₁│chunk₂│chunk₃│  │   2²⁰ bits (128 KB)     │
-│(MMR) │(MMR) │(MMR) │(MMR) │  │   directly accessible    │
-└──────┴──────┴──────┴──────┘  └──────────────────────────┘
-
-window slides forward periodically.
-oldest active chunk → compacted into MMR.
-growth: O(log N) peaks regardless of chain age.
+at 10^9 nullifiers:
+  SWBF+MMR: 128 KB witness + ~30 hemera calls for archived chunks
+  polynomial: 32-byte commitment + 1 PCS opening (~200 byte proof)
 ```
 
 ## record model
@@ -123,33 +126,33 @@ commitment(r, ρ) = H_commit(r.particle ‖ r.value ‖ r.owner ‖ r.nonce ‖ 
 
 ```
 PUBLIC INPUTS:
-  aocl_peaks:    [F_p⁴; log(N)]     AOCL MMR peak hashes
-  swbf_root:     F_p⁴               SWBF inactive chunks MMR root
-  swbf_window:   F_p⁴               hash of active SWBF window
-  removal_data:  [BitIndices; 4]     SWBF bit positions per input
-  additions:     [F_p⁴; 4]          new addition records
-  deltas:        [(F_p⁴, i64); 8]   per-particle value changes
-  fee:           u64                 transaction fee
+  A_commit:        F_p⁴               commitment polynomial PCS commitment
+  N_commit:        F_p⁴               nullifier polynomial PCS commitment
+  nullifiers:      [F_p; 4]           nullifier values for spent inputs
+  additions:       [F_p⁴; 4]          new commitment evaluation points
+  deltas:          [(F_p⁴, i64); 8]   per-particle value changes
+  fee:             u64                 transaction fee
 
 PRIVATE WITNESS:
   input_records, input_secrets, input_randomness
-  aocl_indices, aocl_paths, swbf_paths
+  commitment_openings (PCS proofs for A(c_i))
+  non_membership_openings (PCS proofs for N(n_i) ≠ 0)
   output_records, output_randomness
   input_enabled, output_enabled
 
-CONSTRAINTS (hemera-2, 32-byte hashes, 1 perm/node):
-  input validation (4 inputs):              ~36,000
-    commitment correctness: ~736 per input
-    AOCL membership (MMR path): ~4,000 per input (half depth vs hemera-1)
-    SWBF index derivation: ~500 per input
-    SWBF bit verification: ~3,000 per input
+CONSTRAINTS:
+  input validation (4 inputs):              ~4,000
+    commitment correctness: ~736 per input (hemera for H_commit)
+    A(c) membership: ~200 per input (PCS opening verification)
+    N(n) non-membership: ~200 per input (PCS opening verification)
+    nullifier derivation: ~500 per input
     ownership proof: ~736 per input
   output validation (4 outputs):             ~3,500
   conservation:                                ~100
   delta consistency:                           ~300
   uniqueness:                                   ~50
 
-TOTAL:                                       ~40,000 constraints
+TOTAL:                                       ~5,000 constraints (was ~40,000)
 proof generation (zheng-2):                  sub-second
 proof size:                                  1-5 KiB
 verification:                                10-50 μs
@@ -157,17 +160,27 @@ verification:                                10-50 μs
 
 ## proof maintenance
 
-every UTXO holder keeps proofs synchronized as the mutator set evolves:
+every UTXO holder keeps proofs synchronized as the polynomial state evolves:
 
 ```
-new UTXO created:     AOCL path may need update, O(log N) hashes, O(1) expected/block
-old UTXO spent:       SWBF MMR proofs may need update, O(log N) average
-window slides:        new MMR path if your bits were in compacted chunk, periodic
+new UTXO created:     commitment polynomial A(x) extended — holder's PCS proof still valid
+                      (polynomial extension does not invalidate existing openings)
+old UTXO spent:       nullifier polynomial N(x) extended — holder's non-membership proof
+                      needs refresh (new nullifier could affect opening)
+                      refresh cost: O(1) field operations per new nullifier
 
 total user cost:
-  average: O(log L · log N) per UTXO lifetime
-  for 10⁹ users, 10-year UTXO: ~50 hemera calls per block
-  ~50 × 736 = ~37,000 constraints per block for maintenance
+  average: O(1) per block (was O(log L · log N) with SWBF+MMR)
+  for 10^9 users, 10-year UTXO: ~1-2 field operations per block
+  constraints per block for maintenance: negligible
 ```
 
-see [[architecture]] for the layer model, [[state]] for transaction types, [[cross-index]] for LogUp
+## privacy preservation
+
+the polynomial commitment reveals nothing about individual records. PCS opening proofs are zero-knowledge. the privacy guarantees match or exceed the previous SWBF approach:
+
+- SWBF: bloom filter bits leak probabilistic information about nullifier density
+- polynomial: commitment is one opaque 32-byte digest. no density leakage
+- dimension isolation: opening BBG_poly at (commitments, c, t) reveals nothing about (nullifiers, n, t) — standard PCS zero-knowledge property
+
+see [[architecture]] for the layer model, [[state]] for transaction types, [[cross-index]] for why LogUp is eliminated

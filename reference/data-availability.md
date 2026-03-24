@@ -11,7 +11,7 @@ density: 0.47
 ---
 # data availability
 
-bbg without data availability is incomplete. authenticated state means nothing if the data behind it cannot be retrieved. DAS (Data Availability Sampling) allows light clients to verify that block data is available without downloading the full block.
+bbg without data availability is incomplete. authenticated state means nothing if the data behind it cannot be retrieved. algebraic DAS (Data Availability Sampling) allows light clients to verify that block data is available without downloading the full block, using PCS openings instead of Merkle paths.
 
 ## 2D Reed-Solomon erasure coding
 
@@ -35,35 +35,69 @@ any k of 2k values in a row → reconstructs the row.
 any k of 2k values in a column → reconstructs the column.
 ```
 
-## NMT commitment structure
+the erasure coding structure is independent of the commitment scheme. Reed-Solomon operates over the Goldilocks field regardless of whether cells are committed via trees or polynomials.
+
+## algebraic DAS commitment
 
 ```
-for each row i:
-  row_nmt_root_i = NMT_commit(row_i_cells, sorted by namespace)
+each row → polynomial over Goldilocks
+all row polynomials → bivariate polynomial P(row, col)
+block_commitment = PCS.commit(P)    one commitment, 32 bytes
 
-column NMT:
-  col_nmt_root = NMT_commit([row_nmt_root_0, ..., row_nmt_root_{2k-1}])
-
-block data commitment:
-  data_root = col_nmt_root
+structure: bivariate polynomial
+commitment: one PCS commitment (32 bytes)
+opening: PCS evaluation proof per sample
 ```
 
-with [[hemera]]-2: each NMT node is 64 bytes (two 32-byte children), hashed in 1 permutation call. the entire NMT commitment tree hashes at 2× the throughput of hemera-1.
+the bivariate structure P(row, col) encodes the 2D erasure grid. the commitment is algebraic (polynomial binding) instead of structural (tree hashing).
 
-## namespace-aware sampling
+## algebraic sampling
 
 ```
-light client interested in particle P:
-  1. col_nmt tells which rows contain namespace P
-  2. sample random cells from THOSE rows
-  3. each cell comes with:
-     a) row NMT inclusion proof (proves cell belongs to row)
-     b) column NMT inclusion proof (proves row belongs to block)
-     c) namespace proof (proves cell is in correct namespace)
-  4. if enough cells available → data is available with high probability
+sampler picks random (row, col):
+  requests: cell value + PCS opening for P(row, col)
+  verifies: PCS.verify(block_commitment, (row, col), value, proof)
 
-sampling complexity: O(√n) cells for 99.9% confidence
-each sample: O(log n) × 32 bytes proof size
+one PCS verification per sample instead of tree path walks.
+
+per-sample proof:
+  cell data:         ~256 bytes (chunk content)
+  PCS opening:       ~200 bytes (polynomial evaluation proof)
+  verification:      O(1) field operations
+
+20 samples for 99.9999% confidence:
+  bandwidth:  20 × (256 + 200) = ~9 KiB
+  compute:    20 × O(1) field verifications
+  constraints: ~20 × 150 = ~3K constraints
+```
+
+## comparison with NMT-based DAS
+
+```
+                        NMT-based DAS           algebraic DAS
+────────────────────    ─────────────           ─────────────
+commitment:             hemera tree              PCS commitment
+  size:                 32 bytes (root)          32 bytes (PCS)
+
+per-sample proof:       NMT auth path            PCS opening
+  size:                 ~1 KiB                   ~200 bytes
+  verification:         O(log n) hemera          O(1) field ops
+
+20-sample verification:
+  bandwidth:            ~25 KiB                  ~9 KiB
+  hemera calls:         640                      0
+  constraints:          ~471K                    ~3K
+
+fraud proof (k=64):
+  size:                 ~80 KiB                  ~30 KiB
+  verification:         O(k log n) hemera        O(k) field ops
+
+namespace completeness:
+  mechanism:            NMT sorting invariant    PCS binding
+  proof size:           O(range × log n)         O(range)
+  verification:         O(range × log n) hemera  O(range) field ops
+
+improvement: 5× bandwidth, 157× verification constraints
 ```
 
 ## fraud proofs for bad encoding
@@ -73,26 +107,43 @@ if a block producer encodes a row incorrectly:
 
 1. obtain enough cells from the row (k+1 out of 2k)
 2. attempt Reed-Solomon decoding
-3. if decoded polynomial doesn't match claimed row NMT root:
-   → fraud proof = the k+1 cells with their NMT proofs
-   → any verifier can check: decode(cells) ≠ row commitment
+3. if decoded polynomial doesn't match claimed commitment:
+   → fraud proof = the k+1 cells with their PCS openings
+   → any verifier can check: decode(cells) ≠ row polynomial
    → block rejected
 
-size of fraud proof: O(k) cells with O(log n) proofs each
-verification: O(k log n) — linear in row size, logarithmic in block size
+size of fraud proof: O(k) cells with O(1) PCS openings each
+verification: O(k) field operations — linear in row size
+```
+
+## namespace-aware sampling
+
+```
+light client interested in particle P:
+  1. PCS opening tells which evaluation region contains namespace P
+  2. sample random cells from THAT region
+  3. each cell comes with:
+     a) PCS opening (proves cell belongs to committed polynomial)
+     b) namespace inclusion (proves cell is in correct namespace)
+  4. if enough cells available → data is available with high probability
+
+completeness and availability compose:
+  completeness: PCS opening proves namespace content is complete
+  availability: PCS opening proves erasure-coded cells are committed
+  both are polynomial evaluations against the same commitment
 ```
 
 ## relationship to storage tiers
 
-DAS covers files.root — the content availability commitment. files.root is an NMT committing to particle content stored at L3 (content store). DAS proves that particle content is retrievable, not just that CIDs exist in particles.root. without files.root and DAS, the knowledge graph is a collection of hashes pointing to nothing.
+DAS covers the files dimension of BBG_poly — the content availability commitment. files dimension commits to particle content stored at L3 (content store). DAS proves that particle content is retrievable, not just that CIDs exist in the particles dimension. without files and DAS, the knowledge graph is a collection of hashes pointing to nothing.
 
 storage tier mapping:
 
-- L1 (hot state): NMT roots, aggregate data, mutator set state — guaranteed by validators running the chain
+- L1 (hot state): polynomial commitments, aggregate data, mutator set state — guaranteed by validators running the chain
 - L2 (particle data): full particle/axon data indexed by CID — SSD, milliseconds
-- L3 (content store): particle content (files) indexed by CID — DAS availability proofs via files.root
-- L4 (archival): historical state snapshots, old proofs — DAS ensures availability during active window
+- L3 (content store): particle content (files) indexed by CID — DAS availability proofs via files dimension
+- L4 (archival): historical state via time dimension of BBG_poly — DAS ensures availability during active window
 
 the DAS active window must be long enough for light clients to sample and reconstruct any namespace they care about. after the window, data relies on archival nodes and incentivized storage.
 
-see [[architecture]] for the layer model, [[storage-proofs]] for retention proofs across tiers
+see [[architecture]] for the layer model, [[storage]] for π-weighted replication and storage tiers, [[sync]] for DAS in the sync protocol

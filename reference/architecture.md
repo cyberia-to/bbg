@@ -15,11 +15,11 @@ the authenticated state layer for [[cyber]]. individual [[cyberlinks]] are priva
 
 ## three laws
 
-**law 1: bounded locality.** no global recompute for local change. every operation's cost is proportional to what it touches, not to the total graph size. at 10^15 nodes, global operations are physically impossible — light-speed delays across Earth exceed any acceptable latency bound. cyberlinks update public aggregate NMTs — O(log n) per affected namespace. private record lifecycle (creation, spending) touches the mutator set — O(log N). bridge operations (coin → focus) cross the private→public boundary explicitly.
+**law 1: bounded locality.** no global recompute for local change. every operation's cost is proportional to what it touches, not to the total graph size. at 10^15 nodes, global operations are physically impossible — light-speed delays across Earth exceed any acceptable latency bound. cyberlinks update the BBG polynomial at affected evaluation dimensions — O(1) field operations per dimension touched. private record lifecycle (creation, spending) updates the commitment and nullifier polynomials — O(1) PCS operations. bridge operations (coin → focus) cross the private→public boundary explicitly.
 
-**law 2: constant-cost verification.** verification cost is O(1) — bounded by a constant independent of computation size. any computation produces a proof verifiable in 10-50 μs via [[zheng]]-2 folding. the verifier's work is independent of the prover's work.
+**law 2: constant-cost verification.** verification cost is O(1) — bounded by a constant independent of computation size. any computation produces a proof verifiable in 10-50 μs via [[zheng]]-2 folding. any state query produces a PCS opening verifiable in O(1) field operations. the verifier's work is independent of the prover's work.
 
-**law 3: structural security.** security guarantees emerge from data structure invariants, not from protocol correctness. a protocol can have bugs. a tree whose internal nodes carry min/max namespace labels cannot lie about completeness — the structure itself prevents it.
+**law 3: structural security.** security guarantees emerge from the commitment scheme's binding property, not from protocol correctness. a protocol can have bugs. a polynomial commitment scheme whose binding is rooted in hemera collision resistance cannot produce two different openings for the same evaluation point — the algebra itself prevents it. completeness shifts from data structure invariants (NMT sorting) to algebraic binding (PCS soundness), both rooted in the same trust foundation: hemera.
 
 ## ontology
 
@@ -63,30 +63,41 @@ see [[privacy]] for the full boundary specification and mutator set architecture
 ## BBG root
 
 ```
-BBG_root = H(
-  particles.root       ‖    NMT (all particles: content + axons)
-  axons_out.root       ‖    NMT by source (outgoing axon index)
-  axons_in.root        ‖    NMT by target (incoming axon index)
-  neurons.root         ‖    NMT (focus, karma, stake)
-  locations.root       ‖    NMT (proof of location)
-  coins.root           ‖    NMT (fungible token denominations)
-  cards.root           ‖    NMT (names and knowledge assets)
-  files.root           ‖    NMT (content availability, DAS)
-  cyberlinks.root      ‖    MMR peaks hash (private record commitments)
-  spent.root           ‖    MMR root (archived consumption proofs)
-  balance.root         ‖    hemera-2 hash (active consumption bitmap)
-  time.root            ‖    NMT (temporal index, 7 namespaces)
-  signals.root         ‖    MMR (finalized signal batches)
-)
+BBG_root = PCS.commit(BBG_poly)    one Brakedown commitment, 32 bytes
 ```
 
-13 sub-roots. each is 32 bytes ([[hemera]]-2 output). total input to root hash: 416 bytes = 52 F_p elements = ~7 absorption blocks.
+BBG_poly is a multivariate polynomial over the Goldilocks field:
 
-## sub-root specification
+```
+BBG_poly(index, key, t)
 
-### particles.root — NMT
+dimensions:
+  index ∈ {particles, axons_out, axons_in, neurons, locations,
+           coins, cards, files, time, signals,
+           commitments, nullifiers}
+  key   = namespace key within that index (particle CID, neuron ID, etc.)
+  t     = time (block height)
+```
 
-all particles in one tree. content-particles and axon-particles share the same namespace. each leaf stores:
+every query is a polynomial evaluation:
+
+```
+"energy of particle P at time t"     = BBG_poly(particles, P, t)
+"outgoing axons of particle P"       = BBG_poly(axons_out, P, t)
+"focus of neuron N"                  = BBG_poly(neurons, N, t)
+"nullifier status of n"              = BBG_poly(nullifiers, n, t)
+"state at historical time t_past"    = BBG_poly(index, key, t_past)
+```
+
+one PCS opening per query. one verification per proof. 10-50 μs.
+
+## evaluation dimensions
+
+BBG_poly has 12 evaluation dimensions. each former sub-root is now an evaluation dimension of the same polynomial. the data is unchanged — the commitment mechanism changes from hash trees to polynomial binding.
+
+### particles — evaluation dimension
+
+all particles in one index. content-particles and axon-particles share the same namespace. each entry stores:
 
 - CID (32 bytes) — content hash, namespace key
 - energy (8 bytes) — aggregate Σ weight from all incoming axons
@@ -98,21 +109,21 @@ axon-particles carry additional fields:
 - market state: s_YES, s_NO (16 bytes) — ICBS reserve amounts
 - meta-score (8 bytes) — aggregate valence prediction
 
-direct lookup of any particle or axon by CID: O(log n).
+direct lookup of any particle or axon by CID: one PCS opening, O(1).
 
-### axons_out.root — NMT (directional index)
+### axons_out — evaluation dimension (directional index)
 
-axon-particles indexed by source particle namespace. querying "all outgoing from p" is a single NMT namespace proof. leaf data: pointer to axon-particle in particles.root.
+axon-particles indexed by source particle namespace. querying "all outgoing from p" is a single PCS batch opening. entry data: pointer to axon-particle in particles dimension.
 
-### axons_in.root — NMT (directional index)
+### axons_in — evaluation dimension (directional index)
 
-axon-particles indexed by target particle namespace. querying "all incoming to q" is a single NMT namespace proof. leaf data: pointer to axon-particle in particles.root.
+axon-particles indexed by target particle namespace. querying "all incoming to q" is a single PCS batch opening. entry data: pointer to axon-particle in particles dimension.
 
-LogUp proves consistency: every axon in axons_out and axons_in exists in particles.root, and vice versa.
+cross-index consistency is structural: axons_out, axons_in, and particles are evaluation dimensions of the SAME polynomial. they cannot disagree. LogUp is unnecessary.
 
-### neurons.root — NMT
+### neurons — evaluation dimension
 
-one leaf per neuron. namespace key: neuron_id (hash of public key). each leaf stores:
+one entry per neuron. namespace key: neuron_id (hash of public key). each entry stores:
 
 - focus (8 bytes) — available attention budget
 - karma κ (8 bytes) — accumulated BTS score
@@ -120,79 +131,58 @@ one leaf per neuron. namespace key: neuron_id (hash of public key). each leaf st
 
 neuron linking history is private — only aggregates are committed here.
 
-### locations.root — NMT
+### locations — evaluation dimension
 
 proof of location for neurons and validators. enables spatial queries, geo-sharding, and latency guarantees.
 
-### coins.root — NMT
+### coins — evaluation dimension
 
-fungible token denominations. one leaf per denomination τ. stores total supply and denomination parameters.
+fungible token denominations. one entry per denomination τ. stores total supply and denomination parameters.
 
-### cards.root — NMT
+### cards — evaluation dimension
 
 non-fungible knowledge assets. every cyberlink is a card. names are cards bound to axon-particles (A6: axons are particles, names are human-readable identifiers for those particles).
 
-### files.root — NMT
+### files — evaluation dimension
 
-content availability commitments. DAS (Data Availability Sampling) over stored content. proves that particle content is retrievable, not just that CIDs exist. without this root, the knowledge graph is a collection of hashes pointing to nothing.
+content availability commitments. DAS (Data Availability Sampling) over stored content. proves that particle content is retrievable, not just that CIDs exist. without this dimension, the knowledge graph is a collection of hashes pointing to nothing.
 
-### cyberlinks.root — MMR peaks hash
+### time — evaluation dimension
 
-the AOCL (Append-Only Commitment List). an MMR storing every private record ever committed. when a neuron creates a cyberlink, an addition record is appended:
+time is a native dimension of BBG_poly. historical queries are polynomial evaluations at (index, key, t_past). the 7 temporal granularities (steps, seconds, hours, days, weeks, moons, years) are encoded as evaluation regions within the time dimension. any query at any past time is one PCS opening.
 
-```
-ar = H_commit(record ‖ ρ)    where ρ is hiding randomness
-```
+### signals — evaluation dimension
 
-never modified — append-only. peaks = O(log N) digests, each 32 bytes. the root is H(peak₀ ‖ ... ‖ peak_k). cyberlinks arrive in [[signals]] (batches with recursive proofs), but the AOCL commits individual records. see signals.root for the finalization layer.
+finalized [[signal]] batches. a signal bundles cyberlinks with an [[impulse]] (π_Δ — the proven focus shift) and a recursive [[zheng]]-2 proof covering the entire batch. the cyberlink is the object of learning; the signal is the object of finalization. the signals dimension commits the finalization history — which batches were accepted and in what order.
 
-### spent.root — MMR root
+### commitments — evaluation dimension (private)
 
-the SWBF inactive archive. an MMR storing compacted chunks of the Sliding-Window Bloom Filter. when a private record is spent, pseudorandom bit positions are derived from H_nullifier(record ‖ aocl_index ‖ ρ) and set in the SWBF. old window chunks compact into this MMR. double-spend = all bits already set = structural rejection.
+the commitment polynomial A(x). every private record (cyberlink, UTXO) has a commitment A(c_i) = v_i. membership proof: one PCS opening, O(1). append-only — new records extend the polynomial by one degree.
 
-### balance.root — hemera-2 hash
+### nullifiers — evaluation dimension (private)
 
-the SWBF active window. a bitmap of 2^20 bits (128 KB) tracking recent consumption. committed as hemera-2(window_bits) — a single 32-byte hash of the full bitmap. slides forward periodically: oldest chunk compacts into spent.root, fresh chunk enters active window.
-
-### time.root — NMT (7 namespaces)
-
-temporal index over the full chain history. 7 namespaces for 7 time units:
-
-| namespace | unit | boundary |
-|-----------|------|----------|
-| steps | unix timestamp | every block |
-| seconds | 1s | every second boundary |
-| hours | 3600s | every hour boundary |
-| days | 86400s | every day boundary |
-| weeks | 604800s | every week boundary |
-| moons | ~2551443s | every lunar cycle (~29.53 days) |
-| years | ~31557600s | every year boundary |
-
-each namespace contains an MMR of BBG_root snapshots at that granularity. no full state duplication — one 32-byte hash per boundary. queries: "state at block T" → steps namespace O(log T). "state at hour H" → hours namespace O(log H). NMT completeness proofs give "all boundaries in range."
-
-### signals.root — MMR
-
-finalized [[signal]] batches. a signal bundles cyberlinks with an [[impulse]] (π_Δ — the proven focus shift) and a recursive [[zheng]]-2 proof covering the entire batch. the cyberlink is the object of learning; the signal is the object of finalization. signals.root commits the finalization history — which batches were accepted and in what order.
+the nullifier polynomial N(x) = ∏(x - n_i). when a record is spent, its nullifier is absorbed into the polynomial. non-membership proof: prove N(c) ≠ 0 via one PCS opening, O(1). double-spend = N(c) = 0 = structural rejection.
 
 ## checkpoint
 
 ```
 CHECKPOINT = (
-  BBG_root,           ← all 13 sub-roots
+  BBG_root,           ← PCS.commit(BBG_poly), 32 bytes
   folding_acc,        ← zheng-2 accumulator (constant size, ~30 field elements)
   block_height        ← current height
 )
 
-checkpoint size: O(1) — a few hundred bytes
+checkpoint size: O(1) — ~232 bytes
 contains: proof that ALL history from genesis is valid
 updated: O(1) per block via folding
+proof size: 1-5 KiB, verification: 10-50 μs
 ```
 
 ## storage layers
 
 ```
-L1: Hot state      NMT roots, aggregate data, mutator set state
-                   in-memory, sub-millisecond, 32-byte roots
+L1: Hot state      polynomial commitments, aggregate data, private polynomial state
+                   in-memory, sub-millisecond, 32-byte commitments
 
 L2: Particle data  full particle/axon data, indexed by CID
                    SSD, milliseconds, content-addressed
@@ -200,7 +190,7 @@ L2: Particle data  full particle/axon data, indexed by CID
 L3: Content store  particle content (files), indexed by CID
                    network retrieval, seconds, DAS availability proofs
 
-L4: Archival       historical state snapshots, old proofs
+L4: Archival       historical state via polynomial time dimension
                    DAS ensures availability during active window
 ```
 
@@ -208,12 +198,12 @@ L4: Archival       historical state snapshots, old proofs
 
 | primitive | role | heritage |
 |-----------|------|----------|
-| NMT | graph completeness proofs, DAS | Celestia (2023—) |
-| MMR | append-only record history | Grin, Neptune (2019—) |
-| SWBF | private double-spend prevention | Neptune (2024—) |
+| PCS (Brakedown) | state commitment, completeness proofs, DAS | Brakedown (2023—) |
+| BBG_poly | unified state polynomial | algebraic NMT evolution |
+| commitment polynomial A(x) | private record commitments | Neptune mutator set heritage |
+| nullifier polynomial N(x) | private double-spend prevention | Neptune SWBF heritage |
 | WHIR polynomial commitments | batch proofs, evaluation | WHIR (2025) |
-| LogUp lookup arguments | cross-index consistency | Polygon, Scroll (2023—) |
 
 unified by [[hemera]]-2 (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]]-2 (1-5 KiB proofs, 10-50 μs verification, folding-first).
 
-see [[state]] for transaction types and state transitions, [[privacy]] for the mutator set and privacy boundary, [[cross-index]] for LogUp consistency proofs, [[sync]] for namespace synchronization, [[data-availability]] for DAS, [[temporal]] for edge decay
+see [[state]] for transaction types and state transitions, [[privacy]] for the polynomial mutator set and privacy boundary, [[cross-index]] for why LogUp is eliminated, [[sync]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension
