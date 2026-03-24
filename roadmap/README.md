@@ -8,7 +8,7 @@ design proposals for bbg authenticated state layer. proposals compose with [[zhe
 
 | proposal | in reference? | target |
 |----------|--------------|--------|
-| [[full-pipeline]] | no | end-to-end: signal creation → light client in one continuous fold |
+| [[full-pipeline]] | **yes** → reference/architecture.md (pipeline section) | end-to-end: signal creation → light client in one continuous fold |
 
 ## polynomial state
 
@@ -32,7 +32,7 @@ design proposals for bbg authenticated state layer. proposals compose with [[zhe
 
 | proposal | in reference? | target |
 |----------|--------------|--------|
-| [[verifiable-query]] | no | arbitrary CozoDB queries → polynomial opening proofs |
+| [[verifiable-query]] | **yes** → reference/query.md | arbitrary CozoDB queries → polynomial opening proofs |
 
 ## structural sync mapping
 

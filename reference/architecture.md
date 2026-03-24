@@ -204,6 +204,34 @@ L4: Archival       historical state via polynomial time dimension
 | nullifier polynomial N(x) | private double-spend prevention | Neptune SWBF heritage |
 | WHIR polynomial commitments | batch proofs, evaluation | WHIR (2025) |
 
-unified by [[hemera]]-2 (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]]-2 (1-5 KiB proofs, 10-50 μs verification, folding-first).
+unified by [[hemera]] (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]] (1-5 KiB proofs, 10-50 μs verification, folding-first).
 
-see [[state]] for transaction types and state transitions, [[privacy]] for the polynomial mutator set and privacy boundary, [[cross-index]] for why LogUp is eliminated, [[sync]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension
+## pipeline
+
+the end-to-end flow from cyberlink creation to light client verification:
+
+```
+DEVICE                          NETWORK                         CLIENT
+──────                          ───────                         ──────
+nox execution                   include signals in block        download checkpoint
+  ↓ proof-carrying                ↓ polynomial state update       ↓ one zheng decider
+hemera identity                 fold into block accumulator     sync namespaces
+  ↓ folded sponge                 ↓ HyperNova folding             ↓ PCS openings
+build signal                    fold into epoch accumulator     DAS sample
+  ↓ (ν, l⃗, π_Δ, σ, prev...)     ↓ universal accumulator          ↓ algebraic DAS
+local sync                      publish checkpoint              query
+  ↓ CRDT + PCS + DAS              ↓ ~240 bytes                    ↓ verifiable query
+submit to network
+  ↓ foculus π convergence
+```
+
+| stage | where specified | cost |
+|-------|----------------|------|
+| signal creation | [[nox]] reduction.md (proof-carrying) | ~30 field ops per step |
+| local sync | [[sync]] (structural sync layers 1-5) | ~200 bytes per namespace |
+| block processing | [[state]] (polynomial updates) | ~3,200 constraints per cyberlink |
+| epoch composition | [[sync]] + zheng recursion.md | ~100K constraints per epoch |
+| light client | [[sync]] (checkpoint + PCS) | < 10 KiB, 10-50 μs |
+| query | [[query]] (verifiable query compiler) | ~200 bytes to ~5 KiB proof |
+
+see [[state]] for transaction types, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated, [[sync]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension, [[query]] for verifiable queries
