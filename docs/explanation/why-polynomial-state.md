@@ -108,7 +108,7 @@ BBG_root = PCS.commit(BBG_poly)    32 bytes
 
 one polynomial. all public dimensions. all time.
 every query: one opening.
-every verification: 10-50 μs.
+every verification: ~5 μs.
 cross-index consistency: structural.
 completeness: algebraic (PCS binding).
 ```

@@ -62,12 +62,12 @@ one PCS verification per sample instead of tree path walks.
 
 per-sample proof:
   cell data:         ~256 bytes (chunk content)
-  PCS opening:       ~200 bytes (polynomial evaluation proof)
-  verification:      O(1) field operations
+  PCS opening:       ~75 bytes (recursive Brakedown evaluation proof)
+  verification:      O(λ log log N) field operations
 
-20 samples for 99.9999% confidence:
-  bandwidth:  20 × (256 + 200) = ~9 KiB
-  compute:    20 × O(1) field verifications
+20 samples for 99.9999% confidence (batch opening):
+  bandwidth:  ~1.5 KiB (batch PCS opening, amortized across 20 samples)
+  compute:    20 × O(λ log log N) field verifications
   constraints: ~20 × 150 = ~3K constraints
 ```
 
@@ -79,12 +79,12 @@ per-sample proof:
 commitment:             hemera tree              PCS commitment
   size:                 32 bytes (root)          32 bytes (PCS)
 
-per-sample proof:       NMT auth path            PCS opening
-  size:                 ~1 KiB                   ~200 bytes
-  verification:         O(log n) hemera          O(1) field ops
+per-sample proof:       NMT auth path            PCS opening (recursive)
+  size:                 ~1 KiB                   ~75 bytes
+  verification:         O(log n) hemera          O(λ log log N) field ops
 
 20-sample verification:
-  bandwidth:            ~25 KiB                  ~9 KiB
+  bandwidth:            ~25 KiB                  ~1.5 KiB (batch opening)
   hemera calls:         640                      0
   constraints:          ~471K                    ~3K
 
@@ -97,7 +97,7 @@ namespace completeness:
   proof size:           O(range × log n)         O(range)
   verification:         O(range × log n) hemera  O(range) field ops
 
-improvement: 5× bandwidth, 157× verification constraints
+improvement: 17× bandwidth, 157× verification constraints
 ```
 
 ## fraud proofs for bad encoding

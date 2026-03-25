@@ -48,7 +48,7 @@ traditional distributed systems handle Byzantine faults with protocol: 2/3 major
 
 bbg eliminates each fault class with a data structure property:
 
-**forging** — every signal carries a zheng proof. the proof is ~40,000 constraints verifiable in 10-50 μs. an invalid state transition (overspending focus, creating energy from nothing, corrupting a polynomial commitment) cannot produce a valid proof. this is not "the network rejects invalid signals" — it is "invalid signals cannot be constructed." the constraint system is the security boundary, not the protocol.
+**forging** — every signal carries a zheng proof. the proof is ~40,000 constraints verifiable in ~5 μs. an invalid state transition (overspending focus, creating energy from nothing, corrupting a polynomial commitment) cannot produce a valid proof. this is not "the network rejects invalid signals" — it is "invalid signals cannot be constructed." the constraint system is the security boundary, not the protocol.
 
 **equivocation** — each neuron chains its signals via `prev = H(previous_signal)`. two signals with the same `prev` is a cryptographic proof of double-signaling. detection is O(1) — compare `prev` fields. no protocol rounds needed. VDF adds physical cost: equivocating requires computing VDF twice, which takes twice the wall time. the extra time is measurable.
 

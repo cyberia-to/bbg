@@ -23,7 +23,7 @@ BBG_poly(index, key, t) = value
 query:  PCS.open(BBG_root, (index, key, t)) → (value, proof)
 verify: PCS.verify(BBG_root, (index, key, t), value, proof)
 
-verification cost: O(1) field operations, 10-50 μs
+verification cost: O(λ log log N) field operations, ~5 μs
 proof size: ~200 bytes per opening (vs ~1 KiB NMT path)
 ```
 

@@ -158,8 +158,8 @@ CONSTRAINTS:
 
 TOTAL:                                       ~5,000 constraints (was ~40,000)
 proof generation (zheng-2):                  sub-second
-proof size:                                  1-5 KiB
-verification:                                10-50 μs
+proof size:                                  ~2 KiB
+verification:                                ~5 μs
 ```
 
 ## proof maintenance

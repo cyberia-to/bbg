@@ -89,7 +89,7 @@ lifecycle:
   submitted to network: full signal (ordering fields preserved)
   included in block:    network assigns t (block height)
 
-signal size: ~1-5 KiB proof + impulse + 160 bytes ordering metadata
+signal size: ~2 KiB proof + impulse + 160 bytes ordering metadata
 ```
 
 ## five verification layers
@@ -120,7 +120,7 @@ the proof covers:
   - neuron signature valid
 
 invalid signal → proof verification fails → signal rejected by any peer
-cost: 10-50 μs verification (zheng-2)
+cost: ~5 μs verification (zheng-2)
 ```
 
 ### layer 2: ordering
@@ -223,7 +223,7 @@ NETWORK (BBG_poly dimension):
   any √n × √n submatrix sufficient for reconstruction
 
 sampling: O(√n) random cells with PCS openings (algebraic DAS)
-  ~9 KiB for 20 samples (was ~25 KiB with NMT paths)
+  ~1.5 KiB for 20 samples (was ~25 KiB with NMT paths)
   O(1) field verifications per sample (was O(log n) hemera)
   99.9999% confidence at 20 samples
 
@@ -430,7 +430,7 @@ new client joins with no history:
    final_proof = decide(folding_acc)        zheng-2 decider
    verify(final_proof, BBG_root)
    → ONE verification proves ALL history from genesis valid
-   → cost: 10-50 μs
+   → cost: ~5 μs
 
 3. SYNC namespaces of interest (any query type above)
 
@@ -477,9 +477,9 @@ erasure coding:
 sampling (algebraic DAS):
   neuron commits content to per-neuron polynomial (keyed by CID)
   verifier samples O(√n) random chunk positions
-  each sample: chunk + PCS opening (~200 bytes, was ~1 KiB NMT path)
+  each sample: chunk + PCS opening (~75 bytes, was ~1 KiB NMT path)
   99.9999% confidence at 20 samples
-  total bandwidth: ~9 KiB (was ~25 KiB)
+  total bandwidth: ~1.5 KiB (was ~25 KiB)
 ```
 
 ### polynomial completeness
@@ -550,7 +550,7 @@ REORDERING           hash chain              prev hashes break →
 WITHHOLDING          PCS + algebraic DAS     PCS completeness proof →
 (hiding signals)                             withheld signals detectable
                                              algebraic DAS: availability verifiable
-                                             cost: O(√n) sampling, ~9 KiB
+                                             cost: O(√n) sampling, ~1.5 KiB
 
 FLOODING             VDF rate limiting       each signal costs T_min wall time
 (signal spam)                                inherently sequential
@@ -575,7 +575,7 @@ the five verification layers:
 layer 1 (validity):      zheng proof per signal — unchanged
 layer 2 (ordering):      hash chain + VDF — unchanged
 layer 3 (completeness):  PCS binding — algebraic completeness, O(1) proof, ~200 bytes
-layer 4 (availability):  algebraic DAS — PCS openings, ~9 KiB for 20 samples
+layer 4 (availability):  algebraic DAS — PCS openings, ~1.5 KiB for 20 samples
 layer 5 (merge):         CRDT / foculus — unchanged
 ```
 
@@ -585,9 +585,9 @@ light client join:
 
 ```
 1. download checkpoint: ~232 bytes (BBG_root + accumulator + height)
-2. verify: ONE zheng decider, 10-50 μs
+2. verify: ONE zheng decider, ~5 μs
 3. sync namespaces: ~200 bytes per PCS opening
-4. DAS verify: ~9 KiB (20 algebraic samples)
+4. DAS verify: ~1.5 KiB (20 algebraic samples)
 total: < 10 KiB
 ```
 

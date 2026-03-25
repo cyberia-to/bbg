@@ -46,7 +46,7 @@ BBG_poly(index, key, t) — t is a native variable
 historical query:
   "what was π of particle P at block 1000?"
   → PCS.open(BBG_root, (particles, P, 1000))
-  → one evaluation proof, 10-50 μs verification
+  → one evaluation proof, ~5 μs verification
 
 range query:
   "all focus changes for neuron N between t₁ and t₂"

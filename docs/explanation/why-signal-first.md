@@ -49,7 +49,7 @@ recovery procedure:
 
 ```
 1. fetch checkpoint from any peer                         ~240 bytes
-2. verify checkpoint (one zheng accumulator verification)  10-50 μs
+2. verify checkpoint (one zheng accumulator verification)  ~5 μs
 3. fetch signals since checkpoint (DAS guarantees availability)
 4. replay: fold(checkpoint_state, signals[checkpoint_h..now])
 5. result: identical BBG_root as every other correct node
@@ -97,16 +97,16 @@ a node that stores only the signal log and a checkpoint can reconstruct the enti
 full replay from genesis:
 
 ```
-h signals × ~1-5 KiB each = O(h) data
-verification: one zheng proof per signal = O(h × 10-50 μs)
-at 10^9 signals: ~1-5 TB data, ~10-50 seconds verification (parallelizable)
+h signals × ~2 KiB each = O(h) data
+verification: one zheng proof per signal = O(h × ~5 μs)
+at 10^9 signals: ~2 TB data, ~5 seconds verification (parallelizable)
 ```
 
 incremental replay from checkpoint:
 
 ```
 download checkpoint: 240 bytes
-verify: 10-50 μs
+verify: ~5 μs
 replay signals since checkpoint: O(delta_h) data
 ```
 

@@ -16,7 +16,7 @@ query:    Q applied to BBG_poly
 result:   R = Q(BBG_poly)
 proof:    PCS opening proving R = Q(BBG_poly) against BBG_root
 verify:   Brakedown.verify(BBG_root, query_point, R, proof) → accept/reject
-cost:     10-50 μs, independent of query complexity or graph size
+cost:     ~5 μs, independent of query complexity or graph size
 ```
 
 ## simple queries (single opening)
@@ -83,7 +83,7 @@ compilation:
   3. truncation proof: output[100].pi ≤ output[99].pi    (1 comparison)
   4. completeness: no particle with π > output[100].pi   (range check)
 
-proof: ~5 KiB, verify: 10-50 μs
+proof: ~5 KiB, verify: ~5 μs
 ```
 
 **multi-hop path (A to B, max 3 hops):**
@@ -96,7 +96,7 @@ compilation:
   4. check B ∈ N₁ ∪ N₂ ∪ N₃                              (membership)
 
 each hop folds into accumulator via HyperNova (~30 field ops).
-proof: ~3 KiB, verify: 10-50 μs regardless of path length
+proof: ~3 KiB, verify: ~5 μs regardless of path length
 ```
 
 **temporal range (all cyberlinks from neuron N between t₁ and t₂):**
@@ -107,7 +107,7 @@ compilation:
   2. diff: Δ = state(t₂) - state(t₁)                               (field subtraction)
   3. prove Δ decomposes into individual cyberlinks                   (batch opening)
 
-proof: ~3 KiB, verify: 10-50 μs
+proof: ~3 KiB, verify: ~5 μs
 ```
 
 ## cost model
@@ -116,15 +116,15 @@ proof: ~3 KiB, verify: 10-50 μs
 query type              constraints    proof size    verification
 ────────────────────    ───────────    ──────────    ────────────
 single point opening    ~100           ~200 bytes    O(√N) field ops
-namespace range         ~100 × range   ~1-3 KiB     10-50 μs
-top-k                   ~N + 64k       ~5 KiB       10-50 μs
-multi-hop (d hops)      ~100 × d       ~3 KiB       10-50 μs
-join (2 indexes)        ~500           ~2 KiB       10-50 μs
-temporal range          ~200           ~3 KiB       10-50 μs
-arbitrary CozoDB        varies         ~5-10 KiB    10-50 μs
+namespace range         ~100 × range   ~1-3 KiB     ~5 μs
+top-k                   ~N + 64k       ~5 KiB       ~5 μs
+multi-hop (d hops)      ~100 × d       ~3 KiB       ~5 μs
+join (2 indexes)        ~500           ~2 KiB       ~5 μs
+temporal range          ~200           ~3 KiB       ~5 μs
+arbitrary CozoDB        varies         ~5-10 KiB    ~5 μs
 ```
 
-verification is ALWAYS 10-50 μs (one zheng decider). proof size is always < 10 KiB. query complexity affects PROVER cost, not verifier cost.
+verification is ALWAYS ~5 μs (one zheng decider). proof size is always < 10 KiB. query complexity affects PROVER cost, not verifier cost.
 
 ## query cost optimization
 

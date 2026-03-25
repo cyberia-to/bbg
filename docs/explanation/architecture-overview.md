@@ -18,7 +18,7 @@ BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 - **A(x)**: commitment polynomial — every private record ever created
 - **N(x)**: nullifier polynomial — every spent record
 
-one hash, three commitments, 32 bytes. a 240-byte checkpoint (root + universal accumulator + height) proves all history from genesis in 10-50 microseconds.
+one hash, three commitments, 32 bytes. a 240-byte checkpoint (root + universal accumulator + height) proves all history from genesis in ~5 microseconds.
 
 ## 10 public dimensions + 2 private commitments
 
@@ -74,9 +74,9 @@ NEURON                          NETWORK                         CLIENT
 
 **stage 5: epoch finalization.** 1000 blocks fold into one epoch accumulator via HyperNova folding (~30 field ops per fold + one decider = ~100K constraints total). the universal accumulator covers all five structural sync layers in one ~200 byte object.
 
-**stage 6: light client join.** download checkpoint (~240 bytes). verify accumulator (10-50 microseconds). one proof verifies ALL history from genesis. no sync committee, no header chain, no trust assumption beyond mathematics.
+**stage 6: light client join.** download checkpoint (~240 bytes). verify accumulator (~5 microseconds). one proof verifies ALL history from genesis. no sync committee, no header chain, no trust assumption beyond mathematics.
 
-**stage 7: query + maintain.** sync namespaces of interest via PCS openings (~200 bytes each). DAS sample for availability (~4 KiB for 20 samples, 99.9999% confidence). fold each new block into local accumulator (~30 field ops/block). total join cost: < 10 KiB.
+**stage 7: query + maintain.** sync namespaces of interest via PCS openings (~200 bytes each). DAS sample for availability (~1.5 KiB batch opening for 20 samples, 99.9999% confidence). fold each new block into local accumulator (~30 field ops/block). total join cost: < 10 KiB.
 
 ## signal-first
 
@@ -105,7 +105,7 @@ one distribution governs the entire stack.
 ```
 BBG_root:                32 bytes (one hash of three commitments)
 checkpoint:              ~240 bytes (root + accumulator + height)
-verification:            10-50 μs (one zheng decider)
+verification:            ~5 μs (one zheng decider, recursive Brakedown)
 per-cyberlink:           ~8,400 constraints total
   public state update:   ~3,200 constraints (polynomial)
   private state update:  ~5,000 constraints (polynomial mutator set)
@@ -113,7 +113,7 @@ per-cyberlink:           ~8,400 constraints total
 per-block (1000 tx):     ~8.3M constraints
 epoch (1000 blocks):     ~100K constraints (HyperNova folding)
 inclusion proof:         ~200 bytes (PCS opening)
-DAS (20 samples):        ~4 KiB bandwidth, ~3K constraints
+DAS (20 samples):        ~1.5 KiB bandwidth (batch opening), ~3K constraints
 light client join:       < 10 KiB total
 hemera calls/block:      0 for state verification
 NMT internal nodes:      0 (polynomial replaces tree structure)
