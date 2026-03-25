@@ -37,6 +37,24 @@ any k of 2k values in a column → reconstructs the column.
 
 the erasure coding structure is independent of the commitment scheme. Reed-Solomon operates over the Goldilocks field regardless of whether cells are committed via trees or polynomials.
 
+## native DAS for polynomial particles
+
+when particles ARE polynomials, DAS becomes native to the data model. the particle's content polynomial already exists as a PCS commitment. extending that polynomial beyond the Boolean hypercube produces the erasure code — no separate 2D Reed-Solomon encoding step is needed. the particle's PCS commitment IS the DAS commitment.
+
+```
+particle content         → polynomial f(x) over Goldilocks
+PCS.commit(f)            → particle identity (via hemera wrapping)
+f evaluated beyond 2^v   → erasure-coded extension (automatic)
+sampling                 = PCS.open(commitment, random position)    ~75 bytes proof
+reconstruction           = polynomial interpolation from k evaluations
+```
+
+to obtain 2D RS structure for row/column fraud proofs, reshape the noun polynomial as a √N x √N bivariate: f(x) → g(row, col) where row and col index a grid over the evaluation domain. this is a coordinate remapping, not a separate encoding. the polynomial is the same object.
+
+the implication: every polynomial particle is automatically erasure-coded by construction. DAS sampling is PCS opening at random positions. no encoding pipeline, no separate commitment. the particle IS the erasure code.
+
+the 2D RS description below remains the concrete mechanism for block-level DAS where multiple particles are batched into a single block commitment.
+
 ## algebraic DAS commitment
 
 ```

@@ -100,6 +100,18 @@ one PCS opening per query. one verification per proof. ~5 μs.
 
 BBG_poly has 10 public evaluation dimensions. each former sub-root is now an evaluation dimension of the same polynomial. the data is unchanged — the commitment mechanism changes from hash trees to polynomial binding. A(x) and N(x) are separate polynomial commitments for private state (see "private polynomial commitments" below).
 
+### particles ARE polynomials
+
+particles are polynomial nouns. particle identity = hemera(PCS.commit(content) ‖ PARTICLE). the content of a particle is a polynomial over the Goldilocks field; its identity is the hemera-wrapped PCS commitment of that polynomial.
+
+accessing any byte range within a particle = PCS.open(commitment, position) producing ~75 bytes of proof. this enables:
+
+- **O(1) random access** to particle content — any byte range is a PCS opening, no tree path walk
+- **native DAS** — the polynomial extension beyond the Boolean hypercube IS the erasure code. no separate 2D Reed-Solomon encoding step. the particle's PCS commitment IS the DAS commitment
+- **algebraic composability** — particle identity is a field element derived from a polynomial commitment. state operations (energy accumulation, axon aggregation, focus computation) compose algebraically with particle identity. no hash-to-field conversion boundary
+
+the BBG_poly dimension gives aggregate state (energy, pi-star). the particle's own polynomial gives content (full data, any byte range). two levels of polynomial commitment, both served by the same PCS.
+
 ### particles — evaluation dimension
 
 all particles in one index. content-particles and axon-particles share the same namespace. each entry stores:

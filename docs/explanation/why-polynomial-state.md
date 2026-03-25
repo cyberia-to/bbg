@@ -119,4 +119,23 @@ private state (commitment polynomial A(x), nullifier polynomial N(x)) remains se
 BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 ```
 
+## nouns ARE polynomials
+
+the polynomial model extends beyond aggregate state (BBG_poly) to individual particles. a particle's content is a polynomial over the Goldilocks field. its identity is hemera(PCS.commit(content) ‖ PARTICLE). the tree/polynomial isomorphism means the SAME PCS serves both levels:
+
+- **state queries**: BBG_poly(particles, CID, t) → energy, pi-star (aggregate)
+- **content queries**: PCS.open(particle_poly, position) → bytes at offset (data)
+
+same PCS. same proof format. same verification cost (~5 microseconds, ~200 bytes).
+
+this unification has three consequences:
+
+1. **no separate content addressing layer.** particle identity is a PCS commitment wrapped by hemera. there is no hash tree for content and a separate polynomial for state. one algebraic framework covers both.
+
+2. **native DAS.** a polynomial noun is automatically erasure-coded — extending the polynomial beyond its evaluation domain produces parity. no encoding pipeline. the particle IS the erasure code.
+
+3. **algebraic composability end-to-end.** particle identity is a field element derived from polynomial commitment. state operations (energy, focus, axon weights) operate on field elements. there is no hash-to-field boundary anywhere in the pipeline. content, identity, and state are all polynomial objects in the same field.
+
+the evaluation point model from BBG_poly (dimension, key, t) and the content model from particle polynomials (CID, byte_offset) are two applications of the same mathematical structure: polynomial commitment with PCS openings.
+
 see [[architecture]] for the full specification, [[architecture-overview]] for the pipeline, [[polynomial-privacy]] for private state

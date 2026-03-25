@@ -333,6 +333,23 @@ network query:  "prove all axons where source = X"
 
 same data, same storage, two access modes. interactive queries go through CozoDB/[[Ask]]. provable queries go through [[zheng]]/PCS. both read from fjall.
 
+## polynomial particle storage
+
+particle storage = polynomial evaluation table storage. when particles are polynomial nouns, the content store holds evaluation tables of particle polynomials. ShardStore serves polynomial nouns natively: `get(dimension, key)` returns field elements that are polynomial evaluations.
+
+the same backend stores BBG_poly evaluation tables (aggregate state: energy, pi-star, axon weights) AND individual particle polynomials (content data). the fjall "particles" partition holds both: the BBG_poly dimension entries for aggregate queries, and the particle's own polynomial evaluation table for content access.
+
+```
+"particles" partition serves two polynomial levels:
+  BBG_poly(particles, CID, t) → aggregate state (energy, π*, axon fields)
+  particle_poly(CID, position) → content bytes at any offset
+
+both are polynomial evaluations. both use PCS openings for proofs.
+both live in the same fjall partition, keyed by CID.
+```
+
+PCS.open on BBG_poly answers "what is the energy of particle P?" PCS.open on the particle's own polynomial answers "what are bytes 1024..2048 of particle P?" same mechanism, same proof format, same verification.
+
 ## algebra-adaptive storage
 
 the noun store holds trees with different-sized leaves depending on the algebra. the tree structure (cells as pairs) is universal — only leaf sizes differ.

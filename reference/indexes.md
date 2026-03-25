@@ -179,6 +179,23 @@ signals entry:
   recursive_proof_hash: F_p⁴          32 bytes
 ```
 
+## two levels of polynomial access
+
+polynomial access to any particle field operates at two levels:
+
+- **BBG_poly dimension** — the AGGREGATE level. BBG_poly(particles, CID, t) returns energy, pi-star, axon weights. this is the state index: what the network knows about a particle in aggregate.
+
+- **particle's own polynomial** — the CONTENT level. PCS.open(particle_commitment, position) returns any byte range of the particle's content. this is the data layer: the actual content the particle addresses.
+
+both are PCS openings. both produce ~200 byte proofs. both verify in ~5 microseconds. the difference is what polynomial you open against: BBG_poly for aggregate state, the particle's own commitment for content data.
+
+```
+aggregate query:  BBG_poly(particles, CID, t) → energy, π*
+content query:    PCS.open(particle_poly(CID), byte_offset) → content bytes
+
+same PCS. same verification. different polynomials.
+```
+
 ## cross-index consistency
 
 cross-index consistency between particles, axons_out, and axons_in is structural. all three are evaluation dimensions of BBG_poly — the same committed polynomial. they cannot disagree because they are the same mathematical object evaluated at different points.
