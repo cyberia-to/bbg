@@ -60,11 +60,11 @@ NMT survives — not for authentication (polynomial handles that) but for cold s
 
 ```
 HOT (current state, RAM):
-    three polynomial data structures, each with its own PCS commitment:
+    three polynomial data structures, each with its own Lens commitment:
       BBG_poly (10 public evaluation dimensions) — evaluation table
       A(x) (commitment polynomial) — evaluation table
       N(x) (nullifier polynomial) — evaluation table
-    BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), 32 bytes
+    BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), 32 bytes
     backend: inmem (flat array)
     latency: 50 ns
 
@@ -95,11 +95,11 @@ six proof types ensure data retention across tiers:
 
 | proof | what it guarantees | mechanism | constraints |
 |---|---|---|---|
-| storage proof | content bytes exist on node | periodic challenge: offset → chunk + PCS opening | ~5,000 |
+| storage proof | content bytes exist on node | periodic challenge: offset → chunk + Lens opening | ~5,000 |
 | size proof | claimed size matches actual | hemera tree structure + padding check | ~2,000 |
 | replication proof | k independent copies exist | challenge k nodes, verify uniqueness | ~5,000 × k |
 | retrievability proof | content fetchable in bounded time | timed challenge-response | ~5,000 |
-| DAS proof | block data published and accessible | algebraic DAS: erasure + PCS samples | ~3,000 |
+| DAS proof | block data published and accessible | algebraic DAS: erasure + Lens samples | ~3,000 |
 | encoding fraud proof | erasure coding correct | decode k+1 cells vs polynomial commitment | O(k) field ops |
 
 signal-first resolves STATE retention: prove signal availability → derive everything via replay. CONTENT retention requires storage proofs + π-weighted replication. see [[cyber/proofs]] for the full taxonomy.
@@ -153,7 +153,7 @@ fjall keyspace: "bbg"
 │   key:   (source_particle, axon_CID)         sorted by source
 │   value: ()                                  presence (pointer to particles)
 │   polynomial evaluation table for axons_out dimension
-│   "all outgoing from p" = PCS batch opening over this dimension
+│   "all outgoing from p" = Lens batch opening over this dimension
 │
 ├── partition: "axons_in"
 │   key:   (target_particle, axon_CID)         sorted by target
@@ -191,19 +191,19 @@ fjall keyspace: "bbg"
 │   value: commitment_value                    F_p
 │   independent polynomial A(x) evaluation table (NOT a BBG_poly dimension)
 │   append-only — new records extend the polynomial
-│   own PCS commitment: PCS.commit(A), 32 bytes
+│   own Lens commitment: Lens.commit(A), 32 bytes
 │
 ├── partition: "nullifiers"
 │   key:   nullifier_point                     F_p
 │   value: zero_marker                         indicates spent
 │   independent polynomial N(x) evaluation table (NOT a BBG_poly dimension)
-│   N(x) = ∏(x - n_i), own PCS commitment: PCS.commit(N), 32 bytes
+│   N(x) = ∏(x - n_i), own Lens commitment: Lens.commit(N), 32 bytes
 │
 ├── partition: "time"
 │   key:   (boundary_index)
 │   value: BBG_poly evaluation snapshot        queryable at any past t
 │   time is a native dimension of BBG_poly
-│   any historical query = one PCS opening at (index, key, t_past)
+│   any historical query = one Lens opening at (index, key, t_past)
 │
 ├── partition: "signals"
 │   key:   batch_index                         u64
@@ -227,16 +227,16 @@ fjall keyspace: "bbg"
 | store new particle | particles | point write | validator |
 | update directional index | axons_out, axons_in | sorted insert | validator |
 | update polynomial evaluation | affected partitions | point write | validator (per block) |
-| recommit BBG_poly | all polynomial partitions | batch read + PCS commit | validator (per block) |
-| generate PCS opening | polynomial state | proof generation | validator (on demand) |
-| verify PCS opening | — | proof verification | light client |
+| recommit BBG_poly | all polynomial partitions | batch read + Lens commit | validator (per block) |
+| generate Lens opening | polynomial state | proof generation | validator (on demand) |
+| verify Lens opening | — | proof verification | light client |
 | namespace sync response | any partition | range scan | validator |
 | namespace sync receive | partitions | batch write | light client |
 | extend commitment polynomial | commitments | append | validator |
 | extend nullifier polynomial | nullifiers | append | validator |
 | Datalog query | cozo_* | CozoDB query plan | both |
 | name resolution | cards | point lookup by name binding | both |
-| temporal query | any dimension | PCS opening at (index, key, t_past) | both |
+| temporal query | any dimension | Lens opening at (index, key, t_past) | both |
 | signal finalization | signals | append | validator |
 
 ## private record lifecycle
@@ -256,11 +256,11 @@ creation:
   4. cross-index consistency: structural (same polynomial, no separate proof)
 
 active:
-  private record exists in commitment polynomial (provable via PCS opening of A(c))
+  private record exists in commitment polynomial (provable via Lens opening of A(c))
   public aggregates reflect the sum of all active private records
 
 spending:
-  1. neuron proves ownership of the private record (PCS opening of A(c) + secret)
+  1. neuron proves ownership of the private record (Lens opening of A(c) + secret)
   2. nullifier added to N(x): N'(x) = N(x) × (x - n) (O(1) polynomial extension)
   3. public aggregates decremented accordingly
   4. double-spend = N(n) = 0 = structural rejection
@@ -276,11 +276,11 @@ signals arrive in batches. each batch triggers:
 4. update BBG_poly(neurons): focus, karma, stake
 5. process spending: extend nullifier polynomial N(x) for spent records
 6. update BBG_poly for coins, cards, files, locations as needed
-7. recommit all three polynomials: BBG_poly, A(x), N(x) via PCS (batch evaluation changes, one recommitment each)
+7. recommit all three polynomials: BBG_poly, A(x), N(x) via Lens (batch evaluation changes, one recommitment each)
 8. fold into [[zheng]]-2 accumulator (constant-size checkpoint)
 9. emit changeset — CozoDB applies incremental updates
 
-step 7 is the polynomial recommitment. batch all changed evaluations and recommit each polynomial (BBG_poly, A(x), N(x)) once per block. recompute BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)). cost: O(|changes|) field operations — no tree path rehashing.
+step 7 is the polynomial recommitment. batch all changed evaluations and recommit each polynomial (BBG_poly, A(x), N(x)) once per block. recompute BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)). cost: O(|changes|) field operations — no tree path rehashing.
 
 ## storage reclamation
 
@@ -307,9 +307,9 @@ when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 | neurons | full | full (public data) |
 | locations | full | synced ranges |
 | coins, cards, files | full | synced namespaces |
-| commitments (A(x)) | full | own PCS proofs only |
-| nullifiers (N(x)) | full | own PCS proofs only |
-| time | full (all evaluations) | queried via PCS openings |
+| commitments (A(x)) | full | own Lens proofs only |
+| nullifiers (N(x)) | full | own Lens proofs only |
+| time | full (all evaluations) | queried via Lens openings |
 | signals | full | headers + verified proofs |
 | cozo_* | full materialized view | partial view over synced data |
 | fjall keyspace | same layout | same layout, less data |
@@ -327,11 +327,11 @@ Ask query:  "all axons where source = X"
 
 network query:  "prove all axons where source = X"
   → same fjall range scan on axons_out
-  → PCS batch opening proof generation from BBG_poly
+  → Lens batch opening proof generation from BBG_poly
   → returns results + proof (trustless)
 ```
 
-same data, same storage, two access modes. interactive queries go through CozoDB/[[Ask]]. provable queries go through [[zheng]]/PCS. both read from fjall.
+same data, same storage, two access modes. interactive queries go through CozoDB/[[Ask]]. provable queries go through [[zheng]]/Lens. both read from fjall.
 
 ## polynomial particle storage
 
@@ -344,11 +344,11 @@ the same backend stores BBG_poly evaluation tables (aggregate state: energy, pi-
   BBG_poly(particles, CID, t) → aggregate state (energy, π*, axon fields)
   particle_poly(CID, position) → content bytes at any offset
 
-both are polynomial evaluations. both use PCS openings for proofs.
+both are polynomial evaluations. both use Lens openings for proofs.
 both live in the same fjall partition, keyed by CID.
 ```
 
-PCS.open on BBG_poly answers "what is the energy of particle P?" PCS.open on the particle's own polynomial answers "what are bytes 1024..2048 of particle P?" same mechanism, same proof format, same verification.
+Lens.open on BBG_poly answers "what is the energy of particle P?" Lens.open on the particle's own polynomial answers "what are bytes 1024..2048 of particle P?" same mechanism, same proof format, same verification.
 
 ## algebra-adaptive storage
 
@@ -392,7 +392,7 @@ bbg answers: is this data authentic? (proofs)
 
 every query CAN become a proof — [[Ask]] formulates the Datalog query, bbg proves the result via [[zheng]]. the boundary is not about what is provable, but about responsibility:
 
-- bbg stores particles, maintains polynomial evaluation tables, runs the polynomial [[mutator set]], commits signal batches, computes BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), generates and verifies proofs, serves namespace sync. it is the authenticated storage engine.
+- bbg stores particles, maintains polynomial evaluation tables, runs the polynomial [[mutator set]], commits signal batches, computes BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), generates and verifies proofs, serves namespace sync. it is the authenticated storage engine.
 - [[Ask]] compiles Datalog, optimizes query plans, runs graph algorithms (PageRank, Dijkstra, Louvain), manages HNSW vector indices, bridges interactive queries to provable queries. it is the reasoning engine.
 
 bbg does not know what a query means. [[Ask]] does not know how a proof works. when a provable query is requested, [[Ask]] formulates it and hands the execution plan to bbg, which generates the proof via [[zheng]].

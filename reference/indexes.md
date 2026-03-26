@@ -20,8 +20,8 @@ all public indexes are evaluation dimensions of BBG_poly(index, key, t). the dat
 ```
 BBG_poly(index, key, t) = value
 
-query:  PCS.open(BBG_root, (index, key, t)) → (value, proof)
-verify: PCS.verify(BBG_root, (index, key, t), value, proof)
+query:  Lens.open(BBG_root, (index, key, t)) → (value, proof)
+verify: Lens.verify(BBG_root, (index, key, t), value, proof)
 
 verification cost: O(λ log log N) field operations, ~5 μs
 proof size: ~200 bytes per opening (vs ~1 KiB NMT path)
@@ -35,17 +35,17 @@ the defining capability: prove "these are ALL items in a given namespace."
 COMPLETENESS PROOF for namespace N at dimension D:
 
   polynomial approach:
-    PCS opening over the evaluation region where index = D and key ∈ N
+    Lens opening over the evaluation region where index = D and key ∈ N
     the polynomial's binding property guarantees: the committed polynomial
     evaluates to exactly the claimed values at the queried points.
-    omission is algebraically prevented by PCS soundness.
+    omission is algebraically prevented by Lens soundness.
 
   batch opening for range [a, b]:
-    one batch PCS proof covers all entries in the range
-    verification: O(1) — one PCS check
+    one batch Lens proof covers all entries in the range
+    verification: O(1) — one Lens check
 
 ABSENCE PROOF for key K:
-  PCS opening at (D, K, t) → 0
+  Lens opening at (D, K, t) → 0
   proves: no entry exists at this evaluation point
 
 cost:
@@ -102,7 +102,7 @@ DIMENSION 9: time
   evaluation: BBG_poly(time, boundary, t) → snapshot
   key: time boundary value
   proves: "BBG_root at time T was R"
-  note: replaces 7-namespace NMT. continuous — any t is queryable via PCS opening
+  note: replaces 7-namespace NMT. continuous — any t is queryable via Lens opening
 
 DIMENSION 10: signals
   evaluation: BBG_poly(signals, step, t) → signal_batch_hash
@@ -185,15 +185,15 @@ polynomial access to any particle field operates at two levels:
 
 - **BBG_poly dimension** — the AGGREGATE level. BBG_poly(particles, CID, t) returns energy, pi-star, axon weights. this is the state index: what the network knows about a particle in aggregate.
 
-- **particle's own polynomial** — the CONTENT level. PCS.open(particle_commitment, position) returns any byte range of the particle's content. this is the data layer: the actual content the particle addresses.
+- **particle's own polynomial** — the CONTENT level. Lens.open(particle_commitment, position) returns any byte range of the particle's content. this is the data layer: the actual content the particle addresses.
 
-both are PCS openings. both produce ~200 byte proofs. both verify in ~5 microseconds. the difference is what polynomial you open against: BBG_poly for aggregate state, the particle's own commitment for content data.
+both are Lens openings. both produce ~200 byte proofs. both verify in ~5 microseconds. the difference is what polynomial you open against: BBG_poly for aggregate state, the particle's own commitment for content data.
 
 ```
 aggregate query:  BBG_poly(particles, CID, t) → energy, π*
-content query:    PCS.open(particle_poly(CID), byte_offset) → content bytes
+content query:    Lens.open(particle_poly(CID), byte_offset) → content bytes
 
-same PCS. same verification. different polynomials.
+same Lens. same verification. different polynomials.
 ```
 
 ## cross-index consistency

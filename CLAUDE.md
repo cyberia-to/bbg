@@ -566,11 +566,14 @@ mathematical proof that nothing was withheld.
 |------|------|------|
 | nebu | `~/git/nebu/` | Goldilocks field arithmetic |
 | hemera | `~/git/hemera/` | hash function + tree primitives |
+| lens | `~/git/lens/` | polynomial commitment trait (Lens) |
 | nox | `~/git/nox/` | VM (execution, circuits) |
 | zheng | `~/git/zheng/` | proof system (WHIR, SuperSpartan) |
 | mudra | `~/git/mudra/` | crypto primitives |
 | bbg | `~/git/bbg/` | authenticated state (this repo) |
 | cyber | `~/git/cyber/` | knowledge graph (parent subgraph) |
+
+dependency chain: nebu → hemera → lens → nox → zheng → bbg
 
 ## do not touch zones
 

@@ -9,12 +9,12 @@ verifiable queries over [[BBG]] polynomial state. any query against BBG_poly pro
 
 ## the mechanism
 
-BBG_poly(index, key, t) is committed via [[Brakedown]] PCS. a query IS a polynomial evaluation. the proof IS a PCS opening. verification IS O(1) field operations.
+BBG_poly(index, key, t) is committed via [[Brakedown]] Lens. a query IS a polynomial evaluation. the proof IS a Lens opening. verification IS O(1) field operations.
 
 ```
 query:    Q applied to BBG_poly
 result:   R = Q(BBG_poly)
-proof:    PCS opening proving R = Q(BBG_poly) against BBG_root
+proof:    Lens opening proving R = Q(BBG_poly) against BBG_root
 verify:   Brakedown.verify(BBG_root, query_point, R, proof) → accept/reject
 cost:     ~5 μs, independent of query complexity or graph size
 ```
@@ -24,19 +24,19 @@ cost:     ~5 μs, independent of query complexity or graph size
 ```
 "energy of particle P"
 = BBG_poly(particles, P, t_now)
-= one PCS opening, ~200 bytes proof
+= one Lens opening, ~200 bytes proof
 
 "all outgoing axons from P"
 = BBG_poly(axons_out, P, t_now)
-= one PCS batch opening, ~200 bytes proof
+= one Lens batch opening, ~200 bytes proof
 
 "neuron N's focus, karma, stake"
 = BBG_poly(neurons, N, t_now)
-= one PCS opening, ~200 bytes proof
+= one Lens opening, ~200 bytes proof
 
 "state at time T"
 = BBG_poly(index, key, T)
-= one PCS opening at historical time dimension
+= one Lens opening at historical time dimension
 ```
 
 every simple query: ~200 bytes proof, O(√N) field operations to verify.
@@ -78,7 +78,7 @@ verifiable result + proof
 SELECT particle_id, pi FROM particles ORDER BY pi DESC LIMIT 100
 
 compilation:
-  1. batch opening of particles polynomial               (PCS opening)
+  1. batch opening of particles polynomial               (Lens opening)
   2. permutation argument proving sort                    (~N constraints)
   3. truncation proof: output[100].pi ≤ output[99].pi    (1 comparison)
   4. completeness: no particle with π > output[100].pi   (range check)
@@ -90,9 +90,9 @@ proof: ~5 KiB, verify: ~5 μs
 
 ```
 compilation:
-  1. open axons_out for A → neighbors N₁                 (PCS opening)
-  2. open axons_out for each n ∈ N₁ → N₂                 (batch PCS opening)
-  3. open axons_out for each n ∈ N₂ → N₃                 (batch PCS opening)
+  1. open axons_out for A → neighbors N₁                 (Lens opening)
+  2. open axons_out for each n ∈ N₁ → N₂                 (batch Lens opening)
+  3. open axons_out for each n ∈ N₂ → N₃                 (batch Lens opening)
   4. check B ∈ N₁ ∪ N₂ ∪ N₃                              (membership)
 
 each hop folds into accumulator via HyperNova (~30 field ops).

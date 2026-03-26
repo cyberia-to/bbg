@@ -16,7 +16,7 @@ all authenticated state committed under a single polynomial commitment. individu
 ## BBG root
 
 ```
-BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N))
+BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N))
 
 three 32-byte Brakedown commitments hashed together → one 32-byte root
 
@@ -43,14 +43,14 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
 ```
                           ┌────────────────────────────────────────────────────┐
                           │                    BBG_root                        │
-                          │ H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)) │
+                          │ H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)) │
                           │                   32 bytes                         │
                           └─────────┬──────────────────┬──────────────┬───────┘
                                     │                  │              │
                           ┌─────────┴────────┐  ┌──────┴─────┐ ┌─────┴──────┐
                           │   BBG_poly       │  │   A(x)     │ │   N(x)     │
                           │ 10 public dims   │  │ commitment │ │ nullifier  │
-                          │ PCS.commit: 32 B │  │ PCS: 32 B  │ │ PCS: 32 B  │
+                          │ Lens.commit: 32B │  │ Lens: 32 B │ │ Lens: 32 B │
                           └─────────┬────────┘  └────────────┘ └────────────┘
                                     │
                   ┌───┬───┬───┬───┬─┴─┬───┬───┬───┬───┐
@@ -58,14 +58,14 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
 ```
 
 BBG_poly: 10 public evaluation dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals).
-A(x), N(x): independent private polynomial commitments, each with its own Brakedown PCS commitment.
+A(x), N(x): independent private polynomial commitments, each with its own Brakedown Lens commitment.
 cross-index consistency: structural — same polynomial, different evaluation dimensions. LogUp eliminated.
 
 ## checkpoint
 
 ```
 CHECKPOINT = (
-  BBG_root,           ← H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), 32 bytes
+  BBG_root,           ← H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), 32 bytes
   folding_acc,        ← zheng-2 accumulator (constant size, ~30 field elements)
   block_height        ← current height
 )
@@ -89,7 +89,7 @@ TRANSACTION TYPES:
 1. CYBERLINK — create private record + update public aggregates
    input:  (neuron, from_particle, to_particle, token, amount, valence, zk_proof)
    private effect:
-     - extend independent commitment polynomial A(x) at new point (O(1) PCS update)
+     - extend independent commitment polynomial A(x) at new point (O(1) Lens update)
    public effect:
      - update BBG_poly(particles, H(from,to), t): axon weight
      - update BBG_poly(axons_out, from, t): outgoing index

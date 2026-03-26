@@ -29,7 +29,7 @@ completeness      per-neuron polynomial commits signal set — withholding detec
 
 availability      algebraic DAS + 2D Reed-Solomon erasure coding
                   any k-of-n chunks reconstruct original
-                  O(√n) PCS opening samples verify availability
+                  O(√n) Lens opening samples verify availability
 
 merge             LOCAL:  CRDT (G-Set union) — 1-20 neurons, same identity
                   GLOBAL: foculus (π convergence) — 10³-10⁹ neurons, different identities
@@ -39,7 +39,7 @@ finalization      network includes signal in block → assigns t (block height)
                   state transitions applied to BBG_poly evaluation dimensions
 
 query             client requests namespace from BBG_root
-                  PCS opening proof — provably complete response
+                  Lens opening proof — provably complete response
 ```
 
 ## three scales
@@ -49,7 +49,7 @@ query             client requests namespace from BBG_root
 | **who** | 1-20 neurons (same identity) | 10^3-10^9 neurons (different identities) | light client ↔ peer |
 | **direction** | bidirectional merge | neuron → network | pull (client reads) |
 | **data** | private cyberlinks, files, names | signals (public aggregate) | BBG state (public) |
-| **privacy** | private (individual records) | public (aggregate) | public (PCS proofs) |
+| **privacy** | private (individual records) | public (aggregate) | public (Lens proofs) |
 | **trust** | same identity, semi-trusted | different identities, untrusted | peer untrusted, only BBG_root |
 | **merge** | CRDT (G-Set union) | foculus (π convergence) | N/A (read-only) |
 | **ordering** | VDF + hash chain + Merkle clock | VDF + hash chain + Merkle clock | block height (t) |
@@ -101,7 +101,7 @@ layer           mechanism               guarantee
 ─────           ─────────               ─────────
 1. validity     zheng proof per signal  invalid state transition → rejected
 2. ordering     hash chain + VDF        reordering/flooding → structurally prevented
-3. completeness PCS per source          withholding → algebraically detectable
+3. completeness Lens per source         withholding → algebraically detectable
 4. availability algebraic DAS + erasure data loss → recoverable from k-of-n
 5. merge        CRDT or foculus         convergence → deterministic final state
 ```
@@ -194,15 +194,15 @@ no negotiation, no leader, no timestamps
 
 two distinct signal commitments operate at different scales:
 
-**per-neuron signal commitment (LOCAL):** each neuron commits its own signal chain to a local polynomial indexed by step. this is a per-neuron PCS commitment used in the sync protocol — not part of BBG_poly. each neuron maintains and extends its own commitment as it produces signals.
+**per-neuron signal commitment (LOCAL):** each neuron commits its own signal chain to a local polynomial indexed by step. this is a per-neuron Lens commitment used in the sync protocol — not part of BBG_poly. each neuron maintains and extends its own commitment as it produces signals.
 
 **BBG_poly(signals) (NETWORK-LEVEL):** the signals dimension of BBG_poly is the finalized index maintained by validators after block inclusion. when a signal batch is included in a block, validators update BBG_poly(signals, step, t) with the finalized batch.
 
 ```
 LOCAL (per-neuron):
-  each neuron commits its signal chain via its own PCS commitment
+  each neuron commits its signal chain via its own Lens commitment
   proves: "these are ALL signals from source S in step range [a, b]"
-  PCS binding: source cannot hide a signal in the requested range
+  Lens binding: source cannot hide a signal in the requested range
   updated: on every new signal (extend polynomial, recommit)
   cost: O(1) per signal (polynomial extension)
 
@@ -222,12 +222,12 @@ NETWORK (BBG_poly dimension):
   extended: 2×(√n × √n) with parity rows and columns
   any √n × √n submatrix sufficient for reconstruction
 
-sampling: O(√n) random cells with PCS openings (algebraic DAS)
+sampling: O(√n) random cells with Lens openings (algebraic DAS)
   ~1.5 KiB for 20 samples (was ~25 KiB with NMT paths)
   O(1) field verifications per sample (was O(log n) hemera)
   99.9999% confidence at 20 samples
 
-fraud proofs: bad encoding detectable with k+1 cells + PCS openings
+fraud proofs: bad encoding detectable with k+1 cells + Lens openings
   decoded polynomial degree mismatch → fraud proof generated
   verification: O(k) field operations
 ```
@@ -314,12 +314,12 @@ two neurons of the same identity reconnect.
    each neuron sends its current signal commitment
 
 3. REQUEST missing step ranges                   O(1) per range
-   with PCS batch opening proofs
+   with Lens batch opening proofs
    → provably ALL signals in range received
    → no withholding possible
 
 4. DAS SAMPLE content chunks                     O(√n)
-   algebraic DAS — PCS openings per sample (~200 bytes each)
+   algebraic DAS — Lens openings per sample (~200 bytes each)
    verify content availability
    request missing chunks by CID
 
@@ -329,7 +329,7 @@ two neurons of the same identity reconnect.
    c) no equivocation? (no duplicate prev)       layer 2: ordering
    d) VDF proof valid?                           layer 2: ordering
    e) step counter monotonic?                    layer 2: ordering
-   f) PCS opening proof valid?                   layer 3: completeness
+   f) Lens opening proof valid?                   layer 3: completeness
 
 6. MERGE signal DAGs                             O(signals)
    compute deterministic total order (CRDT)
@@ -355,7 +355,7 @@ signals flow from local sync to the network.
 5. foculus merges (layer 5): π-weighted convergence
 6. block producer includes signals → assigns t (block height)
 7. state transitions applied to BBG_poly evaluation dimensions
-8. BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)) updated → time dimension records snapshot
+8. BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)) updated → time dimension records snapshot
 ```
 
 ## query sync protocol
@@ -364,13 +364,13 @@ light clients and full nodes query BBG state. read-only — no signals produced.
 
 ### namespace queries
 
-five query types, each backed by PCS opening proofs.
+five query types, each backed by Lens opening proofs.
 
 **outgoing axons from particle P:**
 ```
 client → peer: (axons_out, key=P, state_root=BBG_root)
-peer → client: PCS batch opening + all axon entries for P
-client verifies: PCS.verify(BBG_root, (axons_out, P, t), entries, proof)
+peer → client: Lens batch opening + all axon entries for P
+client verifies: Lens.verify(BBG_root, (axons_out, P, t), entries, proof)
 guarantee: "ALL outgoing axons from P. nothing hidden."
 proof size: ~200 bytes (was ~1 KiB NMT path)
 ```
@@ -378,28 +378,28 @@ proof size: ~200 bytes (was ~1 KiB NMT path)
 **incoming axons to particle Q:**
 ```
 client → peer: (axons_in, key=Q, state_root=BBG_root)
-peer → client: PCS batch opening + all axon entries for Q
+peer → client: Lens batch opening + all axon entries for Q
 guarantee: "ALL incoming axons to Q. nothing hidden."
 ```
 
 **neuron public state:**
 ```
 client → peer: (neurons, key=N, state_root=BBG_root)
-peer → client: PCS opening + neuron data (focus, karma, stake)
+peer → client: Lens opening + neuron data (focus, karma, stake)
 guarantee: "neuron N's complete public state."
 ```
 
 **particle data:**
 ```
 client → peer: (particles, key=P, state_root=BBG_root)
-peer → client: PCS opening + particle data (energy, π*, axon fields)
+peer → client: Lens opening + particle data (energy, π*, axon fields)
 guarantee: "particle P's complete public data."
 ```
 
 **state at time T:**
 ```
 client → peer: (index, key, t=T, state_root=BBG_root)
-peer → client: PCS opening at (index, key, T)
+peer → client: Lens opening at (index, key, T)
 guarantee: "authenticated state at time T."
 any index, any key, any time — one polynomial opening.
 ```
@@ -412,8 +412,8 @@ client has state at height h₁, wants updates through h₂:
 1. REQUEST time range [h₁, h₂] with BBG_root at h₂
 2. RESPONSE: polynomial update deltas between h₁ and h₂
    + per monitored namespace: diff of added/removed/updated entries
-   + batch PCS opening at height h₂
-3. VERIFY: batch PCS opening against BBG_root at h₂
+   + batch Lens opening at height h₂
+3. VERIFY: batch Lens opening against BBG_root at h₂
 
 data transferred: O(|changes since h₁|) — NOT O(|total state|)
 cost: O(|changes|) field ops (was O(|changes| × log n) hemera hashes)
@@ -437,7 +437,7 @@ new client joins with no history:
 4. MAINTAIN:
    - fold each new block into local folding_acc (~30 field ops)
    - update polynomial mutator set proofs for owned private records (O(1) per block)
-   - update PCS proofs for monitored namespaces
+   - update Lens proofs for monitored namespaces
 
 join cost:     ONE zheng verification + namespace sync (~200 bytes per namespace)
 ongoing cost:  O(1) per block
@@ -477,7 +477,7 @@ erasure coding:
 sampling (algebraic DAS):
   neuron commits content to per-neuron polynomial (keyed by CID)
   verifier samples O(√n) random chunk positions
-  each sample: chunk + PCS opening (~75 bytes, was ~1 KiB NMT path)
+  each sample: chunk + Lens opening (~75 bytes, was ~1 KiB NMT path)
   99.9999% confidence at 20 samples
   total bandwidth: ~1.5 KiB (was ~25 KiB)
 ```
@@ -486,14 +486,14 @@ sampling (algebraic DAS):
 
 ```
 neuron commits content set to polynomial:
-  content_commitment = PCS.commit(content_poly)
+  content_commitment = Lens.commit(content_poly)
 
 peer requests namespace proof:
   "give me ALL CIDs in range [X, Y] with proof"
 
-polynomial completeness: PCS binding prevents hiding a CID in range
+polynomial completeness: Lens binding prevents hiding a CID in range
 algebraic guarantee — polynomial cannot lie
-proof: PCS batch opening over the evaluation region
+proof: Lens batch opening over the evaluation region
 ```
 
 ### three layers composed
@@ -502,12 +502,12 @@ proof: PCS batch opening over the evaluation region
 layer           mechanism       guarantees
 ─────           ─────────       ──────────
 merge           CRDT (G-Set)    convergence, commutative, idempotent
-completeness    PCS opening     provable completeness, withholding impossible
+completeness    Lens opening     provable completeness, withholding impossible
 availability    algebraic DAS   data survives neuron failure, O(√n) verification
 
 CRDT alone:  converges on possibly incomplete data
 DAS alone:   proves availability, no merge semantics
-PCS alone:   proves completeness, no availability
+Lens alone:  proves completeness, no availability
 together:    provably complete, provably available, correctly merged
 ```
 
@@ -547,7 +547,7 @@ REORDERING           hash chain              prev hashes break →
 (changing history)                           detectable by any peer
                                              cost: O(1) detection
 
-WITHHOLDING          PCS + algebraic DAS     PCS completeness proof →
+WITHHOLDING          Lens + algebraic DAS    Lens completeness proof →
 (hiding signals)                             withheld signals detectable
                                              algebraic DAS: availability verifiable
                                              cost: O(√n) sampling, ~1.5 KiB
@@ -567,15 +567,15 @@ STALE NEURON         snapshot + fast sync    reconnect → find common snapshot 
 
 ## polynomial state summary
 
-BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)) — three polynomial commitments hashed into one 32-byte root. every public query is a PCS opening against BBG_poly. every private query is a PCS opening against A(x) or N(x). every verification is O(1) field operations.
+BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)) — three polynomial commitments hashed into one 32-byte root. every public query is a Lens opening against BBG_poly. every private query is a Lens opening against A(x) or N(x). every verification is O(1) field operations.
 
 the five verification layers:
 
 ```
 layer 1 (validity):      zheng proof per signal — unchanged
 layer 2 (ordering):      hash chain + VDF — unchanged
-layer 3 (completeness):  PCS binding — algebraic completeness, O(1) proof, ~200 bytes
-layer 4 (availability):  algebraic DAS — PCS openings, ~1.5 KiB for 20 samples
+layer 3 (completeness):  Lens binding — algebraic completeness, O(1) proof, ~200 bytes
+layer 4 (availability):  algebraic DAS — Lens openings, ~1.5 KiB for 20 samples
 layer 5 (merge):         CRDT / foculus — unchanged
 ```
 
@@ -586,7 +586,7 @@ light client join:
 ```
 1. download checkpoint: ~232 bytes (BBG_root + accumulator + height)
 2. verify: ONE zheng decider, ~5 μs
-3. sync namespaces: ~200 bytes per PCS opening
+3. sync namespaces: ~200 bytes per Lens opening
 4. DAS verify: ~1.5 KiB (20 algebraic samples)
 total: < 10 KiB
 ```

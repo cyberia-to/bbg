@@ -11,7 +11,7 @@ density: 0.47
 ---
 # data availability
 
-bbg without data availability is incomplete. authenticated state means nothing if the data behind it cannot be retrieved. algebraic DAS (Data Availability Sampling) allows light clients to verify that block data is available without downloading the full block, using PCS openings instead of Merkle paths.
+bbg without data availability is incomplete. authenticated state means nothing if the data behind it cannot be retrieved. algebraic DAS (Data Availability Sampling) allows light clients to verify that block data is available without downloading the full block, using Lens openings instead of Merkle paths.
 
 ## 2D Reed-Solomon erasure coding
 
@@ -39,19 +39,19 @@ the erasure coding structure is independent of the commitment scheme. Reed-Solom
 
 ## native DAS for polynomial particles
 
-when particles ARE polynomials, DAS becomes native to the data model. the particle's content polynomial already exists as a PCS commitment. extending that polynomial beyond the Boolean hypercube produces the erasure code — no separate 2D Reed-Solomon encoding step is needed. the particle's PCS commitment IS the DAS commitment.
+when particles ARE polynomials, DAS becomes native to the data model. the particle's content polynomial already exists as a Lens commitment. extending that polynomial beyond the Boolean hypercube produces the erasure code — no separate 2D Reed-Solomon encoding step is needed. the particle's Lens commitment IS the DAS commitment.
 
 ```
 particle content         → polynomial f(x) over Goldilocks
-PCS.commit(f)            → particle identity (via hemera wrapping)
+Lens.commit(f)            → particle identity (via hemera wrapping)
 f evaluated beyond 2^v   → erasure-coded extension (automatic)
-sampling                 = PCS.open(commitment, random position)    ~75 bytes proof
+sampling                 = Lens.open(commitment, random position)    ~75 bytes proof
 reconstruction           = polynomial interpolation from k evaluations
 ```
 
 to obtain 2D RS structure for row/column fraud proofs, reshape the noun polynomial as a √N x √N bivariate: f(x) → g(row, col) where row and col index a grid over the evaluation domain. this is a coordinate remapping, not a separate encoding. the polynomial is the same object.
 
-the implication: every polynomial particle is automatically erasure-coded by construction. DAS sampling is PCS opening at random positions. no encoding pipeline, no separate commitment. the particle IS the erasure code.
+the implication: every polynomial particle is automatically erasure-coded by construction. DAS sampling is Lens opening at random positions. no encoding pipeline, no separate commitment. the particle IS the erasure code.
 
 the 2D RS description below remains the concrete mechanism for block-level DAS where multiple particles are batched into a single block commitment.
 
@@ -60,11 +60,11 @@ the 2D RS description below remains the concrete mechanism for block-level DAS w
 ```
 each row → polynomial over Goldilocks
 all row polynomials → bivariate polynomial P(row, col)
-block_commitment = PCS.commit(P)    one commitment, 32 bytes
+block_commitment = Lens.commit(P)    one commitment, 32 bytes
 
 structure: bivariate polynomial
-commitment: one PCS commitment (32 bytes)
-opening: PCS evaluation proof per sample
+commitment: one Lens commitment (32 bytes)
+opening: Lens evaluation proof per sample
 ```
 
 the bivariate structure P(row, col) encodes the 2D erasure grid. the commitment is algebraic (polynomial binding) instead of structural (tree hashing).
@@ -73,18 +73,18 @@ the bivariate structure P(row, col) encodes the 2D erasure grid. the commitment 
 
 ```
 sampler picks random (row, col):
-  requests: cell value + PCS opening for P(row, col)
-  verifies: PCS.verify(block_commitment, (row, col), value, proof)
+  requests: cell value + Lens opening for P(row, col)
+  verifies: Lens.verify(block_commitment, (row, col), value, proof)
 
-one PCS verification per sample instead of tree path walks.
+one Lens verification per sample instead of tree path walks.
 
 per-sample proof:
   cell data:         ~256 bytes (chunk content)
-  PCS opening:       ~75 bytes (recursive Brakedown evaluation proof)
+  Lens opening:       ~75 bytes (recursive Brakedown evaluation proof)
   verification:      O(λ log log N) field operations
 
 20 samples for 99.9999% confidence (batch opening):
-  bandwidth:  ~1.5 KiB (batch PCS opening, amortized across 20 samples)
+  bandwidth:  ~1.5 KiB (batch Lens opening, amortized across 20 samples)
   compute:    20 × O(λ log log N) field verifications
   constraints: ~20 × 150 = ~3K constraints
 ```
@@ -94,10 +94,10 @@ per-sample proof:
 ```
                         NMT-based DAS           algebraic DAS
 ────────────────────    ─────────────           ─────────────
-commitment:             hemera tree              PCS commitment
-  size:                 32 bytes (root)          32 bytes (PCS)
+commitment:             hemera tree              Lens commitment
+  size:                 32 bytes (root)          32 bytes (Lens)
 
-per-sample proof:       NMT auth path            PCS opening (recursive)
+per-sample proof:       NMT auth path            Lens opening (recursive)
   size:                 ~1 KiB                   ~75 bytes
   verification:         O(log n) hemera          O(λ log log N) field ops
 
@@ -111,7 +111,7 @@ fraud proof (k=64):
   verification:         O(k log n) hemera        O(k) field ops
 
 namespace completeness:
-  mechanism:            NMT sorting invariant    PCS binding
+  mechanism:            NMT sorting invariant    Lens binding
   proof size:           O(range × log n)         O(range)
   verification:         O(range × log n) hemera  O(range) field ops
 
@@ -126,11 +126,11 @@ if a block producer encodes a row incorrectly:
 1. obtain enough cells from the row (k+1 out of 2k)
 2. attempt Reed-Solomon decoding
 3. if decoded polynomial doesn't match claimed commitment:
-   → fraud proof = the k+1 cells with their PCS openings
+   → fraud proof = the k+1 cells with their Lens openings
    → any verifier can check: decode(cells) ≠ row polynomial
    → block rejected
 
-size of fraud proof: O(k) cells with O(1) PCS openings each
+size of fraud proof: O(k) cells with O(1) Lens openings each
 verification: O(k) field operations — linear in row size
 ```
 
@@ -138,16 +138,16 @@ verification: O(k) field operations — linear in row size
 
 ```
 light client interested in particle P:
-  1. PCS opening tells which evaluation region contains namespace P
+  1. Lens opening tells which evaluation region contains namespace P
   2. sample random cells from THAT region
   3. each cell comes with:
-     a) PCS opening (proves cell belongs to committed polynomial)
+     a) Lens opening (proves cell belongs to committed polynomial)
      b) namespace inclusion (proves cell is in correct namespace)
   4. if enough cells available → data is available with high probability
 
 completeness and availability compose:
-  completeness: PCS opening proves namespace content is complete
-  availability: PCS opening proves erasure-coded cells are committed
+  completeness: Lens opening proves namespace content is complete
+  availability: Lens opening proves erasure-coded cells are committed
   both are polynomial evaluations against the same commitment
 ```
 

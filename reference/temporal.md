@@ -13,7 +13,7 @@ density: 1.23
 
 [[axons]] decay over time. without a forgetting mechanism, the [[cybergraph]] grows without bound. temporal decay applies to axon aggregate weights — individual [[cyberlinks]] are private and decay is expressed through their aggregate contribution to the public axon weight.
 
-time is a native dimension of BBG_poly. historical queries are polynomial evaluations at (index, key, t_past) — one PCS opening, O(1) verification.
+time is a native dimension of BBG_poly. historical queries are polynomial evaluations at (index, key, t_past) — one Lens opening, O(1) verification.
 
 ## exponential weight decay
 
@@ -45,13 +45,13 @@ BBG_poly(index, key, t) — t is a native variable
 
 historical query:
   "what was π of particle P at block 1000?"
-  → PCS.open(BBG_root, (particles, P, 1000))
+  → Lens.open(BBG_root, (particles, P, 1000))
   → one evaluation proof, ~5 μs verification
 
 range query:
   "all focus changes for neuron N between t₁ and t₂"
   → evaluate BBG_poly(neurons, N, t₁) and BBG_poly(neurons, N, t₂)
-  → two PCS openings, prove the difference
+  → two Lens openings, prove the difference
 
 any time, any index, any key — one polynomial opening.
 ```
@@ -66,7 +66,7 @@ cost comparison:
     ~96 hemera permutations = ~70K constraints per historical query
 
   polynomial time dimension:
-    "state at time t" = PCS.open(BBG_root, (index, key, t))
+    "state at time t" = Lens.open(BBG_root, (index, key, t))
     O(1) field operations per historical query
 ```
 
@@ -83,7 +83,7 @@ condition: w_eff(axon, current_block) < ε
 6. cross-index consistency: structural (same polynomial, no separate proof)
 ```
 
-cost: O(1) polynomial updates per dimension + batch PCS recommit. pruners earn a fraction of recycled focus.
+cost: O(1) polynomial updates per dimension + batch Lens recommit. pruners earn a fraction of recycled focus.
 
 when an axon is pruned, the source and target particles lose the axon's energy contribution. if a particle's total energy reaches zero (no remaining axons reference it), the particle is eligible for content reclamation at L3 (see [[storage]]). historical state is preserved in the polynomial — past evaluations at (index, key, t_before_pruning) still return the axon data.
 
@@ -113,7 +113,7 @@ at epoch boundary:
   1. for each axon: recompute w_eff using exact α^Δt
   2. prune axons below threshold ε
   3. batch polynomial update for all removals and weight changes
-  4. recommit BBG_poly with updated evaluations (one PCS recommit)
+  4. recommit BBG_poly with updated evaluations (one Lens recommit)
   5. update decay pool
   6. BBG_poly(time, epoch_boundary, t): snapshot evaluation point
 
@@ -122,7 +122,7 @@ between epochs:
   exact computation deferred to next epoch boundary
 ```
 
-epoch boundaries correspond to temporal granularity levels. each epoch snapshot is an evaluation point in the time dimension, enabling temporal queries: "what was the graph state after decay at epoch E?" — one PCS opening.
+epoch boundaries correspond to temporal granularity levels. each epoch snapshot is an evaluation point in the time dimension, enabling temporal queries: "what was the graph state after decay at epoch E?" — one Lens opening.
 
 ## storage reclamation cascade
 
@@ -131,7 +131,7 @@ pruning an axon triggers effects through the storage tiers:
 ```
 L1 (hot state):
   polynomial evaluation tables updated for affected dimensions
-  BBG_poly recommitted — one PCS recommit per block
+  BBG_poly recommitted — one Lens recommit per block
   immediate — part of the state transition
 
 L2 (particle data):

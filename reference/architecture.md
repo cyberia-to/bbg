@@ -15,7 +15,7 @@ the authenticated state layer for [[cyber]]. individual [[cyberlinks]] are priva
 
 ## design constraints
 
-bbg follows the design principles described in [[design-principles]]: bounded locality (no global recompute), constant-cost verification (O(1) proof checking), structural security (algebraic binding). these are properties of the [[cyber]] architecture — bbg implements them via polynomial state and PCS openings.
+bbg follows the design principles described in [[design-principles]]: bounded locality (no global recompute), constant-cost verification (O(1) proof checking), structural security (algebraic binding). these are properties of the [[cyber]] architecture — bbg implements them via polynomial state and Lens openings.
 
 ## ontology
 
@@ -59,7 +59,7 @@ see [[privacy]] for the full boundary specification and mutator set architecture
 ## BBG root
 
 ```
-BBG_root = H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N))
+BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N))
 
 three 32-byte Brakedown commitments hashed together → one 32-byte root
 ```
@@ -90,11 +90,11 @@ every public query is a polynomial evaluation of BBG_poly:
 private queries use the independent commitments:
 
 ```
-"commitment exists for record c"     = PCS.open(A, c) → v   (membership proof)
-"nullifier n not yet spent"          = PCS.open(N, n) → ≠ 0 (non-membership proof)
+"commitment exists for record c"     = Lens.open(A, c) → v   (membership proof)
+"nullifier n not yet spent"          = Lens.open(N, n) → ≠ 0 (non-membership proof)
 ```
 
-one PCS opening per query. one verification per proof. ~5 μs.
+one Lens opening per query. one verification per proof. ~5 μs.
 
 ## evaluation dimensions
 
@@ -102,15 +102,15 @@ BBG_poly has 10 public evaluation dimensions. each former sub-root is now an eva
 
 ### particles ARE polynomials
 
-particles are polynomial nouns. particle identity = hemera(PCS.commit(content) ‖ PARTICLE). the content of a particle is a polynomial over the Goldilocks field; its identity is the hemera-wrapped PCS commitment of that polynomial.
+particles are polynomial nouns. particle identity = hemera(Lens.commit(content) ‖ PARTICLE). the content of a particle is a polynomial over the Goldilocks field; its identity is the hemera-wrapped Lens commitment of that polynomial.
 
-accessing any byte range within a particle = PCS.open(commitment, position) producing ~75 bytes of proof. this enables:
+accessing any byte range within a particle = Lens.open(commitment, position) producing ~75 bytes of proof. this enables:
 
-- **O(1) random access** to particle content — any byte range is a PCS opening, no tree path walk
-- **native DAS** — the polynomial extension beyond the Boolean hypercube IS the erasure code. no separate 2D Reed-Solomon encoding step. the particle's PCS commitment IS the DAS commitment
+- **O(1) random access** to particle content — any byte range is a Lens opening, no tree path walk
+- **native DAS** — the polynomial extension beyond the Boolean hypercube IS the erasure code. no separate 2D Reed-Solomon encoding step. the particle's Lens commitment IS the DAS commitment
 - **algebraic composability** — particle identity is a field element derived from a polynomial commitment. state operations (energy accumulation, axon aggregation, focus computation) compose algebraically with particle identity. no hash-to-field conversion boundary
 
-the BBG_poly dimension gives aggregate state (energy, pi-star). the particle's own polynomial gives content (full data, any byte range). two levels of polynomial commitment, both served by the same PCS.
+the BBG_poly dimension gives aggregate state (energy, pi-star). the particle's own polynomial gives content (full data, any byte range). two levels of polynomial commitment, both served by the same Lens.
 
 ### particles — evaluation dimension
 
@@ -126,15 +126,15 @@ axon-particles carry additional fields:
 - market state: s_YES, s_NO (16 bytes) — ICBS reserve amounts
 - meta-score (8 bytes) — aggregate valence prediction
 
-direct lookup of any particle or axon by CID: one PCS opening, O(1).
+direct lookup of any particle or axon by CID: one Lens opening, O(1).
 
 ### axons_out — evaluation dimension (directional index)
 
-axon-particles indexed by source particle namespace. querying "all outgoing from p" is a single PCS batch opening. entry data: pointer to axon-particle in particles dimension.
+axon-particles indexed by source particle namespace. querying "all outgoing from p" is a single Lens batch opening. entry data: pointer to axon-particle in particles dimension.
 
 ### axons_in — evaluation dimension (directional index)
 
-axon-particles indexed by target particle namespace. querying "all incoming to q" is a single PCS batch opening. entry data: pointer to axon-particle in particles dimension.
+axon-particles indexed by target particle namespace. querying "all incoming to q" is a single Lens batch opening. entry data: pointer to axon-particle in particles dimension.
 
 cross-index consistency is structural: axons_out, axons_in, and particles are evaluation dimensions of the SAME polynomial. they cannot disagree. LogUp is unnecessary.
 
@@ -166,7 +166,7 @@ content availability commitments. DAS (Data Availability Sampling) over stored c
 
 ### time — evaluation dimension
 
-time is a native dimension of BBG_poly. historical queries are polynomial evaluations at (index, key, t_past). the 7 temporal granularities (steps, seconds, hours, days, weeks, moons, years) are encoded as evaluation regions within the time dimension. any query at any past time is one PCS opening.
+time is a native dimension of BBG_poly. historical queries are polynomial evaluations at (index, key, t_past). the 7 temporal granularities (steps, seconds, hours, days, weeks, moons, years) are encoded as evaluation regions within the time dimension. any query at any past time is one Lens opening.
 
 ### signals — evaluation dimension
 
@@ -174,21 +174,21 @@ finalized [[signal]] batches. a signal bundles cyberlinks with an [[impulse]] (�
 
 ## private polynomial commitments
 
-A(x) and N(x) are independent polynomial commitments — NOT dimensions of BBG_poly. each has its own Brakedown PCS commitment (32 bytes). BBG_root combines all three: H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)).
+A(x) and N(x) are independent polynomial commitments — NOT dimensions of BBG_poly. each has its own Brakedown Lens commitment (32 bytes). BBG_root combines all three: H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)).
 
 ### commitment polynomial A(x)
 
-every private record (cyberlink, UTXO) has a commitment A(c_i) = v_i. membership proof: one PCS opening against PCS.commit(A), O(1). append-only — new records extend the polynomial by one degree.
+every private record (cyberlink, UTXO) has a commitment A(c_i) = v_i. membership proof: one Lens opening against Lens.commit(A), O(1). append-only — new records extend the polynomial by one degree.
 
 ### nullifier polynomial N(x)
 
-N(x) = ∏(x - n_i). when a record is spent, its nullifier is absorbed into the polynomial. non-membership proof: prove N(c) ≠ 0 via one PCS opening against PCS.commit(N), O(1). double-spend = N(c) = 0 = structural rejection.
+N(x) = ∏(x - n_i). when a record is spent, its nullifier is absorbed into the polynomial. non-membership proof: prove N(c) ≠ 0 via one Lens opening against Lens.commit(N), O(1). double-spend = N(c) = 0 = structural rejection.
 
 ## checkpoint
 
 ```
 CHECKPOINT = (
-  BBG_root,           ← H(PCS.commit(BBG_poly) ‖ PCS.commit(A) ‖ PCS.commit(N)), 32 bytes
+  BBG_root,           ← H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), 32 bytes
   folding_acc,        ← zheng-2 accumulator (constant size, ~30 field elements)
   block_height        ← current height
 )
@@ -219,7 +219,7 @@ L4: Archival       historical state via polynomial time dimension
 
 | primitive | role | heritage |
 |-----------|------|----------|
-| PCS (Brakedown) | state commitment, completeness proofs, DAS | Brakedown (2023—) |
+| Lens (Brakedown) | state commitment, completeness proofs, DAS | Brakedown (2023—) |
 | BBG_poly | unified state polynomial | algebraic NMT evolution |
 | commitment polynomial A(x) | private record commitments | Neptune mutator set heritage |
 | nullifier polynomial N(x) | private double-spend prevention | Neptune SWBF heritage |
@@ -237,11 +237,11 @@ DEVICE                          NETWORK                         CLIENT
 nox execution                   include signals in block        download checkpoint
   ↓ proof-carrying                ↓ polynomial state update       ↓ one zheng decider
 hemera identity                 fold into block accumulator     sync namespaces
-  ↓ folded sponge                 ↓ HyperNova folding             ↓ PCS openings
+  ↓ folded sponge                 ↓ HyperNova folding             ↓ Lens openings
 build signal                    fold into epoch accumulator     DAS sample
   ↓ (ν, l⃗, π_Δ, σ, prev...)     ↓ universal accumulator          ↓ algebraic DAS
 local sync                      publish checkpoint              query
-  ↓ CRDT + PCS + DAS              ↓ ~240 bytes                    ↓ verifiable query
+  ↓ CRDT + Lens + DAS             ↓ ~240 bytes                    ↓ verifiable query
 submit to network
   ↓ foculus π convergence
 ```
@@ -252,7 +252,7 @@ submit to network
 | local sync | [[sync]] (structural sync layers 1-5) | ~200 bytes per namespace |
 | block processing | [[state]] (polynomial updates) | ~3,200 constraints per cyberlink |
 | epoch composition | [[sync]] + zheng recursion.md | ~100K constraints per epoch |
-| light client | [[sync]] (checkpoint + PCS) | < 10 KiB, ~5 μs |
+| light client | [[sync]] (checkpoint + Lens) | < 10 KiB, ~5 μs |
 | query | [[query]] (verifiable query compiler) | ~200 bytes to ~5 KiB proof |
 
 see [[state]] for transaction types, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated, [[sync]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension, [[query]] for verifiable queries
