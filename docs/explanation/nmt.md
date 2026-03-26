@@ -8,7 +8,7 @@ alias: namespaced Merkle tree, namespaced Merkle trees, NMTs
 
 ## what changed
 
-[[NMT]] (Namespace Merkle Tree) was originally bbg's authentication mechanism — the sorted invariant at internal nodes provided completeness proofs. the polynomial state architecture replaced NMTs for authentication: PCS binding now provides completeness via algebraic guarantees.
+[[NMT]] (Namespace Merkle Tree) was originally bbg's authentication mechanism — the sorted invariant at internal nodes provided completeness proofs. the polynomial state architecture replaced NMTs for authentication: Lens binding now provides completeness via algebraic guarantees.
 
 NMT survives in a different role: **cold storage disk layout optimization**.
 
@@ -20,7 +20,7 @@ this was replaced by polynomial evaluation:
 
 ```
 NMT completeness:         walk tree, check sorting invariant    O(log n) hemera hashes
-polynomial completeness:  PCS opening, check binding            O(1) field operations
+polynomial completeness:  Lens opening, check binding            O(1) field operations
 ```
 
 the polynomial approach is 33× cheaper per [[cyberlinks|cyberlink]] and eliminates cross-index consistency proofs entirely. see [[indexes]] for the polynomial evaluation dimensions.
@@ -41,11 +41,11 @@ ratio:          2000×
 
 | role | polynomial state | NMT |
 |---|---|---|
-| authentication (trust) | primary: PCS opening, O(1) | unnecessary |
+| authentication (trust) | primary: Lens opening, O(1) | unnecessary |
 | hot storage (RAM) | flat array | unnecessary |
 | warm storage (SSD) | B+ tree | unnecessary |
 | cold storage (HDD) | not designed for disk | **useful**: sorted namespace = sequential scan |
-| [[DAS]] chunk layout | PCS-based algebraic DAS | **useful**: namespace-sorted chunks |
+| [[DAS]] chunk layout | Lens-based algebraic DAS | **useful**: namespace-sorted chunks |
 
 the separation: polynomial provides AUTHENTICATION (cryptographic). NMT provides LAYOUT (physical). they serve different layers of the storage stack.
 

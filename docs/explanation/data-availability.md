@@ -9,9 +9,9 @@ DAS (Data Availability Sampling) proves data physically exists across the neuron
 
 ## polynomial nouns make DAS native
 
-when particles ARE polynomials, DAS is no longer a separate encoding step. the particle's content is already a polynomial with a PCS commitment. extending that polynomial beyond its evaluation domain produces the erasure code automatically. the particle IS a polynomial. the extension IS the erasure code. no separate encoding pipeline.
+when particles ARE polynomials, DAS is no longer a separate encoding step. the particle's content is already a polynomial with a Lens commitment. extending that polynomial beyond its evaluation domain produces the erasure code automatically. the particle IS a polynomial. the extension IS the erasure code. no separate encoding pipeline.
 
-sampling = PCS opening at random positions on the extended polynomial. reconstruction = polynomial interpolation from enough evaluations. the PCS commitment that identifies the particle is simultaneously the DAS commitment. one object serves both purposes.
+sampling = Lens opening at random positions on the extended polynomial. reconstruction = polynomial interpolation from enough evaluations. the Lens commitment that identifies the particle is simultaneously the DAS commitment. one object serves both purposes.
 
 this collapses the traditional DAS pipeline (data → encode → commit → sample → verify) to (polynomial noun → sample → verify). the encoding step vanishes because polynomial nouns are born erasure-coded.
 
@@ -41,23 +41,23 @@ parameters:
 
 ## algebraic DAS
 
-the 2D Reed-Solomon grid maps naturally to a bivariate polynomial P(row, col). each cell in the extended grid is an evaluation of P at a grid point. the commitment is a single PCS digest:
+the 2D Reed-Solomon grid maps naturally to a bivariate polynomial P(row, col). each cell in the extended grid is an evaluation of P at a grid point. the commitment is a single Lens digest:
 
 ```
 each row     → polynomial over Goldilocks
 all rows     → bivariate polynomial P(row, col)
-commitment   = PCS.commit(P)    32 bytes
+commitment   = Lens.commit(P)    32 bytes
 ```
 
 ### sampling
 
-a verifier picks random grid positions and requests each cell with a PCS opening proof:
+a verifier picks random grid positions and requests each cell with a Lens opening proof:
 
 ```
 per sample:
   request:      cell value at (row, col)
-  proof:        PCS opening of P(row, col)    ~200 bytes
-  verification: PCS.verify(commitment, (row, col), value, proof)    O(1) field ops
+  proof:        Lens opening of P(row, col)    ~200 bytes
+  verification: Lens.verify(commitment, (row, col), value, proof)    O(1) field ops
 
 20 samples → 99.9999% confidence data is available
 30 samples → 99.99999999% confidence
@@ -84,30 +84,30 @@ binary outcome: either data is available (sampling confirms) or reconstruction f
 incorrect encoding is detected when k+1 cells on a row or column fail to lie on a degree-k polynomial:
 
 ```
-fraud proof:    k+1 cells + PCS openings
+fraud proof:    k+1 cells + Lens openings
 size:           (k+1) × (256 + ~200 bytes)
 verification:   O(k) field operations
 ```
 
 ### namespace completeness
 
-"give me all chunks in namespace N" uses the same PCS mechanism as algebraic NMT — a completeness proof is a PCS opening over the evaluation points in that namespace. DAS adds: "and here is proof the chunks are correctly erasure-coded." both proofs are polynomial evaluations against the same commitment.
+"give me all chunks in namespace N" uses the same Lens mechanism as algebraic NMT — a completeness proof is a Lens opening over the evaluation points in that namespace. DAS adds: "and here is proof the chunks are correctly erasure-coded." both proofs are polynomial evaluations against the same commitment.
 
-## PCS completeness
+## Lens completeness
 
-DAS proves chunks exist. PCS completeness proves the full set was committed — no chunks omitted from the commitment.
+DAS proves chunks exist. Lens completeness proves the full set was committed — no chunks omitted from the commitment.
 
 ```
 neuron commits all chunks to polynomial:
-  content_commitment = PCS.commit(chunk_poly)
+  content_commitment = Lens.commit(chunk_poly)
 
 completeness proof:
   verifier requests: "all chunks in positions [a, b]"
-  neuron returns: chunks + PCS opening for the range
+  neuron returns: chunks + Lens opening for the range
 
 polynomial binding guarantees:
   the commitment uniquely determines all evaluation points.
-  a PCS opening for range [a, b] cannot omit a point
+  a Lens opening for range [a, b] cannot omit a point
   that the polynomial encodes. algebraic — the commitment
   cannot lie about its contents.
 ```
@@ -116,7 +116,7 @@ polynomial binding guarantees:
 
 each layer solves a different failure mode:
 
-| failure | CRDT alone | DAS alone | PCS alone | all three |
+| failure | CRDT alone | DAS alone | Lens alone | all three |
 |---------|-----------|-----------|-----------|-----------|
 | neuron dies | data lost | recoverable | no help | recoverable |
 | selective withholding | undetectable | detectable | provable | provable + detectable |
@@ -125,7 +125,7 @@ each layer solves a different failure mode:
 
 **CRDT** — merge semantics. content-addressed chunks have no conflicts. grow-only set union is commutative, associative, idempotent.
 
-**PCS completeness** — provable completeness per namespace. one commitment, one opening, algebraic proof that nothing was omitted. O(1) proof size.
+**Lens completeness** — provable completeness per namespace. one commitment, one opening, algebraic proof that nothing was omitted. O(1) proof size.
 
 **DAS + erasure coding** — physical availability. data survives permanent neuron failure through k-of-n reconstruction. O(sqrt(n)) sampling cost.
 
@@ -142,14 +142,14 @@ the mechanism is identical at both scales. parameters differ:
 | reconstruction | any k-of-n local neurons | any k-of-n in namespace |
 | fraud response | neuron key revocation | stake slashing |
 
-the same erasure coding, the same 2D Reed-Solomon, the same PCS commitment scheme. the availability layer is scale-invariant.
+the same erasure coding, the same 2D Reed-Solomon, the same Lens commitment scheme. the availability layer is scale-invariant.
 
 ## cost summary
 
 ```
                         algebraic DAS
-commitment:             32 bytes (one PCS)
-per-sample proof:       ~200 bytes (PCS opening)
+commitment:             32 bytes (one Lens)
+per-sample proof:       ~200 bytes (Lens opening)
 per-sample verify:      O(1) field operations
 20-sample verification: ~9 KiB bandwidth, ~3K constraints
 fraud proof (k=64):     ~30 KiB

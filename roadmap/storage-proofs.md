@@ -13,11 +13,11 @@ six proof types ensuring data retention across all storage tiers. these are bbg 
 
 | proof | what it guarantees | mechanism | constraints |
 |---|---|---|---|
-| storage proof | content bytes exist on specific node | periodic challenge: random offset → return chunk + PCS opening | ~5,000 |
+| storage proof | content bytes exist on specific node | periodic challenge: random offset → return chunk + Lens opening | ~5,000 |
 | size proof | claimed content size matches actual bytes | hemera tree structure + padding check | ~2,000 |
 | replication proof | k independent copies exist | challenge k distinct nodes, verify uniqueness via nonce | ~5,000 × k |
 | retrievability proof | content fetchable within bounded time | timed challenge-response with latency bound | ~5,000 |
-| data availability proof (DAS) | block data published and accessible | algebraic DAS: erasure coding + PCS opening samples | ~3,000 (20 samples) |
+| data availability proof (DAS) | block data published and accessible | algebraic DAS: erasure coding + Lens opening samples | ~3,000 (20 samples) |
 | encoding fraud proof | erasure coding done correctly | decode k+1 cells, compare against polynomial commitment | O(k) field ops |
 
 see [[cyber/proofs]] for the full proof taxonomy.

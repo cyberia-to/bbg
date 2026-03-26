@@ -63,7 +63,7 @@ the question "is the data retained?" has a clean answer: prove the signal log is
 
 ```
 signal availability guarantees:
-  per-neuron completeness:   PCS proof that no signals were withheld
+  per-neuron completeness:   Lens proof that no signals were withheld
   physical availability:     DAS over signal batches (erasure-coded)
   validity:                  each signal carries its own zheng proof
 ```
@@ -78,7 +78,7 @@ what a node must store:
 
 ```
 irreducible:
-  signal log        append-only, DAS-protected, PCS-complete
+  signal log        append-only, DAS-protected, Lens-complete
   latest checkpoint ~240 bytes (universal accumulator)
 
 derivable (can be reconstructed from signals):
@@ -119,7 +119,7 @@ signal-first is the architectural expression of the five structural sync layers:
 ```
 layer 1 (validity):       each signal carries zheng proof — verified on receipt
 layer 2 (ordering):       hash chain + VDF embedded in signal — self-ordering
-layer 3 (completeness):   per-neuron PCS over signals — nothing withheld
+layer 3 (completeness):   per-neuron Lens over signals — nothing withheld
 layer 4 (availability):   DAS + erasure coding over signal log — data survives
 layer 5 (merge):          CRDT locally, foculus globally — convergence guaranteed
 ```

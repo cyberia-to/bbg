@@ -54,7 +54,7 @@ bbg eliminates each fault class with a data structure property:
 
 **reordering** — the hash chain makes neuron-local history immutable. inserting, removing, or reordering a signal breaks the chain (subsequent hashes no longer verify). any peer walking the chain detects the break in O(n) where n is chain length.
 
-**withholding** — each neuron commits its signal chain to a per-neuron polynomial commitment (evaluation points indexed by step). a peer requesting "all signals in steps [100, 200]" gets a PCS completeness proof — polynomial binding prevents omission. the neuron cannot hide signals in the requested range. content availability is verified via DAS — erasure-coded chunks sampled at O(√n) cost. withholding is not self-punishing — it is algebraically detectable.
+**withholding** — each neuron commits its signal chain to a per-neuron polynomial commitment (evaluation points indexed by step). a peer requesting "all signals in steps [100, 200]" gets a Lens completeness proof — polynomial binding prevents omission. the neuron cannot hide signals in the requested range. content availability is verified via DAS — erasure-coded chunks sampled at O(√n) cost. withholding is not self-punishing — it is algebraically detectable.
 
 the result: no leader election, no quorum, no voting. a single neuron online is a fully functional system. any two neurons can sync bilaterally. any subset works. this is exactly the topology that personal infrastructure needs.
 
@@ -94,20 +94,20 @@ all three maintain independent signal chains with VDF proofs. when the laptop co
 
 the phone connects later. same protocol. it finds the laptop and server already in sync, downloads their signals, verifies, replays. three neurons, identical state, no server-centric architecture, no timestamp trust.
 
-content (file blobs) syncs as three composed layers: CRDT merge (grow-only set of CIDs), PCS completeness proofs (provably all content received), and DAS availability (erasure-coded chunks survive neuron failure).
+content (file blobs) syncs as three composed layers: CRDT merge (grow-only set of CIDs), Lens completeness proofs (provably all content received), and DAS availability (erasure-coded chunks survive neuron failure).
 
 ## why DAS, not just CRDTs
 
 a CRDT guarantees convergence if all updates are delivered. delivery is assumed, not proven. a G-Set merge on incomplete data converges — to the wrong state.
 
-DAS adds the guarantee CRDTs lack: **provable completeness.** content chunks are erasure-coded across neurons (2D Reed-Solomon). any neuron can sample O(√n) random chunks to verify that all data is available. the PCS commits each neuron's content set — a peer requests a polynomial opening and knows algebraically that nothing was withheld.
+DAS adds the guarantee CRDTs lack: **provable completeness.** content chunks are erasure-coded across neurons (2D Reed-Solomon). any neuron can sample O(√n) random chunks to verify that all data is available. the Lens commits each neuron's content set — a peer requests a polynomial opening and knows algebraically that nothing was withheld.
 
 for personal sync this matters because:
 
-- a compromised neuron might selectively withhold files. CRDT: undetectable. DAS + PCS: algebraically impossible.
+- a compromised neuron might selectively withhold files. CRDT: undetectable. DAS + Lens: algebraically impossible.
 - a neuron dies permanently. CRDT: data on that neuron is lost. DAS: erasure coding across the neuron set means any k-of-n surviving neurons reconstruct everything.
 - a phone wants to verify all files exist without downloading them. CRDT: must download all. DAS: O(√n) samples for 99.9% confidence.
 
-the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), PCS handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
+the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), Lens handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
 
 see [[sync]] for the full specification, [[design-principles]] for the three laws, [[data-availability]] for DAS in bbg

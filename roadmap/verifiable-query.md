@@ -46,7 +46,7 @@ result:   R = query result
 proof:    π = zheng proof that R = Q(D)
 
 verifier checks:
-  1. D is committed in BBG_root (one PCS opening or NMT root check)
+  1. D is committed in BBG_root (one Lens opening or NMT root check)
   2. π proves Q was correctly evaluated on D
   3. R matches the claimed result
 ```
@@ -93,7 +93,7 @@ compilation:
   3. prove truncation: output[100].pi ≤ output[99].pi        (1 comparison)
   4. prove completeness: no particle with π > output[100].pi  (range check)
 
-proof: batch PCS opening + permutation argument + range check
+proof: batch Lens opening + permutation argument + range check
 verify: one zheng verification (~5 μs)
 result: 100 (particle_id, π) pairs with cryptographic guarantee of correctness
 ```
@@ -134,7 +134,7 @@ verify: one zheng verification
 ```
 operation          constraint cost    proof contribution
 ────────────────────────────────────────────────────────
-polynomial open    ~3K constraints    1 PCS opening per polynomial
+polynomial open    ~3K constraints    1 Lens opening per polynomial
 NMT walk           ~94K constraints   O(log n) hemera hashes
   (→ ~3K with algebraic NMT)
 LogUp lookup       ~500 constraints   per-lookup

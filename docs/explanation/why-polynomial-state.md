@@ -21,7 +21,7 @@ key       = namespace identifier (CID, neuron_id)
 t         = block height
 ```
 
-querying any view is a polynomial opening: evaluate BBG_poly at (dimension, key, t), produce a PCS proof. verification: O(1) field operations, ~200 bytes.
+querying any view is a polynomial opening: evaluate BBG_poly at (dimension, key, t), produce a Lens proof. verification: O(1) field operations, ~200 bytes.
 
 ## cross-index consistency is structural
 
@@ -29,7 +29,7 @@ with separate trees, axons_out.root and axons_in.root are independent commitment
 
 with one polynomial, axons_out and axons_in are evaluation dimensions of the same committed object. they cannot disagree. the polynomial is one function — evaluating it at (axons_out, P, t) and (axons_in, P, t) returns values bound by the same commitment. consistency is definitional, not proved. LogUp cost: zero.
 
-this is stronger than a consistency proof. a LogUp argument proves agreement under computational assumptions. a single polynomial commitment makes disagreement algebraically impossible within the PCS binding guarantee.
+this is stronger than a consistency proof. a LogUp argument proves agreement under computational assumptions. a single polynomial commitment makes disagreement algebraically impossible within the Lens binding guarantee.
 
 ## 33x fewer constraints per cyberlink
 
@@ -68,7 +68,7 @@ internal nodes per index:  (2 × 2^32 - 1) × 64 bytes ≈ 550 GB
 nine indexes:              ~5 TB
 ```
 
-the polynomial has no internal nodes. leaf data is the same in both approaches — the polynomial replaces the tree structure, not the data. commitment state: 32 bytes per PCS commitment.
+the polynomial has no internal nodes. leaf data is the same in both approaches — the polynomial replaces the tree structure, not the data. commitment state: 32 bytes per Lens commitment.
 
 ## the evaluation point model
 
@@ -87,7 +87,7 @@ every query is an evaluation:
 "supply of denomination D"               = BBG_poly(coins, D, h)
 ```
 
-one PCS opening per query. one verification. 10-50 microseconds. ~200 bytes proof.
+one Lens opening per query. one verification. 10-50 microseconds. ~200 bytes proof.
 
 the temporal dimension means historical state is queryable without separate snapshots. BBG_poly at height h-1000 returns the state 1000 blocks ago — same mechanism, same proof size, same verification cost.
 
@@ -95,22 +95,22 @@ the temporal dimension means historical state is queryable without separate snap
 
 NMTs provide structural completeness: the sorting invariant at internal nodes prevents omission. if a leaf with namespace N exists, the tree walk must encounter it.
 
-polynomial completeness relies on PCS binding: the commitment uniquely determines all evaluation points. a PCS opening for "all evaluation points in dimension D with key prefix P" cannot omit a point that the polynomial encodes. polynomial binding makes omission algebraically impossible.
+polynomial completeness relies on Lens binding: the commitment uniquely determines all evaluation points. a Lens opening for "all evaluation points in dimension D with key prefix P" cannot omit a point that the polynomial encodes. polynomial binding makes omission algebraically impossible.
 
-the trust root is the same in both cases: hemera. NMTs hash with hemera at tree nodes. polynomial commitments (WHIR, Brakedown) are hash-based PCS schemes built on hemera's collision resistance. both approaches ultimately trust hemera. the polynomial path expresses the completeness guarantee with fewer hash calls.
+the trust root is the same in both cases: hemera. NMTs hash with hemera at tree nodes. polynomial commitments (WHIR, Brakedown) are hash-based Lens schemes built on hemera's collision resistance. both approaches ultimately trust hemera. the polynomial path expresses the completeness guarantee with fewer hash calls.
 
-PCS binding is computational (breaks if the PCS breaks). NMT completeness is structural (breaks only if the tree is corrupted). the polynomial approach trades unconditional structural guarantee for computational algebraic guarantee — with the same underlying hash function, post-quantum security (hash-based PCS), and Schwartz-Zippel error probability of 2^-96 over the extension field F_{p^2}.
+Lens binding is computational (breaks if the Lens breaks). NMT completeness is structural (breaks only if the tree is corrupted). the polynomial approach trades unconditional structural guarantee for computational algebraic guarantee — with the same underlying hash function, post-quantum security (hash-based Lens), and Schwartz-Zippel error probability of 2^-96 over the extension field F_{p^2}.
 
 ## BBG_root
 
 ```
-BBG_root = PCS.commit(BBG_poly)    32 bytes
+BBG_root = Lens.commit(BBG_poly)    32 bytes
 
 one polynomial. all public dimensions. all time.
 every query: one opening.
 every verification: ~5 μs.
 cross-index consistency: structural.
-completeness: algebraic (PCS binding).
+completeness: algebraic (Lens binding).
 ```
 
 private state (commitment polynomial A(x), nullifier polynomial N(x)) remains separate — see [[polynomial-privacy]]. the full authenticated root:
@@ -121,21 +121,21 @@ BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 
 ## nouns ARE polynomials
 
-the polynomial model extends beyond aggregate state (BBG_poly) to individual particles. a particle's content is a polynomial over the Goldilocks field. its identity is hemera(PCS.commit(content) ‖ PARTICLE). the tree/polynomial isomorphism means the SAME PCS serves both levels:
+the polynomial model extends beyond aggregate state (BBG_poly) to individual particles. a particle's content is a polynomial over the Goldilocks field. its identity is hemera(Lens.commit(content) ‖ PARTICLE). the tree/polynomial isomorphism means the SAME Lens serves both levels:
 
 - **state queries**: BBG_poly(particles, CID, t) → energy, pi-star (aggregate)
-- **content queries**: PCS.open(particle_poly, position) → bytes at offset (data)
+- **content queries**: Lens.open(particle_poly, position) → bytes at offset (data)
 
-same PCS. same proof format. same verification cost (~5 microseconds, ~200 bytes).
+same Lens. same proof format. same verification cost (~5 microseconds, ~200 bytes).
 
 this unification has three consequences:
 
-1. **no separate content addressing layer.** particle identity is a PCS commitment wrapped by hemera. there is no hash tree for content and a separate polynomial for state. one algebraic framework covers both.
+1. **no separate content addressing layer.** particle identity is a Lens commitment wrapped by hemera. there is no hash tree for content and a separate polynomial for state. one algebraic framework covers both.
 
 2. **native DAS.** a polynomial noun is automatically erasure-coded — extending the polynomial beyond its evaluation domain produces parity. no encoding pipeline. the particle IS the erasure code.
 
 3. **algebraic composability end-to-end.** particle identity is a field element derived from polynomial commitment. state operations (energy, focus, axon weights) operate on field elements. there is no hash-to-field boundary anywhere in the pipeline. content, identity, and state are all polynomial objects in the same field.
 
-the evaluation point model from BBG_poly (dimension, key, t) and the content model from particle polynomials (CID, byte_offset) are two applications of the same mathematical structure: polynomial commitment with PCS openings.
+the evaluation point model from BBG_poly (dimension, key, t) and the content model from particle polynomials (CID, byte_offset) are two applications of the same mathematical structure: polynomial commitment with Lens openings.
 
 see [[architecture]] for the full specification, [[architecture-overview]] for the pipeline, [[polynomial-privacy]] for private state

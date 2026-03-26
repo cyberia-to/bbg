@@ -29,7 +29,7 @@ for local sync, CRDTs work because:
 - **content is content-addressed.** file blobs identified by CID have no conflicts — the G-Set union is the correct merge. two neurons adding the same file get the same CID. deduplication is automatic
 - **name conflicts are rare.** concurrent name updates (two neurons editing the same binding offline) are the exception. deterministic ordering (hash tiebreak on concurrent signals) resolves them without semantic reasoning
 
-CRDTs are sufficient for local merge because the failure modes they cannot handle (withholding, availability) are covered by other layers (PCS, DAS).
+CRDTs are sufficient for local merge because the failure modes they cannot handle (withholding, availability) are covered by other layers (Lens, DAS).
 
 ## foculus: merge by convergence
 

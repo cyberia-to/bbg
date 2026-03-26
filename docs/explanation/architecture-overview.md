@@ -46,7 +46,7 @@ private state:
 | A(x) | membership — every committed private record (cyberlinks, UTXOs) |
 | N(x) | non-membership — every spent record (nullifiers) |
 
-opening A is zero-knowledge. opening N is zero-knowledge. the privacy boundary is enforced by PCS properties — see [[polynomial-privacy]].
+opening A is zero-knowledge. opening N is zero-knowledge. the privacy boundary is enforced by Lens properties — see [[polynomial-privacy]].
 
 ## the 7-stage pipeline
 
@@ -57,7 +57,7 @@ NEURON                          NETWORK                         CLIENT
    ↓ nox execution                ↓ ~3.2K constraints/link        ↓ ~240 bytes
    ↓ proof-carrying               ↓                               ↓
 2. hemera identity              5. fold into epoch accumulator  7. sync + verify
-   ↓ folded sponge                ↓ universal accumulator          ↓ PCS openings
+   ↓ folded sponge                ↓ universal accumulator          ↓ Lens openings
    ↓                               ↓ ~200 byte checkpoint          ↓ algebraic DAS
 3. build + sync signal
    ↓ structural sync (5 layers)
@@ -66,7 +66,7 @@ NEURON                          NETWORK                         CLIENT
 
 **stage 1: nox execution.** every reduce() call computes the result and folds one trace row into a running proof accumulator (~30 field ops per step). at computation end, the accumulator IS the proof. zero separate proving latency.
 
-**stage 2: hemera identity.** hemera wraps PCS commitments with domain tags: particle_id = hemera(PCS.commit(content) ‖ PARTICLE). ~3 hemera calls per execution: one for noun identity (domain separation), one for Fiat-Shamir seed, one internal to Brakedown binding. the heavy work is polynomial commitment; hemera is the thin trust layer. ~164 constraints per hash (folded sponge), down from ~736 (independent permutation).
+**stage 2: hemera identity.** hemera wraps Lens commitments with domain tags: particle_id = hemera(Lens.commit(content) ‖ PARTICLE). ~3 hemera calls per execution: one for noun identity (domain separation), one for Fiat-Shamir seed, one internal to Brakedown binding. the heavy work is polynomial commitment; hemera is the thin trust layer. ~164 constraints per hash (folded sponge), down from ~736 (independent permutation).
 
 **stage 3: signal creation + sync.** the signal bundles cyberlinks, focus shifts (pi_delta), and the proof accumulator (sigma). local neurons sync via structural sync: Merkle clock comparison (32 bytes), signal exchange, CRDT merge. then submit to network via foculus pi convergence.
 
@@ -76,7 +76,7 @@ NEURON                          NETWORK                         CLIENT
 
 **stage 6: light client join.** download checkpoint (~240 bytes). verify accumulator (~5 microseconds). one proof verifies ALL history from genesis. no sync committee, no header chain, no trust assumption beyond mathematics.
 
-**stage 7: query + maintain.** sync namespaces of interest via PCS openings (~200 bytes each). DAS sample for availability (~1.5 KiB batch opening for 20 samples, 99.9999% confidence). fold each new block into local accumulator (~30 field ops/block). total join cost: < 10 KiB.
+**stage 7: query + maintain.** sync namespaces of interest via Lens openings (~200 bytes each). DAS sample for availability (~1.5 KiB batch opening for 20 samples, 99.9999% confidence). fold each new block into local accumulator (~30 field ops/block). total join cost: < 10 KiB.
 
 ## signal-first
 
@@ -112,10 +112,10 @@ per-cyberlink:           ~8,400 constraints total
   identity:              ~164 constraints (folded hemera sponge)
 per-block (1000 tx):     ~8.3M constraints
 epoch (1000 blocks):     ~100K constraints (HyperNova folding)
-inclusion proof:         ~200 bytes (PCS opening)
+inclusion proof:         ~200 bytes (Lens opening)
 DAS (20 samples):        ~1.5 KiB bandwidth (batch opening), ~3K constraints
 light client join:       < 10 KiB total
-hemera calls/execution:  ~3 (domain separation + Fiat-Shamir + PCS binding)
+hemera calls/execution:  ~3 (domain separation + Fiat-Shamir + Lens binding)
 hemera calls/block:      0 for state verification
 NMT internal nodes:      0 (polynomial replaces tree structure)
 ```
