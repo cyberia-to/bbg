@@ -89,13 +89,28 @@ COLD (full history, HDD/network):
     latency: sequential 200 MB/s (HDD), minutes for network
 ```
 
-## tier routing
+## tier routing: policy and mechanism
 
-bbg handles storage tier routing internally. when a `look(namespace, key)` instruction executes, bbg decides whether to read from RAM (hot), SSD (warm), or HDD (cold). this is intrinsic to the state layer, not an external responsibility.
+tier placement has two sides:
 
-rationale: bbg knows its own polynomial structure. it knows which namespaces are hot (change every block — neurons, commitments, nullifiers) vs cold (archival history). external routing would require leaking bbg internals to the caller. the caller says what it wants; bbg decides where to find it.
+[[cyb/soma]] sets POLICY — what should live where, based on [[focus]], energy budget, and upcoming computation:
 
-pricing per tier is determined by local energy cost via the metaba interface. metaba exposes hardware reality (RAM capacity, SSD IOPS, HDD bandwidth, power cost) as field-denominated prices. bbg uses these prices for storage accounting — the caller never sees tiers, only cost.
+```
+soma → bbg:
+  pin(particle, tier)        high focus → keep in ram
+  prefetch(particle)         upcoming order needs this
+  demote(focus_threshold)    energy low → move cold data down
+  flush()                    going to sleep → persist all
+  budget(max_ram_bytes)      shrink ram usage to save energy
+```
+
+bbg executes MECHANISM — physically moves data between tiers, handles LRU eviction, frequency promotion, wear leveling. when soma hasn't expressed preference, bbg falls back to default optimization (access recency, frequency).
+
+rationale for the split: bbg knows storage internals (capacity, IOPS, polynomial structure). soma knows semantics (focus = importance, energy = budget, scheduler = upcoming needs). neither alone makes optimal decisions. together: intelligent storage with semantic caching.
+
+[[focus]] IS the cache priority. high focus = stay in ram. low focus = migrate to cold. the [[tri-kernel]] already computed importance — bbg uses it as the primary eviction signal when soma provides a focus threshold.
+
+when a `look(namespace, key)` executes, bbg resolves the tier transparently — the caller says what it wants, bbg finds it. pricing per tier determined by local energy cost: [[cyb/hal]] exposes hardware reality (RAM capacity, SSD IOPS, HDD bandwidth, power cost) as field-denominated prices.
 
 ## storage proofs
 
