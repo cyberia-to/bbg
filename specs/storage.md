@@ -89,6 +89,14 @@ COLD (full history, HDD/network):
     latency: sequential 200 MB/s (HDD), minutes for network
 ```
 
+## tier routing
+
+bbg handles storage tier routing internally. when a `look(namespace, key)` instruction executes, bbg decides whether to read from RAM (hot), SSD (warm), or HDD (cold). this is intrinsic to the state layer, not an external responsibility.
+
+rationale: bbg knows its own polynomial structure. it knows which namespaces are hot (change every block — neurons, commitments, nullifiers) vs cold (archival history). external routing would require leaking bbg internals to the caller. the caller says what it wants; bbg decides where to find it.
+
+pricing per tier is determined by local energy cost via the metaba interface. metaba exposes hardware reality (RAM capacity, SSD IOPS, HDD bandwidth, power cost) as field-denominated prices. bbg uses these prices for storage accounting — the caller never sees tiers, only cost.
+
 ## storage proofs
 
 six proof types ensure data retention across tiers:
