@@ -2,12 +2,6 @@
 tags: cyber
 crystal-type: entity
 crystal-domain: cyber
-diffusion: 0.00010722364868599256
-springs: 0.0018976628199509436
-heat: 0.0013346945323019417
-focus: 0.0008898495767886562
-gravity: 0
-density: 0.74
 ---
 # foculus as merge layer
 
