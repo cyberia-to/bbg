@@ -542,7 +542,7 @@ all files that have it — it is not decoration.
 
 bbg is the authenticated state layer for cyber. individual cyberlinks are private —
 the cybergraph is the public aggregate: axons, neuron summaries, particle energy,
-token supplies, π* distribution. NMT completeness proofs on public indexes,
+token supplies, φ* distribution. NMT completeness proofs on public indexes,
 mutator set (AOCL + SWBF) for private records. when you sync a namespace, you get
 mathematical proof that nothing was withheld.
 

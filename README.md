@@ -1,6 +1,6 @@
 # bbg
 
-authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private — who linked what is never disclosed. the [[cybergraph]] is the public aggregate: [[axons]], [[neuron]] summaries, [[particle]] energy, [[token]] supplies, π* distribution. all derived from cyberlinks, revealing no individual contribution.
+authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private — who linked what is never disclosed. the [[cybergraph]] is the public aggregate: [[axons]], [[neuron]] summaries, [[particle]] energy, [[token]] supplies, φ* distribution. all derived from cyberlinks, revealing no individual contribution.
 
 ## three laws
 
@@ -16,7 +16,7 @@ authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private �
 
 ```
 PUBLIC NMTs (9 roots)
-  particles.root       all particles: content + axons, energy, π*
+  particles.root       all particles: content + axons, energy, φ*
   axons_out.root       by source (outgoing axon index)
   axons_in.root        by target (incoming axon index)
   neurons.root         focus, karma, stake per neuron
@@ -70,7 +70,7 @@ light client join:    one zheng verification + namespace sync
 | [[why-signal-first]] | state is derived from signals: fold(genesis, signals[0..h]) |
 | [[nmt explained|nmt]] | NMT's surviving role: cold storage optimization, not authentication |
 | [[signal-sync explained|signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
-| [[foculus-vs-crdt]] | why π convergence replaces CRDTs at global scale |
+| [[foculus-vs-crdt]] | why φ* convergence replaces CRDTs at global scale |
 | [[data-availability explained|data-availability]] | algebraic DAS, erasure coding, and provable availability |
 
 ## open design

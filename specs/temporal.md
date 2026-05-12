@@ -38,7 +38,7 @@ the former time.root NMT with 7 namespaces (steps, seconds, hours, days, weeks, 
 BBG_poly(index, key, t) — t is a native variable
 
 historical query:
-  "what was π of particle P at block 1000?"
+  "what was φ* of particle P at block 1000?"
   → Lens.open(BBG_root, (particles, P, 1000))
   → one evaluation proof, ~5 μs verification
 
@@ -144,4 +144,4 @@ L4 (archival):
   no separate snapshot storage needed — the polynomial encodes all history
 ```
 
-see [[storage]] for storage tiers and π-weighted replication, [[cross-index]] for why cross-index consistency is structural, [[architecture]] for the layer model
+see [[storage]] for storage tiers and φ*-weighted replication, [[cross-index]] for why cross-index consistency is structural, [[architecture]] for the layer model

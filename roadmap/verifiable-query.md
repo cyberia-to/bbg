@@ -22,7 +22,7 @@ bbg provides three proof types:
 queries users actually want:
 
 ```
-"top 100 particles by π"                      → not a single namespace
+"top 100 particles by φ*"                      → not a single namespace
 "all cyberlinks from neuron N after time T"    → cross-index + temporal
 "path from particle A to particle B"           → multi-hop traversal
 "neurons with focus > F and karma > K"         → range query on two dimensions
@@ -37,11 +37,11 @@ each of these currently requires custom proof construction. a verifiable query e
 query:    Q = CozoDB query expression
 data:     D = BBG state (committed as polynomial or NMT)
 result:   R = query result
-proof:    π = zheng proof that R = Q(D)
+proof:    φ* = zheng proof that R = Q(D)
 
 verifier checks:
   1. D is committed in BBG_root (one Lens opening or NMT root check)
-  2. π proves Q was correctly evaluated on D
+  2. φ* proves Q was correctly evaluated on D
   3. R matches the claimed result
 ```
 
@@ -76,7 +76,7 @@ verifiable result + proof
 
 the query plan determines which BBG polynomials/NMTs to open. the circuit encodes the relational operations. the proof covers both the openings and the computation.
 
-## example: top-k by π
+## example: top-k by φ*
 
 ```
 query: SELECT particle_id, pi FROM particles ORDER BY pi DESC LIMIT 100
@@ -85,11 +85,11 @@ compilation:
   1. open particles polynomial at all evaluation points       (batch opening)
   2. prove sort: permutation argument that output is sorted   (~N constraints)
   3. prove truncation: output[100].pi ≤ output[99].pi        (1 comparison)
-  4. prove completeness: no particle with π > output[100].pi  (range check)
+  4. prove completeness: no particle with φ* > output[100].pi  (range check)
 
 proof: batch Lens opening + permutation argument + range check
 verify: one zheng verification (~5 μs)
-result: 100 (particle_id, π) pairs with cryptographic guarantee of correctness
+result: 100 (particle_id, φ*) pairs with cryptographic guarantee of correctness
 ```
 
 ## example: multi-hop path
@@ -147,7 +147,7 @@ gravity commitment ([[gravity-commitment]]) makes common queries cheaper:
 
 ```
 "balance of top neuron"      → hot layer opening, ~1 KiB
-"top-100 by π"               → hot layer batch opening, ~2 KiB
+"top-100 by φ*"               → hot layer batch opening, ~2 KiB
 "obscure particle 3 hops out" → cold layer, multi-hop, ~10 KiB
 ```
 

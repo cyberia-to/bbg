@@ -158,4 +158,4 @@ storage tier mapping:
 
 the DAS active window must be long enough for light clients to sample and reconstruct any namespace they care about. after the window, data relies on archival nodes and incentivized storage.
 
-see [[architecture]] for the layer model, [[storage]] for π-weighted replication and storage tiers, [[sync]] for DAS in the sync protocol
+see [[architecture]] for the layer model, [[storage]] for φ*-weighted replication and storage tiers, [[sync]] for DAS in the sync protocol

@@ -87,7 +87,7 @@ derivable (can be reconstructed from signals):
   mutator set       → replay UTXO events from signals
   particle data     → extract from signal payloads
   axon aggregates   → recompute from individual cyberlinks
-  focus/π values    → recompute tri-kernel from graph state
+  focus/φ* values    → recompute tri-kernel from graph state
 ```
 
 a node that stores only the signal log and a checkpoint can reconstruct the entire BBG state. caching derived state (indexes, aggregates, polynomial commitments) is an optimization for query speed — not a correctness requirement.

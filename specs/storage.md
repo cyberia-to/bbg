@@ -23,7 +23,7 @@ the irreducible minimum per node:
 - signal log: append-only, DAS-protected, completeness-proved
 - latest checkpoint: ~232 bytes (BBG_root + universal accumulator + height)
 
-everything else is derivable: polynomial evaluation tables, particle data, axon aggregates, focus/π values — all reconstructible from signal replay.
+everything else is derivable: polynomial evaluation tables, particle data, axon aggregates, focus/φ* values — all reconstructible from signal replay.
 
 ## storage interface
 
@@ -64,7 +64,7 @@ HOT (current state, RAM):
 
 WARM (recent state, SSD):
     full particle/axon data indexed by CID
-    particle energy, π*, axon weights, market state
+    particle energy, φ*, axon weights, market state
     neuron focus/karma/stake, coin/card metadata
     backend: B+ tree with RAM cache (top 3-4 levels pinned)
     latency: 20 μs
@@ -73,7 +73,7 @@ CONTENT (files, network):
     particle content (raw bytes), indexed by CID
     DAS availability proofs via files dimension of BBG_poly
     self-authenticating: H(content) = CID
-    backend: distributed (π-weighted replication)
+    backend: distributed (φ*-weighted replication)
     latency: seconds (network retrieval)
 
 COLD (full history, HDD/network):
@@ -119,36 +119,36 @@ six proof types ensure data retention across tiers:
 | DAS proof | block data published and accessible | algebraic DAS: erasure + Lens samples | ~3,000 |
 | encoding fraud proof | erasure coding correct | decode k+1 cells vs polynomial commitment | O(k) field ops |
 
-signal-first resolves STATE retention: prove signal availability → derive everything via replay. CONTENT retention requires storage proofs + π-weighted replication. see [[cyber/proofs]] for the full taxonomy.
+signal-first resolves STATE retention: prove signal availability → derive everything via replay. CONTENT retention requires storage proofs + φ*-weighted replication. see [[cyber/proofs]] for the full taxonomy.
 
-## π-weighted replication
+## φ*-weighted replication
 
-storage replication factor is proportional to π (cyberank). the network spends storage budget where attention goes.
+storage replication factor is proportional to φ* (cyberank). the network spends storage budget where attention goes.
 
 ```
-replication_factor(particle) = max(R_min, R_base × π(particle) / π_median)
+replication_factor(particle) = max(R_min, R_base × φ*(particle) / π_median)
 
   R_min  = minimum replication (e.g., 3 — survival guarantee)
-  R_base = baseline replication at median π (e.g., 10)
+  R_base = baseline replication at median φ* (e.g., 10)
 
-particle class        π estimate    replication factor
+particle class        φ* estimate    replication factor
 top-100 particle      ~10⁻²        ~1000 (effectively everywhere)
 top-10K particle      ~10⁻⁴        ~100
 median particle       ~10⁻⁶        10 (baseline)
 tail particle         ~10⁻¹²       3 (minimum)
 ```
 
-no explicit storage market needed. focus IS the storage payment. π IS the replication signal. the economics emerge from the graph topology.
+no explicit storage market needed. focus IS the storage payment. φ* IS the replication signal. the economics emerge from the graph topology.
 
 DAS parameters scale with replication:
 
 ```
-high-π particle (1000 replicas):
+high-φ* particle (1000 replicas):
   base availability very high → fewer DAS samples needed
   5 samples sufficient for 99.99% confidence
   bandwidth: ~2.3 KiB
 
-low-π particle (3 replicas):
+low-φ* particle (3 replicas):
   base availability minimal → standard sampling
   20 samples for 99.9999% confidence
   bandwidth: ~9 KiB
@@ -161,7 +161,7 @@ fjall keyspace: "bbg"
 
 ├── partition: "particles"
 │   key:   CID                                 32 bytes
-│   value: (energy, π*, axon fields)           particle/axon data
+│   value: (energy, φ*, axon fields)           particle/axon data
 │   polynomial evaluation table for particles dimension
 │   content-particles and axon-particles share namespace
 │   axon-particles carry: weight A_{pq}, market state (s_YES, s_NO), meta-score
@@ -358,7 +358,7 @@ the same backend stores BBG_poly evaluation tables (aggregate state: energy, pi-
 
 ```
 "particles" partition serves two polynomial levels:
-  BBG_poly(particles, CID, t) → aggregate state (energy, π*, axon fields)
+  BBG_poly(particles, CID, t) → aggregate state (energy, φ*, axon fields)
   particle_poly(CID, position) → content bytes at any offset
 
 both are polynomial evaluations. both use Lens openings for proofs.

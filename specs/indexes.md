@@ -54,7 +54,7 @@ cost:
 DIMENSION 1: particles
   evaluation: BBG_poly(particles, CID, t) → particle_record
   key: CID (content hash)
-  proves: "particle P exists with energy E and focus π*"
+  proves: "particle P exists with energy E and focus φ*"
   note: content-particles and axon-particles share the same dimension
 
 DIMENSION 2: axons_out
@@ -112,12 +112,12 @@ the data at each evaluation point matches the former NMT leaf structures. the po
 particle entry (content-particle):
   key: CID                             32 bytes
   energy: F_p                          8 bytes
-  π*: F_p                              8 bytes
+  φ*: F_p                              8 bytes
 
 particle entry (axon-particle, extends content-particle):
   key: CID = H(from, to)              32 bytes
   energy: F_p                          8 bytes
-  π*: F_p                              8 bytes
+  φ*: F_p                              8 bytes
   weight A_{pq}: F_p                   8 bytes
   market state s_YES: F_p              8 bytes
   market state s_NO: F_p               8 bytes
@@ -184,7 +184,7 @@ polynomial access to any particle field operates at two levels:
 both are Lens openings. both produce ~200 byte proofs. both verify in ~5 microseconds. the difference is what polynomial you open against: BBG_poly for aggregate state, the particle's own commitment for content data.
 
 ```
-aggregate query:  BBG_poly(particles, CID, t) → energy, π*
+aggregate query:  BBG_poly(particles, CID, t) → energy, φ*
 content query:    Lens.open(particle_poly(CID), byte_offset) → content bytes
 
 same Lens. same verification. different polynomials.

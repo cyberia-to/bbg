@@ -72,7 +72,7 @@ verifiable result + proof
 
 ### examples
 
-**top 100 particles by π:**
+**top 100 particles by φ*:**
 
 ```
 SELECT particle_id, pi FROM particles ORDER BY pi DESC LIMIT 100
@@ -81,7 +81,7 @@ compilation:
   1. batch opening of particles polynomial               (Lens opening)
   2. permutation argument proving sort                    (~N constraints)
   3. truncation proof: output[100].pi ≤ output[99].pi    (1 comparison)
-  4. completeness: no particle with π > output[100].pi   (range check)
+  4. completeness: no particle with φ* > output[100].pi   (range check)
 
 proof: ~5 KiB, verify: ~5 μs
 ```

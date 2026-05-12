@@ -7,7 +7,7 @@ crystal-domain: cyber
 
 the [[cyberlink]] is private — who linked what is never disclosed. individual linking decisions are protected because surveillance kills the freedom to link.
 
-the [[cybergraph]] is public — it is the aggregate. [[axons]] (total weight between particle pairs), [[neuron]] summaries (total focus, karma), [[particle]] energy, [[token]] supplies, π distribution — all derived from cyberlinks but revealing no individual contribution.
+the [[cybergraph]] is public — it is the aggregate. [[axons]] (total weight between particle pairs), [[neuron]] summaries (total focus, karma), [[particle]] energy, [[token]] supplies, φ* distribution — all derived from cyberlinks but revealing no individual contribution.
 
 the polynomial mutator set provides: private ownership, unlinkable transactions, no trusted parties, and O(1) verification — simultaneously.
 
@@ -25,7 +25,7 @@ NEURON             total focus                     linking history
                    total stake
 PARTICLE           CID exists
                    total energy (Σ weight)
-                   π* ranking
+                   φ* ranking
 AXON               H(from, to) exists              which neurons contributed
                    aggregate weight A_{pq}          individual weights
 TOKEN              denominations                   individual UTXO values
@@ -35,7 +35,7 @@ TRANSACTION        nullifier polynomial update     which records spent
                    commitment polynomial extend    who spent them
                    Δ per particle                  new owners
                    proof validity                  link between add & remove
-FOCUS              π distribution
+FOCUS              φ* distribution
                    rankings
 ```
 

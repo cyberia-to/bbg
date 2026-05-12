@@ -5,7 +5,7 @@ crystal-domain: cyber
 ---
 # architecture
 
-the authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private — who linked what is never disclosed. the [[cybergraph]] is the public aggregate: [[axons]] (directed weights between [[particles]]), [[neuron]] summaries, [[particle]] energy, [[token]] supplies, π* distribution. all derived from cyberlinks, revealing no individual contribution.
+the authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private — who linked what is never disclosed. the [[cybergraph]] is the public aggregate: [[axons]] (directed weights between [[particles]]), [[neuron]] summaries, [[particle]] energy, [[token]] supplies, φ* distribution. all derived from cyberlinks, revealing no individual contribution.
 
 ## design constraints
 
@@ -43,7 +43,7 @@ who linked what                        axon H(p,q): aggregate weight A_{pq}
 individual conviction, valence         axon market state (s_YES, s_NO)
 neuron linking history                 axon meta-score
 market positions (TRUE/FALSE tokens)   neuron: focus, karma, stake
-UTXO values, owners                    particle: energy, π*
+UTXO values, owners                    particle: energy, φ*
                                        token: denominations, total supply
                                        content: availability proofs
 ```
@@ -112,7 +112,7 @@ all particles in one index. content-particles and axon-particles share the same 
 
 - CID (32 bytes) — content hash, namespace key
 - energy (8 bytes) — aggregate Σ weight from all incoming axons
-- π* (8 bytes) — focus ranking from tri-kernel
+- φ* (8 bytes) — focus ranking from tri-kernel
 
 axon-particles carry additional fields:
 
@@ -164,7 +164,7 @@ time is a native dimension of BBG_poly. historical queries are polynomial evalua
 
 ### signals — evaluation dimension
 
-finalized [[signal]] batches. a signal bundles cyberlinks with an [[impulse]] (π_Δ — the proven focus shift) and a recursive [[zheng]]-2 proof covering the entire batch. the cyberlink is the object of learning; the signal is the object of finalization. the signals dimension commits the finalization history — which batches were accepted and in what order.
+finalized [[signal]] batches. a signal bundles cyberlinks with an [[impulse]] (Δφ* — the proven focus shift) and a recursive [[zheng]]-2 proof covering the entire batch. the cyberlink is the object of learning; the signal is the object of finalization. the signals dimension commits the finalization history — which batches were accepted and in what order.
 
 ## private polynomial commitments
 
@@ -233,11 +233,11 @@ nox execution                   include signals in block        download checkpo
 hemera identity                 fold into block accumulator     sync namespaces
   ↓ folded sponge                 ↓ HyperNova folding             ↓ Lens openings
 build signal                    fold into epoch accumulator     DAS sample
-  ↓ (ν, l⃗, π_Δ, σ, prev...)     ↓ universal accumulator          ↓ algebraic DAS
+  ↓ (ν, l⃗, Δφ*, σ, prev...)     ↓ universal accumulator          ↓ algebraic DAS
 local sync                      publish checkpoint              query
   ↓ CRDT + Lens + DAS             ↓ ~240 bytes                    ↓ verifiable query
 submit to network
-  ↓ foculus π convergence
+  ↓ foculus φ* convergence
 ```
 
 | stage | where specified | cost |

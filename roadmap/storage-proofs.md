@@ -28,9 +28,9 @@ the signal-first architecture ([[sync]], [[storage]]) resolves the retention que
 
 the remaining open problem: CONTENT availability. signals carry cyberlink CIDs but not the content behind them. content availability requires:
 - DAS over files dimension of BBG_poly
-- π-weighted replication determines storage budget
+- φ*-weighted replication determines storage budget
 - storage proofs verify individual nodes actually hold their claimed data
 
 ## in reference?
 
-**partial** — DAS proofs are specified in reference/data-availability.md. π-weighted replication in reference/storage.md. the per-node storage/size/replication/retrievability proof mechanisms need specification in reference/storage.md.
+**partial** — DAS proofs are specified in reference/data-availability.md. φ*-weighted replication in reference/storage.md. the per-node storage/size/replication/retrievability proof mechanisms need specification in reference/storage.md.

@@ -11,7 +11,7 @@ one mechanism at three scales. a [[signal]] is the universal unit of state chang
 
 ```
 creation          neuron creates cyberlinks → signal batch with zheng proof
-                  signal = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
+                  signal = (ν, l⃗, Δφ*, σ, prev, mc, vdf, step)
 
 ordering          hash chain (prev) establishes per-neuron sequence
                   VDF proves minimum wall-clock time since previous signal
@@ -26,7 +26,7 @@ availability      algebraic DAS + 2D Reed-Solomon erasure coding
                   O(√n) Lens opening samples verify availability
 
 merge             LOCAL:  CRDT (G-Set union) — 1-20 neurons, same identity
-                  GLOBAL: foculus (π convergence) — 10³-10⁹ neurons, different identities
+                  GLOBAL: foculus (φ* convergence) — 10³-10⁹ neurons, different identities
 
 finalization      network includes signal in block → assigns t (block height)
                   signal enters BBG_poly(signals, step, t)
@@ -45,7 +45,7 @@ query             client requests namespace from BBG_root
 | **data** | private cyberlinks, files, names | signals (public aggregate) | BBG state (public) |
 | **privacy** | private (individual records) | public (aggregate) | public (Lens proofs) |
 | **trust** | same identity, semi-trusted | different identities, untrusted | peer untrusted, only BBG_root |
-| **merge** | CRDT (G-Set union) | foculus (π convergence) | N/A (read-only) |
+| **merge** | CRDT (G-Set union) | foculus (φ* convergence) | N/A (read-only) |
 | **ordering** | VDF + hash chain + Merkle clock | VDF + hash chain + Merkle clock | block height (t) |
 | **statefulness** | ongoing DAG | ongoing accumulator | stateless query-response |
 | **signal structure** | identical | identical | N/A (queries BBG_root) |
@@ -54,14 +54,14 @@ the unit is always neuron. local sync = small group of neurons (1-20, same ident
 
 ## signal structure
 
-the [[signal]] is s = (ν, l⃗, π_Δ, σ, prev, mc, vdf, step, t). the ordering fields are part of the signal — not a separate envelope. the same fields serve local sync and global [[foculus]] consensus.
+the [[signal]] is s = (ν, l⃗, Δφ*, σ, prev, mc, vdf, step, t). the ordering fields are part of the signal — not a separate envelope. the same fields serve local sync and global [[foculus]] consensus.
 
 ```
 signal = {
   // payload — what the signal means
   ν:              neuron_id                   subject (signing neuron)
   l⃗:              [cyberlink]                 links (L⁺), each a 7-tuple (ν, p, q, τ, a, v, t)
-  π_Δ:            [(particle, F_p)]*          impulse: sparse focus update
+  Δφ*:            [(particle, F_p)]*          impulse: sparse focus update
   σ:              zheng_proof                 recursive proof covering impulse + conviction
 
   // ordering — where the signal sits in causal and physical time
@@ -78,7 +78,7 @@ signal = {
 }
 
 lifecycle:
-  created on neuron:    (ν, l⃗, π_Δ, σ, prev, mc, vdf, step)
+  created on neuron:    (ν, l⃗, Δφ*, σ, prev, mc, vdf, step)
   synced between peers: full signal
   submitted to network: full signal (ordering fields preserved)
   included in block:    network assigns t (block height)
@@ -110,7 +110,7 @@ each signal carries σ = zheng proof
 the proof covers:
   - cyberlinks well-formed (7-tuple structure)
   - focus sufficient for conviction weight
-  - impulse π_Δ consistent with cyberlinks
+  - impulse Δφ* consistent with cyberlinks
   - neuron signature valid
 
 invalid signal → proof verification fails → signal rejected by any peer
@@ -252,13 +252,13 @@ conflict resolution for mutable state (names):
 
 **global (foculus):**
 ```
-mechanism: π convergence (stake-weighted attention)
+mechanism: φ* convergence (stake-weighted attention)
   each neuron's signals carry conviction weighted by focus
-  π* = stationary distribution of tri-kernel (diffusion + springs + heat)
-  convergence: π stabilizes to fixed point in 1-3 seconds
+  φ* = stationary distribution of tri-kernel (diffusion + springs + heat)
+  convergence: φ* stabilizes to fixed point in 1-3 seconds
 
 works because:
-  - π manipulation costs real tokens (focus)
+  - φ* manipulation costs real tokens (focus)
   - exclusive support: staking on A removes support from B
   - convergence is mathematical (eigenvalue), not political (voting)
 
@@ -267,7 +267,7 @@ the same signal at global scale means:
   all signals are ordered (layer 2)
   no neuron can withhold (layer 3)
   data is available (layer 4)
-  global state = π-weighted convergence of all signals (layer 5)
+  global state = φ*-weighted convergence of all signals (layer 5)
 ```
 
 ## steps
@@ -346,7 +346,7 @@ signals flow from local sync to the network.
 2. local neurons sync (protocol above)
 3. neuron submits finalized signals to network
 4. network verifies (layers 1-4)
-5. foculus merges (layer 5): π-weighted convergence
+5. foculus merges (layer 5): φ*-weighted convergence
 6. block producer includes signals → assigns t (block height)
 7. state transitions applied to BBG_poly evaluation dimensions
 8. BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)) updated → time dimension records snapshot
@@ -386,7 +386,7 @@ guarantee: "neuron N's complete public state."
 **particle data:**
 ```
 client → peer: (particles, key=P, state_root=BBG_root)
-peer → client: Lens opening + particle data (energy, π*, axon fields)
+peer → client: Lens opening + particle data (energy, φ*, axon fields)
 guarantee: "particle P's complete public data."
 ```
 
