@@ -73,69 +73,40 @@ proof size: ~2 KiB, verification: ~5 μs
 ## state transitions
 
 ```
-TRANSITION: W × Transaction → W' | ⊥
+TRANSITION: W × Signal → W' | ⊥
 
-BBG_poly updated at affected evaluation dimensions.
+BBG has one operation: insert(signal).
+BBG_poly updated at all affected evaluation dimensions.
 cross-index consistency is free — same polynomial, no LogUp needed.
 
-TRANSACTION TYPES:
+INPUT: Signal s = (ν, ℓ⃗, Δφ*, σ, t)
+  ν     — neuron (signing agent)
+  ℓ⃗    — one or more cyberlinks, each ℓ = (p, q, τ, a, v)
+  Δφ*  — proven focus shift (sparse update)
+  σ     — single zheng proof covering the entire signal
+  t     — block height
 
-1. CYBERLINK — create private record + update public aggregates
-   input:  (neuron, from_particle, to_particle, token, amount, valence, zk_proof)
-   private effect:
-     - extend independent commitment polynomial A(x) at new point (O(1) Lens update)
-   public effect:
-     - update BBG_poly(particles, H(from,to), t): axon weight
-     - update BBG_poly(axons_out, from, t): outgoing index
-     - update BBG_poly(axons_in, to, t): incoming index
-     - update BBG_poly(neurons, neuron, t): focus deduction
-     - update BBG_poly(particles, to, t): energy
-   cost:   focus proportional to weight
-   proof:  ZK proof of well-formed cyberlink + polynomial update consistency
-   constraints: ~3,200 per cyberlink (polynomial updates, no hemera path rehash)
+EFFECT per cyberlink ℓ = (p, q, τ, a, v):
 
-2. PRIVATE TRANSFER — move value between private records
-   input:  (removal_records, addition_records, deltas, fee, zk_proof)
-   effect:
-     - extend A(x) for new commitments (O(1) per addition)
-     - extend N(x) for spent nullifiers: N'(x) = N(x) × (x - n_new) (O(1) per spend)
-   cost:   fee (publicly committed)
-   proof:  ZK proof of spend validity + conservation (see [[privacy]])
-   constraints: ~5,000 per transfer (polynomial openings, no SWBF witness)
+  public (BBG_poly):
+    particles[H(p,q)]:  weight += a          ← axon-particle conviction
+    particles[q]:       energy += a          ← target particle energy
+    axons_out[p]:       insert H(p,q)        ← directional index
+    axons_in[q]:        insert H(p,q)        ← directional index
+    neurons[ν]:         focus -= cost(ℓ)     ← focus consumed
 
-3. COMPUTATION — execute nox reduction
-   input:  (neuron, subject, formula, budget, signature)
-   effect: update BBG_poly(neurons, neuron, t): focus consumed
-   cost:   focus proportional to computation steps
-   proof:  reduction trace + focus deduction
+  private (independent polynomials):
+    A(x): extend at new commitment point      ← O(1) Lens update
+    N(x): absorb nullifiers for spent UTXOs   ← N'(x) = N(x) × (x - n_new)
 
-4. MINT CARD — create a non-fungible knowledge asset
-   input:  (neuron, bound_particle, signature)
-   effect: insert into BBG_poly(cards, card_id, t)
-   cost:   focus fee
-   proof:  particle exists in BBG_poly(particles, CID, t) + card_id uniqueness
+  at block finalization:
+    time[height]:       BBG_root snapshot
 
-5. TRANSFER CARD — transfer knowledge asset ownership
-   input:  (from_neuron, to_neuron, card_id, signature)
-   effect: update BBG_poly(cards, card_id, t): owner field
-   cost:   fixed fee
-   proof:  current ownership + signature validity
+STRUCTURAL INVARIANT (BBG enforces):
+  non-duplication: N(nullifier) = 0 → reject (double-spend)
+  all other validity is pre-checked by cybergraph before insert
 
-6. BRIDGE — convert coin to focus
-   input:  (neuron, denomination, amount, signature)
-   effect:
-     - update BBG_poly(coins, denom, t): burn supply
-     - update BBG_poly(neurons, neuron, t): add focus
-   cost:   fixed fee
-   proof:  coin balance sufficiency + conservation
-
-VALIDITY CONDITIONS:
-  1. authorization: valid signature OR valid ZK proof
-  2. focus sufficiency: focus >= operation cost (for CYBERLINK, COMPUTATION, MINT CARD)
-  3. conservation: inputs = outputs + fee (for PRIVATE TRANSFER, BRIDGE)
-  4. consistency: structural (same polynomial — no separate cross-index proof needed)
-  5. non-duplication: N(nullifier) ≠ 0 (for PRIVATE TRANSFER — polynomial non-membership)
-  6. temporal: timestamp within acceptable range
+constraints: ~3,200 per cyberlink (polynomial updates, no hemera path rehash)
 ```
 
-see [[architecture]] for evaluation dimension specification, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated
+see [[cybergraph/validation]] for the full validation protocol, [[architecture]] for evaluation dimensions, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated

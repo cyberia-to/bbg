@@ -97,7 +97,7 @@ NMTs provide structural completeness: the sorting invariant at internal nodes pr
 
 polynomial completeness relies on Lens binding: the commitment uniquely determines all evaluation points. a Lens opening for "all evaluation points in dimension D with key prefix P" cannot omit a point that the polynomial encodes. polynomial binding makes omission algebraically impossible.
 
-the trust root is the same in both cases: hemera. NMTs hash with hemera at tree nodes. polynomial commitments (WHIR, Brakedown) are hash-based Lens schemes built on hemera's collision resistance. both approaches ultimately trust hemera. the polynomial path expresses the completeness guarantee with fewer hash calls.
+the trust root is the same in both cases: hemera. NMTs hash with hemera at tree nodes. polynomial commitments (Brakedown) are hash-based Lens schemes built on hemera's collision resistance. both approaches ultimately trust hemera. the polynomial path expresses the completeness guarantee with fewer hash calls.
 
 Lens binding is computational (breaks if the Lens breaks). NMT completeness is structural (breaks only if the tree is corrupted). the polynomial approach trades unconditional structural guarantee for computational algebraic guarantee — with the same underlying hash function, post-quantum security (hash-based Lens), and Schwartz-Zippel error probability of 2^-96 over the extension field F_{p^2}.
 

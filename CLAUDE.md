@@ -558,7 +558,7 @@ mathematical proof that nothing was withheld.
 - NMT (Namespace Merkle Trees) for public aggregate indexing and completeness proofs
 - LogUp lookup arguments for cross-index consistency (particles ↔ axons_out ↔ axons_in)
 - mutator set for all private records (cyberlinks + economic transfers)
-- WHIR evaluation proofs for polynomial commitments
+- Brakedown evaluation proofs for polynomial commitments
 
 ## companion repos
 
@@ -568,7 +568,7 @@ mathematical proof that nothing was withheld.
 | hemera | `~/git/hemera/` | hash function + tree primitives |
 | lens | `~/git/lens/` | polynomial commitment trait (Lens) |
 | nox | `~/git/nox/` | VM (execution, circuits) |
-| zheng | `~/git/zheng/` | proof system (WHIR, SuperSpartan) |
+| zheng | `~/git/zheng/` | proof system (Brakedown, SuperSpartan) |
 | mudra | `~/git/mudra/` | crypto primitives |
 | bbg | `~/git/bbg/` | authenticated state (this repo) |
 | cyber | `~/git/cyber/` | knowledge graph (parent subgraph) |

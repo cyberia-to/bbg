@@ -217,7 +217,7 @@ L4: Archival       historical state via polynomial time dimension
 | BBG_poly | unified state polynomial | algebraic NMT evolution |
 | commitment polynomial A(x) | private record commitments | Neptune mutator set heritage |
 | nullifier polynomial N(x) | private double-spend prevention | Neptune SWBF heritage |
-| WHIR polynomial commitments | batch proofs, evaluation | WHIR (2025) |
+| Brakedown polynomial commitments | batch proofs, evaluation | Brakedown (lens) |
 
 unified by [[hemera]] (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]] (~2 KiB proofs, ~5 μs verification, folding-first).
 

@@ -11,8 +11,8 @@ description = "Big Badass Graph: authenticated state with polynomial commitments
 license = "Cyber"
 
 [dependencies]
-nebu = { path = "../nebu" }
-hemera = { path = "../hemera" }
-lens = { path = "../lens" }
-nox = { path = "../nox" }
-zheng = { path = "../zheng" }
+nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
+hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
+lens = { package = "cyber-lens", path = "../../lens/src" }
+nox = { path = "../../nox/rs" }
+zheng = { path = "../../zheng" }
