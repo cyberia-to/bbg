@@ -7,6 +7,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Number of blocks per epoch. Decay and pruning run at epoch boundaries.
+pub const EPOCH_BLOCKS: u64 = 100;
+/// Decay numerator: w_eff = w × (DECAY_NUM / DECAY_DEN) per epoch.
+pub const DECAY_NUM: u64 = 99;
+/// Decay denominator.
+pub const DECAY_DEN: u64 = 100;
+/// Minimum axon weight before pruning. Below this the axon is removed.
+pub const PRUNE_MIN_WEIGHT: u64 = 1_000;
+
 use hemera::hash as hemera_hash;
 use lens::Commitment;
 use nebu::Goldilocks;
@@ -38,6 +47,8 @@ pub struct BbgState {
     pub commitments: BTreeMap<[u8; 32], Goldilocks>,
     /// N(x): spent nullifiers
     pub nullifiers: BTreeSet<[u8; 32]>,
+    /// Reverse map: axon_id → (from, to). Not committed; used for pruning.
+    pub axon_edges: BTreeMap<Cid, (Cid, Cid)>,
     pub height: u64,
     pub root: Cid,
 }
@@ -62,6 +73,7 @@ impl BbgState {
             signals: BTreeMap::new(),
             commitments: BTreeMap::new(),
             nullifiers: BTreeSet::new(),
+            axon_edges: BTreeMap::new(),
             height: 0,
             root: empty_root,
         }
@@ -332,6 +344,9 @@ impl BbgState {
                 in_list.push(axon_id);
             }
 
+            // record reverse mapping for pruning
+            self.axon_edges.entry(axon_id).or_insert((link.from, link.to));
+
             // neurons[ν]: focus -= cost (cost = amount; cybergraph already verified sufficiency)
             if let Some(nr) = self.neurons.get_mut(&signal.neuron) {
                 nr.focus = nr.focus.saturating_sub(link.amount);
@@ -340,6 +355,38 @@ impl BbgState {
 
         self.root = self.compute_root();
         Ok(())
+    }
+
+    /// Decay axon weights and prune those below PRUNE_MIN_WEIGHT.
+    /// Called at epoch boundaries (every EPOCH_BLOCKS blocks).
+    pub fn apply_decay_and_prune(&mut self) {
+        let mut to_prune: Vec<Cid> = Vec::new();
+        for (axon_id, particle) in &mut self.particles {
+            if particle.weight > 0 {
+                particle.weight = particle.weight.saturating_mul(DECAY_NUM) / DECAY_DEN;
+                if particle.weight < PRUNE_MIN_WEIGHT {
+                    to_prune.push(*axon_id);
+                }
+            }
+        }
+        for axon_id in to_prune {
+            self.particles.remove(&axon_id);
+            if let Some((from, to)) = self.axon_edges.remove(&axon_id) {
+                if let Some(list) = self.axons_out.get_mut(&from) {
+                    list.retain(|id| id != &axon_id);
+                    if list.is_empty() {
+                        self.axons_out.remove(&from);
+                    }
+                }
+                if let Some(list) = self.axons_in.get_mut(&to) {
+                    list.retain(|id| id != &axon_id);
+                    if list.is_empty() {
+                        self.axons_in.remove(&to);
+                    }
+                }
+            }
+        }
+        self.root = self.compute_root();
     }
 }
 

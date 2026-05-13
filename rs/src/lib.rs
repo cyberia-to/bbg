@@ -15,10 +15,15 @@ pub mod dim;
 pub mod proof;
 pub mod signal;
 pub mod state;
+pub mod storage;
 pub mod types;
 
 pub use checkpoint::Checkpoint;
-pub use proof::{prove_axons_out, prove_neuron, prove_particle, QueryProof};
+pub use proof::{
+    prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_commitment, prove_file,
+    prove_location, prove_neuron, prove_particle, prove_signal, prove_time, verify_particle,
+    QueryProof,
+};
 pub use signal::{Cyberlink, InsertError, Signal, UtxoMove};
 pub use state::BbgState;
 pub use types::{Cid, NeuronId};
@@ -41,29 +46,62 @@ impl Bbg {
         self.state.insert(signal)
     }
 
-    /// Finalize the current block: record a time snapshot and increment height.
+    /// Finalize the current block: record a time snapshot, increment height,
+    /// and run decay+pruning at epoch boundaries.
     pub fn finalize_block(&mut self) {
         let h = self.state.height;
         let root = self.state.root;
         self.state.time.insert(h, root);
         self.state.root = self.state.compute_root();
         self.state.height += 1;
+        if self.state.height % state::EPOCH_BLOCKS == 0 {
+            self.state.apply_decay_and_prune();
+        }
         self.checkpoint = self.checkpoint.advance(&self.state);
     }
 
-    /// Prove membership of a particle by CID.
     pub fn prove_particle(&self, cid: &Cid) -> Option<QueryProof> {
         prove_particle(&self.state, cid)
     }
 
-    /// Prove membership of a neuron by NeuronId.
     pub fn prove_neuron(&self, id: &NeuronId) -> Option<QueryProof> {
         prove_neuron(&self.state, id)
     }
 
-    /// Prove the axons_out list for a given CID.
     pub fn prove_axons_out(&self, cid: &Cid) -> Option<QueryProof> {
         prove_axons_out(&self.state, cid)
+    }
+
+    pub fn prove_axons_in(&self, cid: &Cid) -> Option<QueryProof> {
+        prove_axons_in(&self.state, cid)
+    }
+
+    pub fn prove_location(&self, cid: &Cid) -> Option<QueryProof> {
+        prove_location(&self.state, cid)
+    }
+
+    pub fn prove_coin(&self, denom: &Cid) -> Option<QueryProof> {
+        prove_coin(&self.state, denom)
+    }
+
+    pub fn prove_card(&self, card_id: &Cid) -> Option<QueryProof> {
+        prove_card(&self.state, card_id)
+    }
+
+    pub fn prove_file(&self, cid: &Cid) -> Option<QueryProof> {
+        prove_file(&self.state, cid)
+    }
+
+    pub fn prove_signal(&self, step: u64) -> Option<QueryProof> {
+        prove_signal(&self.state, step)
+    }
+
+    pub fn prove_time(&self, height: u64) -> Option<QueryProof> {
+        prove_time(&self.state, height)
+    }
+
+    pub fn prove_commitment(&self, point: &[u8; 32]) -> Option<QueryProof> {
+        prove_commitment(&self.state, point)
     }
 }
 
@@ -76,7 +114,6 @@ impl Default for Bbg {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proof::verify_particle;
     use types::NeuronRecord;
 
     fn neuron_id(seed: u8) -> NeuronId { [seed; 32] }

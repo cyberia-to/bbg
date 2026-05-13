@@ -89,6 +89,133 @@ pub fn prove_axons_out(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
     open_dim(&entries, cid)
 }
 
+/// Commit the axons_in dimension and open at the CID-derived point.
+pub fn prove_axons_in(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .axons_in
+        .iter()
+        .map(|(k, v)| {
+            let mut vals = vec![goldilocks_from_u64(v.len() as u64)];
+            for c in v {
+                vals.extend_from_slice(&goldilocks_from_bytes32(c));
+            }
+            (*k, vals)
+        })
+        .collect();
+
+    open_dim(&entries, cid)
+}
+
+/// Commit the locations dimension and open at the CID-derived point.
+pub fn prove_location(state: &BbgState, id: &Cid) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .locations
+        .iter()
+        .map(|(k, v)| {
+            let vals = vec![
+                goldilocks_from_u64(v.lat as u32 as u64),
+                goldilocks_from_u64(v.lon as u32 as u64),
+            ];
+            (*k, vals)
+        })
+        .collect();
+
+    open_dim(&entries, id)
+}
+
+/// Commit the coins dimension and open at the CID-derived point.
+pub fn prove_coin(state: &BbgState, denom: &Cid) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .coins
+        .iter()
+        .map(|(k, v)| (*k, vec![goldilocks_from_u64(v.total_supply)]))
+        .collect();
+
+    open_dim(&entries, denom)
+}
+
+/// Commit the cards dimension and open at the CID-derived point.
+pub fn prove_card(state: &BbgState, card_id: &Cid) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .cards
+        .iter()
+        .map(|(k, v)| {
+            let mut vals: Vec<Goldilocks> = goldilocks_from_bytes32(&v.owner).to_vec();
+            vals.extend_from_slice(&goldilocks_from_bytes32(&v.particle));
+            (*k, vals)
+        })
+        .collect();
+
+    open_dim(&entries, card_id)
+}
+
+/// Commit the files dimension and open at the CID-derived point.
+pub fn prove_file(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .files
+        .iter()
+        .map(|(k, v)| {
+            let vals = vec![
+                goldilocks_from_u64(v.available as u64),
+                goldilocks_from_u64(v.chunk_count as u64),
+            ];
+            (*k, vals)
+        })
+        .collect();
+
+    open_dim(&entries, cid)
+}
+
+/// Commit the signals dimension and open at the step-derived point.
+pub fn prove_signal(state: &BbgState, step: u64) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .signals
+        .iter()
+        .map(|(s, v)| {
+            let mut key = [0u8; 32];
+            key[..8].copy_from_slice(&s.to_le_bytes());
+            let mut vals: Vec<Goldilocks> = goldilocks_from_bytes32(&v.neuron).to_vec();
+            vals.push(goldilocks_from_u64(v.link_count as u64));
+            vals.push(goldilocks_from_u64(v.block_height));
+            vals.extend_from_slice(&goldilocks_from_bytes32(&v.proof_hash));
+            (key, vals)
+        })
+        .collect();
+
+    let mut key = [0u8; 32];
+    key[..8].copy_from_slice(&step.to_le_bytes());
+    open_dim(&entries, &key)
+}
+
+/// Commit the time dimension and open at the height-derived point.
+pub fn prove_time(state: &BbgState, height: u64) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .time
+        .iter()
+        .map(|(h, cid)| {
+            let mut key = [0u8; 32];
+            key[..8].copy_from_slice(&h.to_le_bytes());
+            let vals: Vec<Goldilocks> = goldilocks_from_bytes32(cid).to_vec();
+            (key, vals)
+        })
+        .collect();
+
+    let mut key = [0u8; 32];
+    key[..8].copy_from_slice(&height.to_le_bytes());
+    open_dim(&entries, &key)
+}
+
+/// Commit the A(x) polynomial (private commitments) and open at the given point.
+pub fn prove_commitment(state: &BbgState, point: &[u8; 32]) -> Option<QueryProof> {
+    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+        .commitments
+        .iter()
+        .map(|(k, v)| (*k, vec![*v]))
+        .collect();
+
+    open_dim(&entries, point)
+}
+
 // ── internals ────────────────────────────────────────────────────────────────
 
 /// Build, commit, and open a dimension at the CID-derived evaluation point.
