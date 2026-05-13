@@ -40,11 +40,13 @@ trait ShardStore {
 
 three implementations, selected by scale:
 
-| backend | optimal for | local structure | latency | when to use |
-|---|---|---|---|---|
-| inmem | shard fits in RAM (≤ 64 GB) | flat array + HashMap + BitVec | 50 ns read | bostrom → city scale |
-| ssd (B+ tree) | shard exceeds RAM | B+ tree with RAM-cached top levels | 20 μs read | nation → planet scale |
-| archival | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
+| backend | implementation | optimal for | local structure | latency | when to use |
+|---|---|---|---|---|---|
+| memory | `std::collections::HashMap` + `bitvec` | shard fits in RAM (≤ 64 GB) | flat array + HashMap + BitVec | 50 ns read | bostrom → city scale |
+| ssd | `fjall` (LSM-tree, pure Rust) | shard exceeds RAM | LSM-tree with RAM-cached top levels | 20 μs read | nation → planet scale |
+| hdd | `redb` (B-tree MVCC, pure Rust) | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
+
+`fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media — B-tree locality maps directly to sorted namespace order.
 
 the trend: as storage gets faster, data structures get simpler. trees compensate for slow storage. when access is O(1) (RAM), the tree adds cost without benefit. with GFP (field ops in silicon) + RAM: the data structure disappears. bytes and math.
 
@@ -59,14 +61,14 @@ HOT (current state, RAM):
       A(x) (commitment polynomial) — evaluation table
       N(x) (nullifier polynomial) — evaluation table
     BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), 32 bytes
-    backend: inmem (flat array)
+    backend: memory (std HashMap, bitvec)
     latency: 50 ns
 
 WARM (recent state, SSD):
     full particle/axon data indexed by CID
     particle energy, φ*, axon weights, market state
     neuron focus/karma/stake, coin/card metadata
-    backend: B+ tree with RAM cache (top 3-4 levels pinned)
+    backend: ssd (fjall LSM-tree, RAM-cached top levels)
     latency: 20 μs
 
 CONTENT (files, network):
@@ -79,7 +81,7 @@ CONTENT (files, network):
 COLD (full history, HDD/network):
     historical state via BBG_poly time dimension
     queryable at any past t via polynomial evaluation
-    backend: archival (sorted log + NMT layout index)
+    backend: hdd (redb B-tree, sorted log + NMT layout index)
     latency: sequential 200 MB/s (HDD), minutes for network
 ```
 
@@ -154,7 +156,7 @@ low-φ* particle (3 replicas):
   bandwidth: ~9 KiB
 ```
 
-## fjall keyspace layout
+## fjall keyspace layout (ssd backend)
 
 ```
 fjall keyspace: "bbg"
@@ -329,7 +331,7 @@ when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 | time | full (all evaluations) | queried via Lens openings |
 | signals | full | headers + verified proofs |
 | cozo_* | full materialized view | partial view over synced data |
-| fjall keyspace | same layout | same layout, less data |
+| storage keyspace | same layout (memory/ssd/hdd) | same layout, less data |
 
 one codebase, one storage format, one API. `bbg::open(path)` returns the same interface regardless of role. the sync protocol fills in whatever is missing.
 
@@ -392,12 +394,12 @@ the existing keyspace layout handles this naturally — particles are content-ad
 ## dependency graph
 
 ```
-fjall (disk storage)
-  ↑
-bbg (authenticated state logic)
-  ↑         ↑
-CozoDB    zheng
-(queries) (proofs)
+redb (hdd, archival)    fjall (ssd, warm)    HashMap (memory, hot)
+         ↑                    ↑                    ↑
+                   bbg (authenticated state logic)
+                       ↑               ↑
+                    CozoDB           zheng
+                   (queries)        (proofs)
 ```
 
 bbg owns the fjall keyspace. CozoDB and zheng are consumers — CozoDB for interactive Datalog queries, zheng for proof generation and verification. neither knows about the other. bbg mediates.
