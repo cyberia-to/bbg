@@ -36,6 +36,16 @@ trait ShardStore {
     fn dirty_entries(&self) -> impl Iterator<Item = (u8, [u8; 32], &[FieldElement])>;
     fn commit(&mut self) -> [u8; 32];  // returns shard sub-commitment
 }
+
+/// Content retrieval from the network tier (L3). Injected by cybergraph;
+/// BBG holds an optional reference and delegates on local miss. Transport
+/// is not owned by BBG — this trait is the only network boundary BBG crosses.
+trait NetworkStore: Send + Sync {
+    /// Fetch raw particle content by CID. Returns None if unreachable.
+    fn fetch(&self, cid: &[u8; 32]) -> Option<Vec<u8>>;
+    /// DAS sample: open a Lens proof for a byte range within a particle.
+    fn das_sample(&self, cid: &[u8; 32], offset: u64) -> Option<QueryProof>;
+}
 ```
 
 three implementations, selected by scale:
@@ -46,8 +56,9 @@ three implementations, selected by scale:
 | unimem | `honeycrisp::unimem` (IOSurface-pinned) | polynomial eval + proof generation, Apple Silicon | IOSurface Blocks (Tape/Grid) | ~1 ns alloc, zero-copy CPU/AMX/GPU/ANE | Apple Silicon nodes (M-series) |
 | ssd | `fjall` (LSM-tree, pure Rust) | shard exceeds RAM | LSM-tree with RAM-cached top levels | 20 μs read | nation → planet scale |
 | hdd | `redb` (B-tree MVCC, pure Rust) | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
+| network | `NetworkStore` trait (injected by cybergraph) | L3 content on local miss, DAS sampling | φ*-weighted replication across peers | seconds (retrieval) | particle content not held locally |
 
-`honeycrisp/unimem` is selected for Apple Silicon because IOSurface-backed pinned Blocks give a single physical allocation visible without copying to CPU, AMX matrix coprocessor, Metal GPU, and ANE. Polynomial evaluation tables (field element slices) allocated in a Block are consumed directly by Brakedown matrix ops on AMX and by GPU compute shaders — no memcpy at any stage. `fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media.
+`honeycrisp/unimem` is selected for Apple Silicon because IOSurface-backed pinned Blocks give a single physical allocation visible without copying to CPU, AMX matrix coprocessor, Metal GPU, and ANE. Polynomial evaluation tables (field element slices) allocated in a Block are consumed directly by Brakedown matrix ops on AMX and by GPU compute shaders — no memcpy at any stage. `fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media. `NetworkStore` is a trait — BBG holds an optional injection from cybergraph; transport is not owned by BBG.
 
 the trend: as storage gets faster, data structures get simpler. trees compensate for slow storage. when access is O(1) (RAM), the tree adds cost without benefit. with GFP (field ops in silicon) + RAM: the data structure disappears. bytes and math.
 
@@ -78,8 +89,9 @@ CONTENT (files, network):
     particle content (raw bytes), indexed by CID
     DAS availability proofs via files dimension of BBG_poly
     self-authenticating: H(content) = CID
-    backend: distributed (φ*-weighted replication)
+    backend: network (NetworkStore trait, injected by cybergraph)
     latency: seconds (network retrieval)
+    miss path: ShardStore miss → NetworkStore.fetch(cid) → cache to ssd
 
 COLD (full history, HDD/network):
     historical state via BBG_poly time dimension
@@ -397,12 +409,15 @@ the existing keyspace layout handles this naturally — particles are content-ad
 ## dependency graph
 
 ```
-redb (hdd)   fjall (ssd)   HashMap (memory)   unimem (unimem, Apple Silicon)
-      ↑             ↑              ↑                       ↑
-                        bbg (authenticated state logic)
-                            ↑               ↑
-                         CozoDB           zheng
-                        (queries)        (proofs)
+redb (hdd)   fjall (ssd)   HashMap (memory)   unimem (Apple Silicon)   NetworkStore (trait)
+      ↑             ↑              ↑                    ↑                      ↑
+                              bbg (authenticated state logic)
+                                  ↑               ↑
+                               CozoDB           zheng
+                              (queries)        (proofs)
+
+NetworkStore impl lives in cybergraph/radio — injected into bbg at init.
+BBG owns tier routing; does not own transport.
 ```
 
 bbg owns the fjall keyspace. CozoDB and zheng are consumers — CozoDB for interactive Datalog queries, zheng for proof generation and verification. neither knows about the other. bbg mediates.
