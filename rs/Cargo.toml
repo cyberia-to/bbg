@@ -11,8 +11,18 @@ description = "Big Badass Graph: authenticated state with polynomial commitments
 license = "Cyber"
 
 [dependencies]
-nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
+nebu   = { package = "cyb-nebu",    path = "../../strata/nebu/rs" }
 hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
-lens = { package = "cyber-lens", path = "../../lens/src" }
-nox = { path = "../../nox/rs" }
-zheng = { path = "../../zheng" }
+lens   = { package = "cyber-lens",  path = "../../lens/src" }
+nox    = { path = "../../nox/rs" }
+zheng  = { path = "../../zheng" }
+
+# storage backends (optional)
+fjall  = { version = "2", optional = true }
+redb   = { version = "2", optional = true }
+unimem = { path = "../../honeycrisp/unimem", optional = true }
+
+[features]
+backend-ssd    = ["dep:fjall"]
+backend-hdd    = ["dep:redb"]
+backend-unimem = ["dep:unimem"]
