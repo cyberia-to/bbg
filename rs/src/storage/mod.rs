@@ -21,6 +21,7 @@
 
 pub mod mem;
 pub mod network;
+pub mod tiered;
 
 #[cfg(feature = "backend-ssd")]
 pub mod fjall;
@@ -33,6 +34,7 @@ pub mod unimem;
 
 pub use mem::MemStore;
 pub use network::NetworkStore;
+pub use tiered::TieredStore;
 
 #[cfg(feature = "backend-ssd")]
 pub use fjall::FjallStore;
