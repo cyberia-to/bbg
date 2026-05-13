@@ -8,8 +8,6 @@
 //! A dimension is a sorted map of `(key: Cid, value: &[u8])` entries
 //! committed via Brakedown over a MultilinearPoly.
 
-use std::collections::BTreeMap;
-
 use lens::{brakedown::Brakedown, Commitment, Lens, MultilinearPoly};
 use nebu::Goldilocks;
 
@@ -90,27 +88,3 @@ pub fn bbg_poly_commit(dim_commits: &[Commitment; 10]) -> Cid {
     out
 }
 
-/// A sorted key→value map forming one BBG dimension.
-pub struct DimStore<V> {
-    pub inner: BTreeMap<Cid, V>,
-}
-
-impl<V> DimStore<V> {
-    pub fn new() -> Self {
-        Self { inner: BTreeMap::new() }
-    }
-
-    pub fn insert(&mut self, key: Cid, value: V) {
-        self.inner.insert(key, value);
-    }
-
-    pub fn get(&self, key: &Cid) -> Option<&V> {
-        self.inner.get(key)
-    }
-}
-
-impl<V> Default for DimStore<V> {
-    fn default() -> Self {
-        Self::new()
-    }
-}

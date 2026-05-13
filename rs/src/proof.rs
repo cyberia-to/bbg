@@ -72,13 +72,6 @@ pub fn prove_neuron(state: &BbgState, id: &NeuronId) -> Option<QueryProof> {
     open_dim(&entries, id)
 }
 
-/// Verify a neuron query proof.
-pub fn verify_neuron(proof: &QueryProof, _root: &Cid, _id: &NeuronId) -> bool {
-    let value = eval_value_from_bytes(&proof.value_bytes);
-    let mut tx = LensTx::new(b"bbg-dim-open");
-    Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
-}
-
 /// Commit the axons_out dimension and open at the CID-derived point.
 pub fn prove_axons_out(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
     let entries: Vec<(Cid, Vec<Goldilocks>)> = state
@@ -94,13 +87,6 @@ pub fn prove_axons_out(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
         .collect();
 
     open_dim(&entries, cid)
-}
-
-/// Verify an axons_out query proof.
-pub fn verify_axons_out(proof: &QueryProof, _root: &Cid, _cid: &Cid) -> bool {
-    let value = eval_value_from_bytes(&proof.value_bytes);
-    let mut tx = LensTx::new(b"bbg-dim-open");
-    Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
 }
 
 // ── internals ────────────────────────────────────────────────────────────────
