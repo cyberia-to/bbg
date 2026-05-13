@@ -43,10 +43,11 @@ three implementations, selected by scale:
 | backend | implementation | optimal for | local structure | latency | when to use |
 |---|---|---|---|---|---|
 | memory | `std::collections::HashMap` + `bitvec` | shard fits in RAM (≤ 64 GB) | flat array + HashMap + BitVec | 50 ns read | bostrom → city scale |
+| unified | `honeycrisp::unimem` (IOSurface-pinned) | polynomial eval + proof generation, Apple Silicon | IOSurface Blocks (Tape/Grid) | ~1 ns alloc, zero-copy CPU/AMX/GPU/ANE | Apple Silicon nodes (M-series) |
 | ssd | `fjall` (LSM-tree, pure Rust) | shard exceeds RAM | LSM-tree with RAM-cached top levels | 20 μs read | nation → planet scale |
 | hdd | `redb` (B-tree MVCC, pure Rust) | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
 
-`fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media — B-tree locality maps directly to sorted namespace order.
+`honeycrisp/unimem` is selected for Apple Silicon because IOSurface-backed pinned Blocks give a single physical allocation visible without copying to CPU, AMX matrix coprocessor, Metal GPU, and ANE. Polynomial evaluation tables (field element slices) allocated in a Block are consumed directly by Brakedown matrix ops on AMX and by GPU compute shaders — no memcpy at any stage. `fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media.
 
 the trend: as storage gets faster, data structures get simpler. trees compensate for slow storage. when access is O(1) (RAM), the tree adds cost without benefit. with GFP (field ops in silicon) + RAM: the data structure disappears. bytes and math.
 
@@ -61,8 +62,10 @@ HOT (current state, RAM):
       A(x) (commitment polynomial) — evaluation table
       N(x) (nullifier polynomial) — evaluation table
     BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), 32 bytes
-    backend: memory (std HashMap, bitvec)
-    latency: 50 ns
+    backend: memory (std HashMap, bitvec) or unified (honeycrisp unimem on Apple Silicon)
+    latency: 50 ns / ~1 ns alloc zero-copy
+    unified backend note: field element slices in IOSurface Blocks are read directly
+    by AMX (Brakedown matrix ops), Metal GPU, and ANE — no copies between compute units
 
 WARM (recent state, SSD):
     full particle/axon data indexed by CID
@@ -394,12 +397,12 @@ the existing keyspace layout handles this naturally — particles are content-ad
 ## dependency graph
 
 ```
-redb (hdd, archival)    fjall (ssd, warm)    HashMap (memory, hot)
-         ↑                    ↑                    ↑
-                   bbg (authenticated state logic)
-                       ↑               ↑
-                    CozoDB           zheng
-                   (queries)        (proofs)
+redb (hdd)   fjall (ssd)   HashMap (memory)   unimem (unified, Apple Silicon)
+      ↑             ↑              ↑                       ↑
+                        bbg (authenticated state logic)
+                            ↑               ↑
+                         CozoDB           zheng
+                        (queries)        (proofs)
 ```
 
 bbg owns the fjall keyspace. CozoDB and zheng are consumers — CozoDB for interactive Datalog queries, zheng for proof generation and verification. neither knows about the other. bbg mediates.
