@@ -41,10 +41,10 @@ trait ShardStore {
 /// BBG holds an optional reference and delegates on local miss. Transport
 /// is not owned by BBG — this trait is the only network boundary BBG crosses.
 trait NetworkStore: Send + Sync {
-    /// Fetch raw particle content by CID. Returns None if unreachable.
-    fn fetch(&self, cid: &[u8; 32]) -> Option<Vec<u8>>;
+    /// Fetch raw particle content by particle. Returns None if unreachable.
+    fn fetch(&self, particle: &[u8; 32]) -> Option<Vec<u8>>;
     /// DAS sample: open a Lens proof for a byte range within a particle.
-    fn das_sample(&self, cid: &[u8; 32], offset: u64) -> Option<QueryProof>;
+    fn das_sample(&self, particle: &[u8; 32], offset: u64) -> Option<QueryProof>;
 }
 ```
 
@@ -79,19 +79,19 @@ HOT (current state, RAM):
     by AMX (Brakedown matrix ops), Metal GPU, and ANE — no copies between compute units
 
 WARM (recent state, SSD):
-    full particle/axon data indexed by CID
+    full particle/axon data indexed by particle
     particle energy, φ*, axon weights, market state
     neuron focus/karma/stake, coin/card metadata
     backend: ssd (fjall LSM-tree, RAM-cached top levels)
     latency: 20 μs
 
 CONTENT (files, network):
-    particle content (raw bytes), indexed by CID
+    particle content (raw bytes), indexed by particle
     DAS availability proofs via files dimension of BBG_poly
-    self-authenticating: H(content) = CID
+    self-authenticating: H(content) = particle
     backend: network (NetworkStore trait, injected by cybergraph)
     latency: seconds (network retrieval)
-    miss path: ShardStore miss → NetworkStore.fetch(cid) → cache to ssd
+    miss path: ShardStore miss → NetworkStore.fetch(particle) → cache to ssd
 
 COLD (full history, HDD/network):
     historical state via BBG_poly time dimension
@@ -177,20 +177,20 @@ low-φ* particle (3 replicas):
 fjall keyspace: "bbg"
 
 ├── partition: "particles"
-│   key:   CID                                 32 bytes
+│   key:   particle (32 bytes) — hemera hash
 │   value: (energy, φ*, axon fields)           particle/axon data
 │   polynomial evaluation table for particles dimension
 │   content-particles and axon-particles share namespace
 │   axon-particles carry: weight A_{pq}, market state (s_YES, s_NO), meta-score
 │
 ├── partition: "axons_out"
-│   key:   (source_particle, axon_CID)         sorted by source
+│   key:   (source_particle, axon_particle)     sorted by source
 │   value: ()                                  presence (pointer to particles)
 │   polynomial evaluation table for axons_out dimension
 │   "all outgoing from p" = Lens batch opening over this dimension
 │
 ├── partition: "axons_in"
-│   key:   (target_particle, axon_CID)         sorted by target
+│   key:   (target_particle, axon_particle)     sorted by target
 │   value: ()                                  presence (pointer to particles)
 │   polynomial evaluation table for axons_in dimension
 │   cross-index consistency: structural (same polynomial, no LogUp)
@@ -211,12 +211,12 @@ fjall keyspace: "bbg"
 │   polynomial evaluation table for coins dimension
 │
 ├── partition: "cards"
-│   key:   card_CID                            content hash
+│   key:   card_particle                       content hash
 │   value: (owner, metadata, name_binding)     non-fungible knowledge assets
 │   names resolve through card lookup, not a separate partition
 │
 ├── partition: "files"
-│   key:   CID                                 content hash
+│   key:   particle (32 bytes) — hemera hash
 │   value: (availability_proof, DAS_metadata)  content availability records
 │   polynomial evaluation table for files dimension
 │
@@ -332,6 +332,31 @@ when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 8. historical state preserved in time dimension — past queries still work
 ```
 
+## owner store (personal BBG)
+
+the chain always holds encrypted values. a personal BBG node holds plaintext for its own UTXOs.
+
+```
+chain BBG:    commitments partition   key = c, value = commit_jali(v, ρ)   RLWE ciphertext (n field elements)
+personal BBG: owner partition        key = c, value = (v, ρ)               plaintext amount + randomness
+```
+
+the owner needs `ρ` to reconstruct future spends and re-prove ownership. storing only `v` is insufficient.
+
+two operations bridge the layers:
+
+```
+submit (plaintext → chain):
+  (v, ρ) → commit_jali(v, ρ)   encrypt at signal construction time
+  ciphertext published to A(x), plaintext stays local
+
+scan (chain → plaintext):
+  commit_jali(v, ρ) → v        decrypt with owner's ρ, derived from key
+  plaintext written to owner partition for local computation
+```
+
+privacy is not optional at the protocol level — chain state is always encrypted. the personal store is a local decrypted index over the owner's own UTXOs. validators never see plaintext amounts.
+
 ## validator vs light client
 
 | | validator | light client |
@@ -375,11 +400,11 @@ the same backend stores BBG_poly evaluation tables (aggregate state: energy, pi-
 
 ```
 "particles" partition serves two polynomial levels:
-  BBG_poly(particles, CID, t) → aggregate state (energy, φ*, axon fields)
-  particle_poly(CID, position) → content bytes at any offset
+  BBG_poly(particles, particle, t) → aggregate state (energy, φ*, axon fields)
+  particle_poly(particle, position) → content bytes at any offset
 
 both are polynomial evaluations. both use Lens openings for proofs.
-both live in the same fjall partition, keyed by CID.
+both live in the same fjall partition, keyed by particle.
 ```
 
 Lens.open on BBG_poly answers "what is the energy of particle P?" Lens.open on the particle's own polynomial answers "what are bytes 1024..2048 of particle P?" same mechanism, same proof format, same verification.
@@ -393,7 +418,7 @@ the noun store holds trees with different-sized leaves depending on the algebra.
 | F₂ | 1 bit | Bt programs | compact, massive trees |
 | F_p | 64 bits / 8 bytes | field programs | standard |
 | word | 32 bits / 4 bytes | word-type | fits in F_p |
-| hash | 256 bits / 32 bytes | 4 × F_p identity | CIDs, content addresses (hemera) |
+| hash | 256 bits / 32 bytes | 4 × F_p identity | particles, content addresses (hemera) |
 
 the content-addressed store handles all leaf widths. `H(noun)` hashes the canonical serialization regardless of leaf size — a noun with bit-leaves and a noun with field-leaves both live in the same "particles" partition, keyed by their hash.
 
@@ -401,7 +426,7 @@ different algebras produce different memory access patterns on the same noun sto
 
 - **field programs** (Tri, Wav, Ten): dense trees with F_p leaves. sequential access — matrix ops produce predictable axis paths. cache-friendly. dominated by fma-pattern workloads.
 - **binary programs** (Bt): ultra-compact trees with bit-sized leaves. very large trees (a SHA-256 circuit is millions of gates). bandwidth-bound.
-- **graph programs** (Arc): sparse trees with hash-type leaves (CIDs pointing to other nouns). random access patterns. latency-bound.
+- **graph programs** (Arc): sparse trees with hash-type leaves (particles pointing to other nouns). random access patterns. latency-bound.
 - **mixed programs** (Rs): trees with both field and word leaves. irregular access.
 
 the existing keyspace layout handles this naturally — particles are content-addressed by hash regardless of leaf type. hot-path optimization should consider which partitions are accessed by which algebra patterns. cache eviction policy, prefetch strategy, and fjall block size all benefit from knowing the dominant algebra in the current workload.

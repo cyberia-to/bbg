@@ -71,8 +71,8 @@ polynomial commitment is computed by `dim::commit_dim` in `bbg::dim`.
 
 ```rust
 pub trait NetworkStore: Send + Sync {
-    fn fetch(&self, cid: &Cid) -> Option<Vec<u8>>;
-    fn das_sample(&self, cid: &Cid, offset: u64, length: u64) -> Option<QueryProof>;
+    fn fetch(&self, particle: &Cid) -> Option<Vec<u8>>;
+    fn das_sample(&self, particle: &Cid, offset: u64, length: u64) -> Option<QueryProof>;
 }
 ```
 
@@ -80,8 +80,8 @@ L3 content retrieval. Injected by cybergraph at init; BBG does not own transport
 
 | method | description |
 |---|---|
-| `fetch(cid)` | Retrieve raw particle content bytes by CID. None if unreachable |
-| `das_sample(cid, offset, length)` | Open a Lens proof for a byte range (DAS challenge/response) |
+| `fetch(particle)` | Retrieve raw particle content bytes by particle. None if unreachable |
+| `das_sample(particle, offset, length)` | Open a Lens proof for a byte range (DAS challenge/response) |
 
 ---
 
@@ -127,7 +127,7 @@ impl TieredStore {
 
     pub fn promote(&mut self, dimension: u8, key: &[u8; 32]) -> bool
     pub fn evict(&mut self, dimension: u8, key: &[u8; 32])
-    pub fn fetch_content(&self, cid: &Cid) -> Option<Vec<u8>>
+    pub fn fetch_content(&self, particle: &Cid) -> Option<Vec<u8>>
     pub fn archive(&mut self) -> Option<[u8; 32]>
 }
 ```
@@ -140,7 +140,7 @@ impl TieredStore {
 | `with_network(net)` | Inject L3 content fetcher. Builder pattern, consumes self |
 | `promote(dim, key)` | Pull (dim, key) from WARM or COLD into HOT. Returns true if found. Called by soma prefetch |
 | `evict(dim, key)` | Move HOT entry to WARM. Called by soma when focus drops below threshold |
-| `fetch_content(cid)` | Delegate to `NetworkStore::fetch`. None if no network tier or unreachable |
+| `fetch_content(particle)` | Delegate to `NetworkStore::fetch`. None if no network tier or unreachable |
 | `archive()` | Commit COLD tier. Returns COLD sub-root, or None if no COLD tier present |
 
 `TieredStore` itself implements `ShardStore`. The per-block flow:
