@@ -17,7 +17,7 @@
 use nebu::Goldilocks;
 
 use super::{NetworkStore, ShardStore};
-use crate::types::Cid;
+use crate::types::Particle;
 
 pub struct TieredStore {
     /// L1: current polynomial evaluation tables (memory or unimem)
@@ -82,9 +82,9 @@ impl TieredStore {
         // a remove() method (future).
     }
 
-    /// Fetch raw content bytes for a CID from the network tier.
-    pub fn fetch_content(&self, cid: &Cid) -> Option<Vec<u8>> {
-        self.network.as_ref()?.fetch(cid)
+    /// Fetch raw content bytes for a particle from the network tier.
+    pub fn fetch_content(&self, particle: &Particle) -> Option<Vec<u8>> {
+        self.network.as_ref()?.fetch(particle)
     }
 
     /// Flush COLD tier explicitly (called at archival checkpoints, not per block).

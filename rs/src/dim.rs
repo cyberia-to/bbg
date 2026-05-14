@@ -5,13 +5,13 @@
 // ---
 //! Dimension commitment helpers for BBG authenticated state.
 //!
-//! A dimension is a sorted map of `(key: Cid, value: &[u8])` entries
+//! A dimension is a sorted map of `(key: Particle, value: &[u8])` entries
 //! committed via Brakedown over a MultilinearPoly.
 
 use lens::{brakedown::Brakedown, Commitment, Lens, MultilinearPoly};
 use nebu::Goldilocks;
 
-use crate::types::Cid;
+use crate::types::Particle;
 
 /// Serialize a `u64` value to one Goldilocks element.
 #[inline]
@@ -36,7 +36,7 @@ pub fn goldilocks_from_bytes32(b: &[u8; 32]) -> [Goldilocks; 4] {
 /// - Each value element is one Goldilocks per u64.
 /// - The concatenated list is padded to the next power of 2.
 /// - Empty dimension → `Brakedown::commit_raw(b"bbg-empty-dim" encoded)`.
-pub fn commit_dim(entries: &[(Cid, Vec<Goldilocks>)]) -> Commitment {
+pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
     if entries.is_empty() {
         // Use commit_raw on a canonical empty sentinel so the type is the
         // same `Commitment` that lens/0.2 exports.
@@ -69,7 +69,7 @@ pub fn commit_dim(entries: &[(Cid, Vec<Goldilocks>)]) -> Commitment {
 /// commitments for all 10 dimensions (d0..d9).
 ///
 /// Uses `Brakedown::commit_raw` so all hemera types stay in the 0.2 version.
-pub fn bbg_poly_commit(dim_commits: &[Commitment; 10]) -> Cid {
+pub fn bbg_poly_commit(dim_commits: &[Commitment; 10]) -> Particle {
     let mut buf = Vec::with_capacity(320); // 10 × 32
     for c in dim_commits.iter() {
         buf.extend_from_slice(c.as_bytes());

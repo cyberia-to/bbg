@@ -5,17 +5,17 @@
 // ---
 //! Signal and cyberlink types — the single input to BBG state.
 
-use crate::types::{Cid, NeuronId};
+use crate::types::{Particle, NeuronId};
 
 /// A cyberlink: the five-field atomic unit of knowledge.
 /// ℓ = (p, q, τ, a, v)
 pub struct Cyberlink {
     /// source particle
-    pub from: Cid,
+    pub from: Particle,
     /// target particle
-    pub to: Cid,
+    pub to: Particle,
     /// token denomination
-    pub token: Cid,
+    pub token: Particle,
     /// conviction amount (focus consumed)
     pub amount: u64,
     /// epistemic valence: -1, 0, or +1
@@ -25,9 +25,9 @@ pub struct Cyberlink {
 /// A nullifier movement: spend a conviction UTXO and optionally create a new one.
 pub struct UtxoMove {
     /// nullifier of the spent UTXO
-    pub nullifier: Cid,
+    pub nullifier: Particle,
     /// new commitment point (if creating an output)
-    pub commitment: Option<(Cid, u64)>,
+    pub commitment: Option<(Particle, u64)>,
 }
 
 /// A signal: the atomic broadcast unit from a neuron.

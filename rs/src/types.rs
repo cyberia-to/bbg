@@ -5,8 +5,8 @@
 // ---
 //! Core record types for BBG authenticated state.
 
-/// Content identifier: 32-byte hemera hash.
-pub type Cid = [u8; 32];
+/// Particle: 32-byte hemera hash.
+pub type Particle = [u8; 32];
 
 /// Neuron identifier: 32-byte hemera hash.
 pub type NeuronId = [u8; 32];
@@ -66,7 +66,7 @@ pub struct CardRecord {
     /// current owner neuron
     pub owner: NeuronId,
     /// axon-particle this card is bound to
-    pub particle: Cid,
+    pub particle: Particle,
 }
 
 /// A file availability record.
@@ -80,5 +80,5 @@ pub struct SignalRecord {
     pub neuron: NeuronId,
     pub link_count: u32,
     pub block_height: u64,
-    pub proof_hash: Cid,
+    pub proof_hash: Particle,
 }

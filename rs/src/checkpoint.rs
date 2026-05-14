@@ -6,11 +6,11 @@
 //! Checkpointing: snapshot BBG root + optional zheng accumulator.
 
 use crate::state::BbgState;
-use crate::types::Cid;
+use crate::types::Particle;
 
 /// A BBG checkpoint: root hash + optional proof accumulator + block height.
 pub struct Checkpoint {
-    pub root: Cid,
+    pub root: Particle,
     pub acc: Option<zheng::Accumulator>,
     pub height: u64,
 }

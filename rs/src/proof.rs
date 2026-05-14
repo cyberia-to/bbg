@@ -10,7 +10,7 @@ use nebu::Goldilocks;
 
 use crate::dim::{goldilocks_from_bytes32, goldilocks_from_u64};
 use crate::state::BbgState;
-use crate::types::{Cid, NeuronId};
+use crate::types::{Particle, NeuronId};
 
 /// A proof that a specific record exists in a BBG dimension.
 pub struct QueryProof {
@@ -21,14 +21,14 @@ pub struct QueryProof {
     pub point: Vec<Goldilocks>,
 }
 
-/// Build the evaluation point for a CID: 4 Goldilocks elements (8 bytes each).
-fn cid_to_point(cid: &Cid) -> Vec<Goldilocks> {
-    goldilocks_from_bytes32(cid).to_vec()
+/// Build the evaluation point for a particle: 4 Goldilocks elements (8 bytes each).
+fn particle_to_point(particle: &Particle) -> Vec<Goldilocks> {
+    goldilocks_from_bytes32(particle).to_vec()
 }
 
-/// Commit the particles dimension and open at the CID-derived point.
-pub fn prove_particle(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the particles dimension and open at the particle-derived point.
+pub fn prove_particle(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .particles
         .iter()
         .map(|(k, v)| {
@@ -44,11 +44,11 @@ pub fn prove_particle(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
         })
         .collect();
 
-    open_dim(&entries, cid)
+    open_dim(&entries, particle)
 }
 
 /// Verify a particle query proof.
-pub fn verify_particle(proof: &QueryProof, _root: &Cid, _cid: &Cid) -> bool {
+pub fn verify_particle(proof: &QueryProof, _root: &Particle, _particle: &Particle) -> bool {
     let value = eval_value_from_bytes(&proof.value_bytes);
     let mut tx = LensTx::new(b"bbg-dim-open");
     Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
@@ -56,7 +56,7 @@ pub fn verify_particle(proof: &QueryProof, _root: &Cid, _cid: &Cid) -> bool {
 
 /// Commit the neurons dimension and open at the NeuronId-derived point.
 pub fn prove_neuron(state: &BbgState, id: &NeuronId) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .neurons
         .iter()
         .map(|(k, v)| {
@@ -72,9 +72,9 @@ pub fn prove_neuron(state: &BbgState, id: &NeuronId) -> Option<QueryProof> {
     open_dim(&entries, id)
 }
 
-/// Commit the axons_out dimension and open at the CID-derived point.
-pub fn prove_axons_out(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the axons_out dimension and open at the particle-derived point.
+pub fn prove_axons_out(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .axons_out
         .iter()
         .map(|(k, v)| {
@@ -86,12 +86,12 @@ pub fn prove_axons_out(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
         })
         .collect();
 
-    open_dim(&entries, cid)
+    open_dim(&entries, particle)
 }
 
-/// Commit the axons_in dimension and open at the CID-derived point.
-pub fn prove_axons_in(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the axons_in dimension and open at the particle-derived point.
+pub fn prove_axons_in(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .axons_in
         .iter()
         .map(|(k, v)| {
@@ -103,12 +103,12 @@ pub fn prove_axons_in(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
         })
         .collect();
 
-    open_dim(&entries, cid)
+    open_dim(&entries, particle)
 }
 
-/// Commit the locations dimension and open at the CID-derived point.
-pub fn prove_location(state: &BbgState, id: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the locations dimension and open at the particle-derived point.
+pub fn prove_location(state: &BbgState, id: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .locations
         .iter()
         .map(|(k, v)| {
@@ -123,9 +123,9 @@ pub fn prove_location(state: &BbgState, id: &Cid) -> Option<QueryProof> {
     open_dim(&entries, id)
 }
 
-/// Commit the coins dimension and open at the CID-derived point.
-pub fn prove_coin(state: &BbgState, denom: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the coins dimension and open at the particle-derived point.
+pub fn prove_coin(state: &BbgState, denom: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .coins
         .iter()
         .map(|(k, v)| (*k, vec![goldilocks_from_u64(v.total_supply)]))
@@ -134,9 +134,9 @@ pub fn prove_coin(state: &BbgState, denom: &Cid) -> Option<QueryProof> {
     open_dim(&entries, denom)
 }
 
-/// Commit the cards dimension and open at the CID-derived point.
-pub fn prove_card(state: &BbgState, card_id: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the cards dimension and open at the particle-derived point.
+pub fn prove_card(state: &BbgState, card_id: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .cards
         .iter()
         .map(|(k, v)| {
@@ -149,9 +149,9 @@ pub fn prove_card(state: &BbgState, card_id: &Cid) -> Option<QueryProof> {
     open_dim(&entries, card_id)
 }
 
-/// Commit the files dimension and open at the CID-derived point.
-pub fn prove_file(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+/// Commit the files dimension and open at the particle-derived point.
+pub fn prove_file(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .files
         .iter()
         .map(|(k, v)| {
@@ -163,12 +163,12 @@ pub fn prove_file(state: &BbgState, cid: &Cid) -> Option<QueryProof> {
         })
         .collect();
 
-    open_dim(&entries, cid)
+    open_dim(&entries, particle)
 }
 
 /// Commit the signals dimension and open at the step-derived point.
 pub fn prove_signal(state: &BbgState, step: u64) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .signals
         .iter()
         .map(|(s, v)| {
@@ -189,13 +189,13 @@ pub fn prove_signal(state: &BbgState, step: u64) -> Option<QueryProof> {
 
 /// Commit the time dimension and open at the height-derived point.
 pub fn prove_time(state: &BbgState, height: u64) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .time
         .iter()
-        .map(|(h, cid)| {
+        .map(|(h, particle)| {
             let mut key = [0u8; 32];
             key[..8].copy_from_slice(&h.to_le_bytes());
-            let vals: Vec<Goldilocks> = goldilocks_from_bytes32(cid).to_vec();
+            let vals: Vec<Goldilocks> = goldilocks_from_bytes32(particle).to_vec();
             (key, vals)
         })
         .collect();
@@ -207,7 +207,7 @@ pub fn prove_time(state: &BbgState, height: u64) -> Option<QueryProof> {
 
 /// Commit the A(x) polynomial (private commitments) and open at the given point.
 pub fn prove_commitment(state: &BbgState, point: &[u8; 32]) -> Option<QueryProof> {
-    let entries: Vec<(Cid, Vec<Goldilocks>)> = state
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
         .commitments
         .iter()
         .map(|(k, v)| (*k, vec![*v]))
@@ -218,8 +218,8 @@ pub fn prove_commitment(state: &BbgState, point: &[u8; 32]) -> Option<QueryProof
 
 // ── internals ────────────────────────────────────────────────────────────────
 
-/// Build, commit, and open a dimension at the CID-derived evaluation point.
-fn open_dim(entries: &[(Cid, Vec<Goldilocks>)], key: &Cid) -> Option<QueryProof> {
+/// Build, commit, and open a dimension at the particle-derived evaluation point.
+fn open_dim(entries: &[(Particle, Vec<Goldilocks>)], key: &Particle) -> Option<QueryProof> {
     if entries.is_empty() {
         return None;
     }
@@ -240,7 +240,7 @@ fn open_dim(entries: &[(Cid, Vec<Goldilocks>)], key: &Cid) -> Option<QueryProof>
 
     // Evaluation point: 4 field elements from the key (= num_vars up to 4,
     // padded with ZERO if the polynomial has more variables).
-    let key_point = cid_to_point(key);
+    let key_point = particle_to_point(key);
     if poly.num_vars < key_point.len() {
         return None;
     }

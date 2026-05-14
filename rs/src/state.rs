@@ -25,22 +25,22 @@ use crate::dim::{
 };
 use crate::signal::{InsertError, Signal};
 use crate::types::{
-    CardRecord, Cid, CoinRecord, FileRecord, LocationRecord, NeuronId, NeuronRecord,
+    CardRecord, Particle, CoinRecord, FileRecord, LocationRecord, NeuronId, NeuronRecord,
     ParticleRecord, SignalRecord,
 };
 
 /// The full BBG state: 10 dimensions + private commitment sets.
 pub struct BbgState {
-    pub particles: BTreeMap<Cid, ParticleRecord>,
-    pub axons_out: BTreeMap<Cid, Vec<Cid>>,
-    pub axons_in: BTreeMap<Cid, Vec<Cid>>,
+    pub particles: BTreeMap<Particle, ParticleRecord>,
+    pub axons_out: BTreeMap<Particle, Vec<Particle>>,
+    pub axons_in: BTreeMap<Particle, Vec<Particle>>,
     pub neurons: BTreeMap<NeuronId, NeuronRecord>,
-    pub locations: BTreeMap<Cid, LocationRecord>,
-    pub coins: BTreeMap<Cid, CoinRecord>,
-    pub cards: BTreeMap<Cid, CardRecord>,
-    pub files: BTreeMap<Cid, FileRecord>,
+    pub locations: BTreeMap<Particle, LocationRecord>,
+    pub coins: BTreeMap<Particle, CoinRecord>,
+    pub cards: BTreeMap<Particle, CardRecord>,
+    pub files: BTreeMap<Particle, FileRecord>,
     /// height → BBG_root snapshot
-    pub time: BTreeMap<u64, Cid>,
+    pub time: BTreeMap<u64, Particle>,
     /// step → signal record
     pub signals: BTreeMap<u64, SignalRecord>,
     /// A(x): commit_point → value (private polynomial commitments)
@@ -48,9 +48,9 @@ pub struct BbgState {
     /// N(x): spent nullifiers
     pub nullifiers: BTreeSet<[u8; 32]>,
     /// Reverse map: axon_id → (from, to). Not committed; used for pruning.
-    pub axon_edges: BTreeMap<Cid, (Cid, Cid)>,
+    pub axon_edges: BTreeMap<Particle, (Particle, Particle)>,
     pub height: u64,
-    pub root: Cid,
+    pub root: Particle,
 }
 
 impl BbgState {
@@ -80,7 +80,7 @@ impl BbgState {
     }
 
     /// Compute BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N)).
-    pub fn compute_root(&self) -> Cid {
+    pub fn compute_root(&self) -> Particle {
         let dim_commits = [
             self.commit_particles(),
             self.commit_axons_out(),
@@ -93,12 +93,12 @@ impl BbgState {
             self.commit_time(),
             self.commit_signals(),
         ];
-        let bbg_poly_cid = bbg_poly_commit(&dim_commits);
+        let bbg_poly_particle = bbg_poly_commit(&dim_commits);
         let a_commit = self.commit_a();
         let n_commit = self.commit_n();
 
         let mut buf = Vec::with_capacity(96);
-        buf.extend_from_slice(&bbg_poly_cid);
+        buf.extend_from_slice(&bbg_poly_particle);
         buf.extend_from_slice(a_commit.as_bytes());
         buf.extend_from_slice(n_commit.as_bytes());
 
@@ -113,7 +113,7 @@ impl BbgState {
     // ── dimension serializers ─────────────────────────────────────
 
     fn commit_particles(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .particles
             .iter()
             .map(|(k, v)| {
@@ -132,14 +132,14 @@ impl BbgState {
     }
 
     fn commit_axons_out(&self) -> Commitment {
-        // Serialize each adjacency list: key + count + each cid (4 field elems each)
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        // Serialize each adjacency list: key + count + each particle (4 field elems each)
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .axons_out
             .iter()
             .map(|(k, v)| {
                 let mut vals = vec![goldilocks_from_u64(v.len() as u64)];
-                for cid in v {
-                    vals.extend_from_slice(&goldilocks_from_bytes32(cid));
+                for particle in v {
+                    vals.extend_from_slice(&goldilocks_from_bytes32(particle));
                 }
                 (*k, vals)
             })
@@ -148,13 +148,13 @@ impl BbgState {
     }
 
     fn commit_axons_in(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .axons_in
             .iter()
             .map(|(k, v)| {
                 let mut vals = vec![goldilocks_from_u64(v.len() as u64)];
-                for cid in v {
-                    vals.extend_from_slice(&goldilocks_from_bytes32(cid));
+                for particle in v {
+                    vals.extend_from_slice(&goldilocks_from_bytes32(particle));
                 }
                 (*k, vals)
             })
@@ -163,7 +163,7 @@ impl BbgState {
     }
 
     fn commit_neurons(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .neurons
             .iter()
             .map(|(k, v)| {
@@ -179,7 +179,7 @@ impl BbgState {
     }
 
     fn commit_locations(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .locations
             .iter()
             .map(|(k, v)| {
@@ -195,7 +195,7 @@ impl BbgState {
     }
 
     fn commit_coins(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .coins
             .iter()
             .map(|(k, v)| ((*k), vec![goldilocks_from_u64(v.total_supply)]))
@@ -204,7 +204,7 @@ impl BbgState {
     }
 
     fn commit_cards(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .cards
             .iter()
             .map(|(k, v)| {
@@ -217,7 +217,7 @@ impl BbgState {
     }
 
     fn commit_files(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .files
             .iter()
             .map(|(k, v)| {
@@ -233,13 +233,13 @@ impl BbgState {
 
     fn commit_time(&self) -> Commitment {
         // Key: height as 32-byte key (8 bytes LE padded)
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .time
             .iter()
-            .map(|(h, cid)| {
+            .map(|(h, particle)| {
                 let mut key = [0u8; 32];
                 key[..8].copy_from_slice(&h.to_le_bytes());
-                let vals: Vec<Goldilocks> = goldilocks_from_bytes32(cid).to_vec();
+                let vals: Vec<Goldilocks> = goldilocks_from_bytes32(particle).to_vec();
                 (key, vals)
             })
             .collect();
@@ -247,7 +247,7 @@ impl BbgState {
     }
 
     fn commit_signals(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .signals
             .iter()
             .map(|(step, v)| {
@@ -264,7 +264,7 @@ impl BbgState {
     }
 
     fn commit_a(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .commitments
             .iter()
             .map(|(k, v)| (*k, vec![*v]))
@@ -273,7 +273,7 @@ impl BbgState {
     }
 
     fn commit_n(&self) -> Commitment {
-        let entries: Vec<(Cid, Vec<Goldilocks>)> = self
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .nullifiers
             .iter()
             .map(|k| (*k, vec![goldilocks_from_u64(1)]))
@@ -306,7 +306,7 @@ impl BbgState {
 
         // Apply each cyberlink ℓ = (p, q, τ, a, v)
         for link in &signal.links {
-            // axon-particle CID = H(from ‖ to)
+            // axon-particle = H(from ‖ to)
             let axon_id = {
                 let mut buf = [0u8; 64];
                 buf[..32].copy_from_slice(&link.from);
@@ -360,7 +360,7 @@ impl BbgState {
     /// Decay axon weights and prune those below PRUNE_MIN_WEIGHT.
     /// Called at epoch boundaries (every EPOCH_BLOCKS blocks).
     pub fn apply_decay_and_prune(&mut self) {
-        let mut to_prune: Vec<Cid> = Vec::new();
+        let mut to_prune: Vec<Particle> = Vec::new();
         for (axon_id, particle) in &mut self.particles {
             if particle.weight > 0 {
                 particle.weight = particle.weight.saturating_mul(DECAY_NUM) / DECAY_DEN;

@@ -26,7 +26,7 @@ pub use proof::{
 };
 pub use signal::{Cyberlink, InsertError, Signal, UtxoMove};
 pub use state::BbgState;
-pub use types::{Cid, NeuronId};
+pub use types::{Particle, NeuronId};
 
 /// The BBG facade: state + checkpoint as a single unit.
 pub struct Bbg {
@@ -60,36 +60,36 @@ impl Bbg {
         self.checkpoint = self.checkpoint.advance(&self.state);
     }
 
-    pub fn prove_particle(&self, cid: &Cid) -> Option<QueryProof> {
-        prove_particle(&self.state, cid)
+    pub fn prove_particle(&self, particle: &Particle) -> Option<QueryProof> {
+        prove_particle(&self.state, particle)
     }
 
     pub fn prove_neuron(&self, id: &NeuronId) -> Option<QueryProof> {
         prove_neuron(&self.state, id)
     }
 
-    pub fn prove_axons_out(&self, cid: &Cid) -> Option<QueryProof> {
-        prove_axons_out(&self.state, cid)
+    pub fn prove_axons_out(&self, particle: &Particle) -> Option<QueryProof> {
+        prove_axons_out(&self.state, particle)
     }
 
-    pub fn prove_axons_in(&self, cid: &Cid) -> Option<QueryProof> {
-        prove_axons_in(&self.state, cid)
+    pub fn prove_axons_in(&self, particle: &Particle) -> Option<QueryProof> {
+        prove_axons_in(&self.state, particle)
     }
 
-    pub fn prove_location(&self, cid: &Cid) -> Option<QueryProof> {
-        prove_location(&self.state, cid)
+    pub fn prove_location(&self, particle: &Particle) -> Option<QueryProof> {
+        prove_location(&self.state, particle)
     }
 
-    pub fn prove_coin(&self, denom: &Cid) -> Option<QueryProof> {
+    pub fn prove_coin(&self, denom: &Particle) -> Option<QueryProof> {
         prove_coin(&self.state, denom)
     }
 
-    pub fn prove_card(&self, card_id: &Cid) -> Option<QueryProof> {
+    pub fn prove_card(&self, card_id: &Particle) -> Option<QueryProof> {
         prove_card(&self.state, card_id)
     }
 
-    pub fn prove_file(&self, cid: &Cid) -> Option<QueryProof> {
-        prove_file(&self.state, cid)
+    pub fn prove_file(&self, particle: &Particle) -> Option<QueryProof> {
+        prove_file(&self.state, particle)
     }
 
     pub fn prove_signal(&self, step: u64) -> Option<QueryProof> {
@@ -117,16 +117,16 @@ mod tests {
     use types::NeuronRecord;
 
     fn neuron_id(seed: u8) -> NeuronId { [seed; 32] }
-    fn cid(seed: u8) -> Cid { [seed; 32] }
+    fn particle(seed: u8) -> Particle { [seed; 32] }
 
     fn seed_neuron(bbg: &mut Bbg, id: NeuronId, focus: u64) {
         bbg.state.neurons.insert(id, NeuronRecord { focus, karma: 0, stake: 0 });
     }
 
-    fn one_link(neuron: NeuronId, from: Cid, to: Cid) -> Signal {
+    fn one_link(neuron: NeuronId, from: Particle, to: Particle) -> Signal {
         Signal {
             neuron,
-            links: vec![Cyberlink { from, to, token: cid(0), amount: 1, valence: 1 }],
+            links: vec![Cyberlink { from, to, token: particle(0), amount: 1, valence: 1 }],
             utxo_moves: vec![],
             height: 0,
         }
@@ -143,8 +143,8 @@ mod tests {
         let mut b = Bbg::new();
         seed_neuron(&mut a, neuron_id(1), 100);
         seed_neuron(&mut b, neuron_id(1), 100);
-        a.insert(&one_link(neuron_id(1), cid(2), cid(3))).unwrap();
-        b.insert(&one_link(neuron_id(1), cid(2), cid(3))).unwrap();
+        a.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        b.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
         assert_eq!(a.state.compute_root(), b.state.compute_root());
     }
 
@@ -153,7 +153,7 @@ mod tests {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
         let root_before = bbg.state.root;
-        bbg.insert(&one_link(neuron_id(1), cid(2), cid(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
         assert_ne!(bbg.state.root, root_before);
     }
 
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn double_spend_is_rejected() {
         let mut bbg = Bbg::new();
-        let nullifier = cid(42);
+        let nullifier = particle(42);
         let mk_signal = || Signal {
             neuron: neuron_id(1),
             links: vec![],
@@ -185,14 +185,14 @@ mod tests {
     fn prove_and_verify_particle_roundtrip() {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
-        bbg.insert(&one_link(neuron_id(1), cid(2), cid(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
 
-        let proof = bbg.prove_particle(&cid(3)).expect("particle proof must exist");
-        assert!(verify_particle(&proof, &bbg.state.root, &cid(3)));
+        let proof = bbg.prove_particle(&particle(3)).expect("particle proof must exist");
+        assert!(verify_particle(&proof, &bbg.state.root, &particle(3)));
     }
 
     #[test]
     fn prove_particle_returns_none_for_unknown_cid() {
-        assert!(Bbg::new().prove_particle(&cid(255)).is_none());
+        assert!(Bbg::new().prove_particle(&particle(255)).is_none());
     }
 }
