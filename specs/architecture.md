@@ -65,7 +65,7 @@ BBG_poly(index, key, t) — 10 public evaluation dimensions
 
   index ∈ {particles, axons_out, axons_in, neurons, locations,
            coins, cards, files, time, signals}
-  key   = namespace key within that index (particle CID, neuron ID, etc.)
+  key   = namespace key within that index (particle, neuron ID, etc.)
   t     = time (block height)
 
 A(x) — commitment polynomial (independent, NOT a dimension of BBG_poly)
@@ -110,7 +110,7 @@ the BBG_poly dimension gives aggregate state (energy, pi-star). the particle's o
 
 all particles in one index. content-particles and axon-particles share the same namespace. each entry stores:
 
-- CID (32 bytes) — content hash, namespace key
+- particle (32 bytes) — hemera hash, namespace key
 - energy (8 bytes) — aggregate Σ weight from all incoming axons
 - φ* (8 bytes) — focus ranking from tri-kernel
 
@@ -120,7 +120,7 @@ axon-particles carry additional fields:
 - market state: s_YES, s_NO (16 bytes) — ICBS reserve amounts
 - meta-score (8 bytes) — aggregate valence prediction
 
-direct lookup of any particle or axon by CID: one Lens opening, O(1).
+direct lookup of any particle or axon: one Lens opening, O(1).
 
 ### axons_out — evaluation dimension (directional index)
 
@@ -199,10 +199,10 @@ proof size: ~2 KiB, verification: ~5 μs
 L1: Hot state      BBG_poly (10 public dimensions), A(x) + N(x) (private polynomials)
                    in-memory, sub-millisecond, three 32-byte commitments → one 32-byte root
 
-L2: Particle data  full particle/axon data, indexed by CID
+L2: Particle data  full particle/axon data, indexed by particle
                    SSD, milliseconds, content-addressed
 
-L3: Content store  particle content (files), indexed by CID
+L3: Content store  particle content (files), indexed by particle
                    network retrieval, seconds, DAS availability proofs
 
 L4: Archival       historical state via polynomial time dimension

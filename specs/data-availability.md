@@ -152,8 +152,8 @@ DAS covers the files dimension of BBG_poly — the content availability commitme
 storage tier mapping:
 
 - L1 (hot state): polynomial commitments, aggregate data, mutator set state — guaranteed by validators running the chain
-- L2 (particle data): full particle/axon data indexed by CID — SSD, milliseconds
-- L3 (content store): particle content (files) indexed by CID — DAS availability proofs via files dimension
+- L2 (particle data): full particle/axon data indexed by particle — SSD, milliseconds
+- L3 (content store): particle content (files) indexed by particle — DAS availability proofs via files dimension
 - L4 (archival): historical state via time dimension of BBG_poly — DAS ensures availability during active window
 
 the DAS active window must be long enough for light clients to sample and reconstruct any namespace they care about. after the window, data relies on archival nodes and incentivized storage.

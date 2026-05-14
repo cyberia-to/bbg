@@ -9,7 +9,7 @@ the file sync problem has been solved badly for decades. Syncthing shows conflic
 
 ## the ordering problem
 
-content-addressed data doesn't conflict. if two neurons store the same file, it gets the same CID. deduplication is automatic. transfer is trivial: "do you have this hash? no? here." this is a solved problem (IPFS, BitTorrent, git objects).
+content-addressed data doesn't conflict. if two neurons store the same file, it gets the same particle. deduplication is automatic. transfer is trivial: "do you have this hash? no? here." this is a solved problem (IPFS, BitTorrent, git objects).
 
 the unsolved problem: mutable name resolution. when two neurons both rename `~/paper.md` to different content while offline, which binding wins? this is the question every sync tool answers differently:
 
@@ -22,7 +22,7 @@ bbg's answer: **deterministic ordering of a signal DAG.** no timestamps, no serv
 
 ## why signals, not files
 
-the unit of sync is not a file. it is a signal — a batch of cyberlinks with a zheng proof. a file write is a cyberlink (bind name to new CID). a file delete is a cyberlink (remove name binding). a rename is two cyberlinks. every file operation is already a signal in bbg's architecture.
+the unit of sync is not a file. it is a signal — a batch of cyberlinks with a zheng proof. a file write is a cyberlink (bind name to new particle). a file delete is a cyberlink (remove name binding). a rename is two cyberlinks. every file operation is already a signal in bbg's architecture.
 
 this means file sync is not a separate protocol. it is the same mechanism the network uses for all state transitions. the sync protocol for files, for knowledge graph operations, for token transfers, for card updates — is one protocol. signals in, state out.
 

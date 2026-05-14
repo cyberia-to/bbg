@@ -17,7 +17,7 @@ a polynomial commits all views as evaluation dimensions of one object:
 BBG_poly(dimension, key, t)
 
 dimension ∈ {particles, axons_out, axons_in, neurons, ...}
-key       = namespace identifier (CID, neuron_id)
+key       = namespace identifier (particle, neuron_id)
 t         = block height
 ```
 
@@ -75,7 +75,7 @@ the polynomial has no internal nodes. leaf data is the same in both approaches �
 BBG_poly(dimension, key, t) encodes the entire public state as a function over three axes:
 
 - **dimension** (WHAT): which view — particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals
-- **key** (WHERE): namespace identifier — particle CID, neuron ID, denomination hash, card ID
+- **key** (WHERE): namespace identifier — particle, neuron ID, denomination hash, card ID
 - **t** (WHEN): block height — temporal axis for historical queries
 
 every query is an evaluation:
@@ -123,7 +123,7 @@ BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 
 the polynomial model extends beyond aggregate state (BBG_poly) to individual particles. a particle's content is a polynomial over the Goldilocks field. its identity is hemera(Lens.commit(content) ‖ PARTICLE). the tree/polynomial isomorphism means the SAME Lens serves both levels:
 
-- **state queries**: BBG_poly(particles, CID, t) → energy, pi-star (aggregate)
+- **state queries**: BBG_poly(particles, particle, t) → energy, pi-star (aggregate)
 - **content queries**: Lens.open(particle_poly, position) → bytes at offset (data)
 
 same Lens. same proof format. same verification cost (~5 microseconds, ~200 bytes).
@@ -136,6 +136,6 @@ this unification has three consequences:
 
 3. **algebraic composability end-to-end.** particle identity is a field element derived from polynomial commitment. state operations (energy, focus, axon weights) operate on field elements. there is no hash-to-field boundary anywhere in the pipeline. content, identity, and state are all polynomial objects in the same field.
 
-the evaluation point model from BBG_poly (dimension, key, t) and the content model from particle polynomials (CID, byte_offset) are two applications of the same mathematical structure: polynomial commitment with Lens openings.
+the evaluation point model from BBG_poly (dimension, key, t) and the content model from particle polynomials (particle, byte_offset) are two applications of the same mathematical structure: polynomial commitment with Lens openings.
 
 see [[architecture]] for the full specification, [[architecture-overview]] for the pipeline, [[polynomial-privacy]] for private state

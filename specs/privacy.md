@@ -21,7 +21,7 @@ CYBERLINK                                            7-tuple (ν, p, q, τ, a, v
 NEURON             total focus                       linking history
                    karma κ                           individual cyberlinks
                    total stake
-PARTICLE           CID exists                        who contributed
+PARTICLE           particle exists                   who contributed
                    total energy (Σ weight)           individual contribution amounts
                    φ* ranking
 AXON               H(from, to) exists                which neurons contributed
@@ -43,10 +43,10 @@ FOCUS              φ* distribution
 
 ```
 KG_state:
-  particle_energies:  Map<CID, u64>           total energy per particle
-  axon_weights:       Map<(CID, CID), u64>    aggregate weight per axon
+  particle_energies:  Map<Particle, u64>           total energy per particle
+  axon_weights:       Map<(Particle, Particle), u64>    aggregate weight per axon
   neuron_summaries:   Map<NeuronId, Summary>  total focus, karma
-  rankings:           Vec<(CID, φ*)>          ordered particle rankings
+  rankings:           Vec<(Particle, φ*)>          ordered particle rankings
   token_supplies:     Map<τ, u64>             total supply per token type
 ```
 

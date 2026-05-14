@@ -52,19 +52,19 @@ cost:
 
 ```
 DIMENSION 1: particles
-  evaluation: BBG_poly(particles, CID, t) → particle_record
-  key: CID (content hash)
+  evaluation: BBG_poly(particles, particle, t) → particle_record
+  key: particle
   proves: "particle P exists with energy E and focus φ*"
   note: content-particles and axon-particles share the same dimension
 
 DIMENSION 2: axons_out
-  evaluation: BBG_poly(axons_out, source_CID, t) → axon_pointers
-  key: source particle CID
+  evaluation: BBG_poly(axons_out, source_particle, t) → axon_pointers
+  key: source particle
   proves: "these are ALL outgoing axons from particle P"
 
 DIMENSION 3: axons_in
-  evaluation: BBG_poly(axons_in, target_CID, t) → axon_pointers
-  key: target particle CID
+  evaluation: BBG_poly(axons_in, target_particle, t) → axon_pointers
+  key: target particle
   proves: "these are ALL incoming axons to particle P"
 
 DIMENSION 4: neurons
@@ -88,8 +88,8 @@ DIMENSION 7: cards
   proves: "card C exists, bound to axon-particle P, owned by N"
 
 DIMENSION 8: files
-  evaluation: BBG_poly(files, CID, t) → availability_record
-  key: CID (content hash)
+  evaluation: BBG_poly(files, particle, t) → availability_record
+  key: particle
   proves: "content for particle P is retrievable (DAS)"
 
 DIMENSION 9: time
@@ -110,12 +110,12 @@ the data at each evaluation point matches the former NMT leaf structures. the po
 
 ```
 particle entry (content-particle):
-  key: CID                             32 bytes
+  key: particle                        32 bytes
   energy: F_p                          8 bytes
   φ*: F_p                              8 bytes
 
 particle entry (axon-particle, extends content-particle):
-  key: CID = H(from, to)              32 bytes
+  key: particle = H(from, to)         32 bytes
   energy: F_p                          8 bytes
   φ*: F_p                              8 bytes
   weight A_{pq}: F_p                   8 bytes
@@ -124,12 +124,12 @@ particle entry (axon-particle, extends content-particle):
   meta-score: F_p                      8 bytes
 
 axons_out entry:
-  key: source_CID                      32 bytes
-  axon_particle_CID: F_p⁴             32 bytes
+  key: source_particle                 32 bytes
+  axon_particle: F_p⁴                 32 bytes
 
 axons_in entry:
-  key: target_CID                      32 bytes
-  axon_particle_CID: F_p⁴             32 bytes
+  key: target_particle                 32 bytes
+  axon_particle: F_p⁴                 32 bytes
 
 neuron entry:
   key: neuron_id                       32 bytes
@@ -152,7 +152,7 @@ cards entry:
   creation_time: u64                   8 bytes
 
 files entry:
-  key: CID                             32 bytes
+  key: particle                        32 bytes
   chunk_count: u32                     4 bytes
   erasure_commitment: F_p⁴            32 bytes
   availability_window: u64             8 bytes
@@ -177,15 +177,15 @@ signals entry:
 
 polynomial access to any particle field operates at two levels:
 
-- **BBG_poly dimension** — the AGGREGATE level. BBG_poly(particles, CID, t) returns energy, pi-star, axon weights. this is the state index: what the network knows about a particle in aggregate.
+- **BBG_poly dimension** — the AGGREGATE level. BBG_poly(particles, particle, t) returns energy, pi-star, axon weights. this is the state index: what the network knows about a particle in aggregate.
 
 - **particle's own polynomial** — the CONTENT level. Lens.open(particle_commitment, position) returns any byte range of the particle's content. this is the data layer: the actual content the particle addresses.
 
 both are Lens openings. both produce ~200 byte proofs. both verify in ~5 microseconds. the difference is what polynomial you open against: BBG_poly for aggregate state, the particle's own commitment for content data.
 
 ```
-aggregate query:  BBG_poly(particles, CID, t) → energy, φ*
-content query:    Lens.open(particle_poly(CID), byte_offset) → content bytes
+aggregate query:  BBG_poly(particles, particle, t) → energy, φ*
+content query:    Lens.open(particle_poly(particle), byte_offset) → content bytes
 
 same Lens. same verification. different polynomials.
 ```
