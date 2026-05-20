@@ -10,6 +10,7 @@ only unfinished proposals remain here. executed proposals have moved to:
 |----------|--------------|----------------|
 | [[storage-proofs]] | **partial** → reference/storage.md has proof types table | per-node storage/size/replication proof circuits need full spec |
 | [[verifiable-query]] | **partial** → reference/query.md has interface + cost model | query compiler algorithm (CozoDB → CCS) needs implementation detail |
+| [[evy-shardstore]] | **partial** → reference/storage.md defines `ShardStore` trait | 5 additions to enable ECS storage substrate for [[evy/specs/evy]]: EPHEMERAL dimension, `get_mut`+`mark_dirty`+`remove`, `iter(dim)`, `UnimemStore::reserve_pool` |
 
 ## executed (now in reference + explanation)
 

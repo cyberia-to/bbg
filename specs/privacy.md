@@ -5,34 +5,65 @@ crystal-domain: cyber
 ---
 # privacy
 
-the [[cyberlink]] is private — who linked what, and how much conviction, is never disclosed. individual linking decisions are protected because surveillance kills the freedom to link. this is the reason the entire stack was built from the ground up.
+private by default. public on demand.
 
-the [[cybergraph]] is public — it is the aggregate. [[axons]] (total weight between particle pairs), [[neuron]] summaries (total focus, karma), [[particle]] energy, [[token]] supplies, φ* distribution — all derived from cyberlinks but revealing no individual contribution, no individual amount.
+individual linking decisions are protected because surveillance kills the freedom to link. this is the reason the entire stack was built from the ground up. at the same time, some use cases require transparency — public treasuries, auditable protocols, open staking positions. both must be first-class.
+
+the [[cybergraph]] is the aggregate either way: [[axons]] (total weight between particle pairs), [[neuron]] summaries (total focus, karma), [[particle]] energy, [[token]] supplies, φ* distribution — always public, regardless of whether individual outputs are private or public.
+
+## two output modes
+
+output privacy is determined by the `to` address type at signal construction time. the cyberlink signature is unchanged — the address encodes the choice.
+
+```
+PRIVATE (default):
+  to = stealth address (genies-derived, one-time)
+  storage:  A_live[c] = commit_jali(v, ρ)          RLWE-encrypted, owner hidden
+  spending: nullifier + ZK proof of ownership
+
+PUBLIC (opt-in):
+  to = direct neuron_id or card_id
+  storage:  BBG_poly(balances, H(owner_id || token_id)) += v   plaintext balance
+  spending: auth signature + conservation check (no nullifier)
+```
+
+a neuron publishes two addresses: a genies public key (for private sends) and its direct neuron_id (for public sends). the sender chooses which to use. a single signal can mix private and public outputs freely — the zheng proof covers both.
+
+use cases by mode:
+
+| use case | mode |
+|---|---|
+| personal holdings | private |
+| DAO treasury | public |
+| AMM pool reserves | public (via BBG_poly aggregate, always was) |
+| individual swap amounts | private |
+| transparent staking position | public |
+| governance voting (visible) | public |
+| private conviction staking | private |
 
 ## privacy boundary
 
 ```
-                   PUBLIC (validators + everyone)   PRIVATE (nobody)
-─────────────────  ────────────────────────────────  ──────────────────────────────
-CYBERLINK                                            7-tuple (ν, p, q, τ, a, v, t)
-                                                     who linked what
-                                                     individual conviction amount
-                                                     individual valence
-NEURON             total focus                       linking history
-                   karma κ                           individual cyberlinks
+                   PUBLIC (validators + everyone)        PRIVATE (owner only / nobody)
+─────────────────  ─────────────────────────────────     ──────────────────────────────
+CYBERLINK          from, to, token, amount, valence       (private mode, default)
+                   (public output mode, opt-in)           7-tuple hidden
+NEURON             total focus                            linking history (private mode)
+                   karma κ                                individual cyberlinks (private)
                    total stake
-PARTICLE           particle exists                   who contributed
-                   total energy (Σ weight)           individual contribution amounts
+                   BBG_poly(balances) balance (opt-in)    private balance (default)
+PARTICLE           particle exists                        who contributed (private mode)
+                   total energy (Σ weight)                individual contribution amounts
                    φ* ranking
-AXON               H(from, to) exists                which neurons contributed
-                   aggregate weight A_{pq}            individual weights
-TOKEN              denominations                     individual UTXO values
-                   total supply per τ                 owner identity
-RECORD                                               value, owner, nonce, randomness
-TRANSACTION        nullifiers (spent)                which records spent
-                   new commitment keys               who spent them
-                   new block state roots             transaction amounts
-                   ring sum validity                 per-transaction Δ per particle
+AXON               H(from, to) exists                     which neurons contributed
+                   aggregate weight A_{pq}                individual weights
+TOKEN              denominations                          individual box values (private)
+                   total supply per τ                     owner identity (private mode)
+PRIVATE BOX                                               token, value, owner, nonce, ρ
+PUBLIC BOX         owner_id, token_id, balance            —
+TRANSACTION        nullifiers (private boxes)             which boxes spent (private)
+                   public balance deltas (public boxes)   who spent them (private)
+                   new block state roots                  transaction amounts (private)
 FOCUS              φ* distribution
                    rankings
 ```
@@ -43,19 +74,22 @@ FOCUS              φ* distribution
 
 ```
 KG_state:
-  particle_energies:  Map<Particle, u64>           total energy per particle
-  axon_weights:       Map<(Particle, Particle), u64>    aggregate weight per axon
-  neuron_summaries:   Map<NeuronId, Summary>  total focus, karma
-  rankings:           Vec<(Particle, φ*)>          ordered particle rankings
-  token_supplies:     Map<τ, u64>             total supply per token type
+  particle_energies:  Map<Particle, u64>                    total energy per particle
+  axon_weights:       Map<(Particle, Particle), u64>        aggregate weight per axon
+  neuron_summaries:   Map<NeuronId, Summary>                total focus, karma
+  rankings:           Vec<(Particle, φ*)>                   ordered particle rankings
+  token_supplies:     Map<τ, u64>                           total supply per token type
+  balances:           Map<H(owner_id || token_id), u64>     public balances (opt-in)
 ```
+
+`balances` holds the public output balances. a neuron with all-private outputs has no entry here. a DAO treasury or public staking position writes here directly.
 
 **private transaction state** — never leaves the prover:
 
 ```
 per transaction (private):
-  input UTXOs:       RLWE commitment preimages (particle, value, owner, nonce, ρ)
-  output UTXOs:      new preimages
+  input boxes:       private box preimages (token, value, owner, nonce, ρ)
+  output boxes:      new box preimages
   individual Δ:      how much this transaction moved each particle's energy
   nullifiers:        derived from inputs (public — needed for double-spend check)
   new commitments:   RLWE commitments to output values (public — recipients find them)
@@ -251,19 +285,23 @@ the ring sum check removes conservation from the proof entirely and moves it to 
 | double-spend reject | N_live[n] = 1 at block verify | structural reject |
 | conservation | ring sum ||S|| < q/2 | totals only (encrypted) |
 
-UTXOs never expire. epoch archive makes all historical A_k_root accessible via the time dimension.
+boxes never expire. epoch archive makes all historical A_k_root accessible via the time dimension.
 
-## record model
+## box structure
+
+a box is what persists between two cyberlinks — the token holding. a cyberlink destroys input boxes and creates output boxes.
 
 ```
-Record:
-  particle: F_p⁴    32 bytes   content identifier
-  value:    u64       8 bytes   energy amount (PRIVATE — encoded in RLWE ciphertext)
-  owner:    F_p⁴    32 bytes   stealth key (genies-derived, one-time)
-  nonce:    F_p       8 bytes   random for uniqueness
+box internals (owner only):
+  token: TokenId   denomination or card id
+  value: u64       amount
+  owner: F_p⁴      stealth key (private box) or direct neuron_id (public box)
+  nonce: F_p        uniqueness salt
 
-commitment key:  c = H_commit(particle ‖ owner ‖ nonce)   (no value — 32 bytes)
-value commitment: commit_jali(value, ρ) stored at A_live[c]
+commitment key:    c = H(token ‖ owner ‖ nonce)
+chain (private):   A_live[c] = commit_jali(value, ρ)    RLWE-encrypted
+chain (public):    BBG_poly(balances, H(owner ‖ token)) = value    plaintext
+local (owner):     (value, ρ) — plaintext, always
 ```
 
 ## implementation gaps

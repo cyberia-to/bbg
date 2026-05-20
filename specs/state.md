@@ -15,7 +15,7 @@ BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N))
 three 32-byte Brakedown commitments hashed together → one 32-byte root
 
 BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
-10 public evaluation dimensions:
+11 public evaluation dimensions:
   particles     all particles: content + axons
   axons_out     directional index by source
   axons_in      directional index by target
@@ -26,6 +26,7 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
   files         content availability (DAS)
   time          temporal snapshots (continuous, replaces 7-namespace NMT)
   signals       finalized signal batches
+  balances      public balances: H(owner_id || token_id) → u64  (opt-in, plaintext)
 
 2 independent private polynomial commitments (NOT dimensions of BBG_poly):
   A(x)          commitment polynomial — private record commitments
@@ -43,15 +44,15 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
                                     │                  │              │
                           ┌─────────┴────────┐  ┌──────┴─────┐ ┌─────┴──────┐
                           │   BBG_poly       │  │   A(x)     │ │   N(x)     │
-                          │ 10 public dims   │  │ commitment │ │ nullifier  │
+                          │ 11 public dims   │  │ commitment │ │ nullifier  │
                           │ Lens.commit: 32B │  │ Lens: 32 B │ │ Lens: 32 B │
                           └─────────┬────────┘  └────────────┘ └────────────┘
                                     │
-                  ┌───┬───┬───┬───┬─┴─┬───┬───┬───┬───┐
-                  p  a_o a_i  n  loc coin card file time sig
+                  ┌───┬───┬───┬───┬─┴─┬───┬────┬────┬────┬─────┐
+                  p  a_o a_i  n  loc coin card file time  sig  bal
 ```
 
-BBG_poly: 10 public evaluation dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals).
+BBG_poly: 11 public evaluation dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals, balances).
 A(x), N(x): independent private polynomial commitments, each with its own Brakedown Lens commitment.
 cross-index consistency: structural — same polynomial, different evaluation dimensions. LogUp eliminated.
 
@@ -89,15 +90,21 @@ INPUT: Signal s = (ν, ℓ⃗, Δφ*, σ, t)
 EFFECT per cyberlink ℓ = (p, q, τ, a, v):
 
   public (BBG_poly):
-    particles[H(p,q)]:  weight += a          ← axon-particle conviction
-    particles[q]:       energy += a          ← target particle energy
-    axons_out[p]:       insert H(p,q)        ← directional index
-    axons_in[q]:        insert H(p,q)        ← directional index
-    neurons[ν]:         focus -= cost(ℓ)     ← focus consumed
+    particles[H(p,q)]:              weight += a       ← axon-particle conviction
+    particles[q]:                   energy += a       ← target particle energy
+    axons_out[p]:                   insert H(p,q)     ← directional index
+    axons_in[q]:                    insert H(p,q)     ← directional index
+    neurons[ν]:                     focus -= cost(ℓ)  ← focus consumed
+    balances[H(to || token)] += a   (public output, to = direct neuron_id or card_id)
+    balances[H(from || token)] -= a (public input spend, auth signature required)
 
   private (independent polynomials):
-    A(x): extend at new commitment point      ← O(1) Lens update
-    N(x): absorb nullifiers for spent UTXOs   ← N'(x) = N(x) × (x - n_new)
+    A(x): extend at new commitment point      ← O(1) Lens update (private output)
+    N(x): absorb nullifiers for spent boxes    ← N'(x) = N(x) × (x - n_new) (private spend)
+
+  output mode determined by `to` address type:
+    to = stealth address  →  private output (A_live, RLWE-encrypted)
+    to = direct id        →  public output  (BBG_poly balances, plaintext)
 
   at block finalization:
     time[height]:       BBG_root snapshot

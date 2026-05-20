@@ -43,7 +43,7 @@ who linked what                        axon H(p,q): aggregate weight A_{pq}
 individual conviction, valence         axon market state (s_YES, s_NO)
 neuron linking history                 axon meta-score
 market positions (TRUE/FALSE tokens)   neuron: focus, karma, stake
-UTXO values, owners                    particle: energy, φ*
+box values, owners                     particle: energy, φ*
                                        token: denominations, total supply
                                        content: availability proofs
 ```
@@ -172,7 +172,7 @@ A(x) and N(x) are independent polynomial commitments — NOT dimensions of BBG_p
 
 ### commitment polynomial A(x)
 
-every private record (cyberlink, UTXO) has a commitment A(c_i) = v_i. membership proof: one Lens opening against Lens.commit(A), O(1). append-only — new records extend the polynomial by one degree.
+every private record (cyberlink, box) has a commitment A(c_i) = v_i. membership proof: one Lens opening against Lens.commit(A), O(1). append-only — new records extend the polynomial by one degree.
 
 ### nullifier polynomial N(x)
 
