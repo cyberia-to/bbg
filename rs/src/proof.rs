@@ -9,7 +9,7 @@ use lens::{brakedown::Brakedown, Commitment, Lens, MultilinearPoly, Opening, Tra
 use nebu::Goldilocks;
 
 use crate::dim::{goldilocks_from_bytes32, goldilocks_from_u64};
-use crate::state::BbgState;
+use crate::state::{balance_key, BbgState};
 use crate::types::{Particle, NeuronId};
 
 /// A proof that a specific record exists in a BBG dimension.
@@ -205,6 +205,17 @@ pub fn prove_time(state: &BbgState, height: u64) -> Option<QueryProof> {
     open_dim(&entries, &key)
 }
 
+/// Commit the balances dimension and open at H(owner || token).
+pub fn prove_balances(state: &BbgState, owner: &[u8; 32], token: &[u8; 32]) -> Option<QueryProof> {
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
+        .balances
+        .iter()
+        .map(|(k, v)| (*k, vec![goldilocks_from_u64(*v)]))
+        .collect();
+    let key = balance_key(owner, token);
+    open_dim(&entries, &key)
+}
+
 /// Commit the A(x) polynomial (private commitments) and open at the given point.
 pub fn prove_commitment(state: &BbgState, point: &[u8; 32]) -> Option<QueryProof> {
     let entries: Vec<(Particle, Vec<Goldilocks>)> = state
@@ -232,20 +243,18 @@ fn open_dim(entries: &[(Particle, Vec<Goldilocks>)], key: &Particle) -> Option<Q
         elems.extend_from_slice(vals);
     }
 
-    let target = elems.len().next_power_of_two();
+    // Pad to at least 2^KEY_VARS so the polynomial always has enough variables
+    // to evaluate at the full 4-element key point (key_point.len() = 4 = KEY_VARS).
+    const KEY_VARS: usize = 4;
+    let target = elems.len().next_power_of_two().max(1 << KEY_VARS);
     elems.resize(target, Goldilocks::ZERO);
 
     let poly = MultilinearPoly::new(elems);
     let commitment = Brakedown::commit(&poly);
 
-    // Evaluation point: 4 field elements from the key (= num_vars up to 4,
-    // padded with ZERO if the polynomial has more variables).
+    // Evaluation point: 4 field elements from the key, zero-padded to poly.num_vars.
     let key_point = particle_to_point(key);
-    if poly.num_vars < key_point.len() {
-        return None;
-    }
     let mut point = key_point;
-    // Pad point with ZERO to match num_vars.
     while point.len() < poly.num_vars {
         point.push(Goldilocks::ZERO);
     }

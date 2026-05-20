@@ -6,13 +6,15 @@
 //! bbg — Big Badass Graph: authenticated state with polynomial commitments.
 //!
 //! BBG has one operation: insert(signal).
-//! All semantic validation (A1–A3, focus sufficiency, UTXO ownership,
+//! All semantic validation (A1–A3, focus sufficiency, box ownership,
 //! conservation, VDF) is the responsibility of cybergraph.
 //! BBG only enforces the structural double-spend invariant via N(x).
 
 pub mod checkpoint;
 pub mod dim;
 pub mod proof;
+pub mod prune;
+pub mod query;
 pub mod signal;
 pub mod state;
 pub mod storage;
@@ -20,34 +22,53 @@ pub mod types;
 
 pub use checkpoint::Checkpoint;
 pub use proof::{
-    prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_commitment, prove_file,
-    prove_location, prove_neuron, prove_particle, prove_signal, prove_time, verify_particle,
-    QueryProof,
+    prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin, prove_commitment,
+    prove_file, prove_location, prove_neuron, prove_particle, prove_signal, prove_time,
+    verify_particle, QueryProof,
 };
-pub use signal::{Cyberlink, InsertError, Signal, UtxoMove};
+pub use prune::{PruneConfig, PruneState};
+pub use query::{
+    bbg_query, collect_look_openings, verify_opening, verify_query,
+    BbgLookProvider, Dim, ProofLookProvider,
+};
+pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use state::BbgState;
 pub use types::{Particle, NeuronId};
 
-/// The BBG facade: state + checkpoint as a single unit.
+/// The BBG facade: state + checkpoint + pruning policy as a single unit.
 pub struct Bbg {
     pub state: BbgState,
     pub checkpoint: Checkpoint,
+    pub prune_config: PruneConfig,
+    pub prune_state: PruneState,
 }
 
 impl Bbg {
     pub fn new() -> Self {
         let state = BbgState::new();
         let checkpoint = Checkpoint::new(&state);
-        Self { state, checkpoint }
+        Self { state, checkpoint, prune_config: PruneConfig::default(), prune_state: PruneState::default() }
+    }
+
+    pub fn with_prune_config(mut self, config: PruneConfig) -> Self {
+        self.prune_config = config;
+        self
     }
 
     /// Insert a pre-validated signal. Fails only on structural double-spend.
+    /// Updates pruning state (last_touched) on success.
     pub fn insert(&mut self, signal: &Signal) -> Result<(), InsertError> {
-        self.state.insert(signal)
+        self.state.insert(signal)?;
+        let epoch = self.state.height / state::EPOCH_BLOCKS;
+        for link in &signal.links {
+            let aid = state::axon_id(&link.from, &link.to);
+            self.prune_state.touch(aid, epoch);
+        }
+        Ok(())
     }
 
     /// Finalize the current block: record a time snapshot, increment height,
-    /// and run decay+pruning at epoch boundaries.
+    /// and run pruning at epoch boundaries.
     pub fn finalize_block(&mut self) {
         let h = self.state.height;
         let root = self.state.root;
@@ -55,7 +76,8 @@ impl Bbg {
         self.state.root = self.state.compute_root();
         self.state.height += 1;
         if self.state.height % state::EPOCH_BLOCKS == 0 {
-            self.state.apply_decay_and_prune();
+            let epoch = self.state.height / state::EPOCH_BLOCKS;
+            prune::prune(&mut self.state, &mut self.prune_state, &self.prune_config, epoch);
         }
         self.checkpoint = self.checkpoint.advance(&self.state);
     }
@@ -103,6 +125,10 @@ impl Bbg {
     pub fn prove_commitment(&self, point: &[u8; 32]) -> Option<QueryProof> {
         prove_commitment(&self.state, point)
     }
+
+    pub fn prove_balances(&self, owner: &[u8; 32], token: &[u8; 32]) -> Option<QueryProof> {
+        prove_balances(&self.state, owner, token)
+    }
 }
 
 impl Default for Bbg {
@@ -114,6 +140,7 @@ impl Default for Bbg {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use signal::BoxMove;
     use types::NeuronRecord;
 
     fn neuron_id(seed: u8) -> NeuronId { [seed; 32] }
@@ -127,7 +154,7 @@ mod tests {
         Signal {
             neuron,
             links: vec![Cyberlink { from, to, token: particle(0), amount: 1, valence: 1 }],
-            utxo_moves: vec![],
+            box_moves: vec![],
             height: 0,
         }
     }
@@ -174,7 +201,7 @@ mod tests {
         let mk_signal = || Signal {
             neuron: neuron_id(1),
             links: vec![],
-            utxo_moves: vec![UtxoMove { nullifier, commitment: None }],
+            box_moves: vec![BoxMove { nullifier, commitment: None }],
             height: 0,
         };
         bbg.insert(&mk_signal()).unwrap();
