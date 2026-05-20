@@ -289,3 +289,72 @@ impl UnimemStore {
         Some((&pool.block, slot_idx))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::dim;
+    use nebu::Goldilocks;
+
+    fn g(v: u64) -> Goldilocks { Goldilocks::new(v) }
+    fn key(b: u8) -> [u8; 32] { [b; 32] }
+    const BPE: usize = 64; // bytes_per_entry used in all pool tests
+
+    #[test]
+    fn pool_put_get_cell_roundtrip() {
+        let mut store = UnimemStore::new();
+        store.reserve_pool(0, 16, BPE).expect("reserve_pool");
+
+        store.put(0, key(1), vec![g(10), g(20)]);
+        store.put(0, key(2), vec![g(30)]);
+
+        assert_eq!(store.get(0, &key(1)), Some([g(10), g(20)].as_slice()));
+        assert_eq!(store.get(0, &key(2)), Some([g(30)].as_slice()));
+
+        // Extract slot indices without holding the Block borrow.
+        let slot1 = store.cell(0, &key(1)).expect("cell exists").1;
+        let slot2 = store.cell(0, &key(2)).expect("cell exists").1;
+        assert_ne!(slot1, slot2, "different keys must occupy different slots");
+
+        // Overwrite key(1) — slot index must be stable.
+        store.put(0, key(1), vec![g(99)]);
+        let slot1b = store.cell(0, &key(1)).expect("cell still exists").1;
+        assert_eq!(slot1, slot1b, "slot index stable on overwrite");
+
+        // Verify value is in the Block at the expected byte offset.
+        // Scoped so the Block borrow ends before any further store access.
+        let val = {
+            let (block, s) = store.cell(0, &key(1)).unwrap();
+            let raw = &block.as_bytes()[s * BPE..s * BPE + 8];
+            u64::from_le_bytes(raw.try_into().unwrap())
+        };
+        assert_eq!(val, 99, "block memory holds updated value");
+    }
+
+    #[test]
+    fn pool_remove_frees_slot_for_reuse() {
+        let mut store = UnimemStore::new();
+        store.reserve_pool(0, 4, BPE).expect("reserve_pool");
+
+        store.put(0, key(1), vec![g(1)]);
+        store.put(0, key(2), vec![g(2)]);
+        let (_, slot1) = store.cell(0, &key(1)).unwrap();
+
+        assert_eq!(store.remove(0, &key(1)), Some(vec![g(1)]));
+        assert!(store.get(0, &key(1)).is_none());
+        assert!(store.cell(0, &key(1)).is_none());
+
+        store.put(0, key(3), vec![g(3)]);
+        let (_, slot3) = store.cell(0, &key(3)).unwrap();
+        assert_eq!(slot1, slot3, "freed slot reused by next put");
+    }
+
+    #[test]
+    fn pool_ephemeral_not_in_dirty() {
+        let mut store = UnimemStore::new();
+        store.reserve_pool(dim::EPHEMERAL, 8, BPE).expect("reserve_pool");
+        store.put(dim::EPHEMERAL, key(1), vec![g(42)]);
+        assert!(store.dirty_entries().is_empty(), "EPHEMERAL must not appear in dirty");
+        assert_eq!(store.get(dim::EPHEMERAL, &key(1)), Some([g(42)].as_slice()));
+    }
+}
