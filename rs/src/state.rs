@@ -3,18 +3,12 @@
 // crystal-type: source
 // crystal-domain: cyber
 // ---
-//! BBG state: the 10-dimensional authenticated state of the cybergraph.
+//! BBG state: the 11-dimensional authenticated state of the cybergraph.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Number of blocks per epoch. Decay and pruning run at epoch boundaries.
+/// Number of blocks per epoch. Pruning runs at epoch boundaries.
 pub const EPOCH_BLOCKS: u64 = 100;
-/// Decay numerator: w_eff = w × (DECAY_NUM / DECAY_DEN) per epoch.
-pub const DECAY_NUM: u64 = 99;
-/// Decay denominator.
-pub const DECAY_DEN: u64 = 100;
-/// Minimum axon weight before pruning. Below this the axon is removed.
-pub const PRUNE_MIN_WEIGHT: u64 = 1_000;
 
 use hemera::hash as hemera_hash;
 use lens::Commitment;
@@ -29,7 +23,31 @@ use crate::types::{
     ParticleRecord, SignalRecord,
 };
 
-/// The full BBG state: 10 dimensions + private commitment sets.
+/// Compute the axon-particle id: H(from || to).
+pub fn axon_id(from: &Particle, to: &Particle) -> Particle {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(from);
+    buf[32..].copy_from_slice(to);
+    let h = hemera_hash(&buf);
+    let b = h.as_bytes();
+    let mut out = [0u8; 32];
+    out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
+    out
+}
+
+/// Compute the balance map key: H(owner_id || token_id).
+pub fn balance_key(owner: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(owner);
+    buf[32..].copy_from_slice(token);
+    let h = hemera_hash(&buf);
+    let b = h.as_bytes();
+    let mut out = [0u8; 32];
+    out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
+    out
+}
+
+/// The full BBG state: 11 dimensions + private commitment sets.
 pub struct BbgState {
     pub particles: BTreeMap<Particle, ParticleRecord>,
     pub axons_out: BTreeMap<Particle, Vec<Particle>>,
@@ -47,6 +65,8 @@ pub struct BbgState {
     pub commitments: BTreeMap<[u8; 32], Goldilocks>,
     /// N(x): spent nullifiers
     pub nullifiers: BTreeSet<[u8; 32]>,
+    /// balances: H(owner_id || token_id) → u64  (public opt-in balances)
+    pub balances: BTreeMap<[u8; 32], u64>,
     /// Reverse map: axon_id → (from, to). Not committed; used for pruning.
     pub axon_edges: BTreeMap<Particle, (Particle, Particle)>,
     pub height: u64,
@@ -73,6 +93,7 @@ impl BbgState {
             signals: BTreeMap::new(),
             commitments: BTreeMap::new(),
             nullifiers: BTreeSet::new(),
+            balances: BTreeMap::new(),
             axon_edges: BTreeMap::new(),
             height: 0,
             root: empty_root,
@@ -92,6 +113,7 @@ impl BbgState {
             self.commit_files(),
             self.commit_time(),
             self.commit_signals(),
+            self.commit_balances(),
         ];
         let bbg_poly_particle = bbg_poly_commit(&dim_commits);
         let a_commit = self.commit_a();
@@ -263,6 +285,15 @@ impl BbgState {
         commit_dim(&entries)
     }
 
+    fn commit_balances(&self) -> Commitment {
+        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
+            .balances
+            .iter()
+            .map(|(k, v)| (*k, vec![goldilocks_from_u64(*v)]))
+            .collect();
+        commit_dim(&entries)
+    }
+
     fn commit_a(&self) -> Commitment {
         let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .commitments
@@ -286,18 +317,18 @@ impl BbgState {
     /// Insert a pre-validated signal into BBG state.
     ///
     /// cybergraph is responsible for all semantic validation (A1–A3, focus
-    /// sufficiency, UTXO ownership, conservation, VDF). BBG only enforces
+    /// sufficiency, box ownership, conservation, VDF). BBG only enforces
     /// the structural double-spend invariant via N(x).
     pub fn insert(&mut self, signal: &Signal) -> Result<(), InsertError> {
         // Structural check: N(nullifier) = 0 → reject
-        for mv in &signal.utxo_moves {
+        for mv in &signal.box_moves {
             if self.nullifiers.contains(&mv.nullifier) {
                 return Err(InsertError::DoubleSpend);
             }
         }
 
-        // Apply UTXO movements
-        for mv in &signal.utxo_moves {
+        // Apply box movements
+        for mv in &signal.box_moves {
             self.nullifiers.insert(mv.nullifier);
             if let Some((point, value)) = mv.commitment {
                 self.commitments.insert(point, Goldilocks::new(value));
@@ -306,17 +337,7 @@ impl BbgState {
 
         // Apply each cyberlink ℓ = (p, q, τ, a, v)
         for link in &signal.links {
-            // axon-particle = H(from ‖ to)
-            let axon_id = {
-                let mut buf = [0u8; 64];
-                buf[..32].copy_from_slice(&link.from);
-                buf[32..].copy_from_slice(&link.to);
-                let h = hemera_hash(&buf);
-                let mut out = [0u8; 32];
-                let b = h.as_bytes();
-                out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
-                out
-            };
+            let axon_id = axon_id(&link.from, &link.to);
 
             // particles[H(p,q)]: weight += a
             {
@@ -351,43 +372,21 @@ impl BbgState {
             if let Some(nr) = self.neurons.get_mut(&signal.neuron) {
                 nr.focus = nr.focus.saturating_sub(link.amount);
             }
+
+            // balances[H(to || token)] += a  (public output)
+            let to_key = balance_key(&link.to, &link.token);
+            *self.balances.entry(to_key).or_insert(0) += link.amount;
+
+            // balances[H(from || token)] -= a  (public input)
+            let from_key = balance_key(&link.from, &link.token);
+            let bal = self.balances.entry(from_key).or_insert(0);
+            *bal = bal.saturating_sub(link.amount);
         }
 
         self.root = self.compute_root();
         Ok(())
     }
 
-    /// Decay axon weights and prune those below PRUNE_MIN_WEIGHT.
-    /// Called at epoch boundaries (every EPOCH_BLOCKS blocks).
-    pub fn apply_decay_and_prune(&mut self) {
-        let mut to_prune: Vec<Particle> = Vec::new();
-        for (axon_id, particle) in &mut self.particles {
-            if particle.weight > 0 {
-                particle.weight = particle.weight.saturating_mul(DECAY_NUM) / DECAY_DEN;
-                if particle.weight < PRUNE_MIN_WEIGHT {
-                    to_prune.push(*axon_id);
-                }
-            }
-        }
-        for axon_id in to_prune {
-            self.particles.remove(&axon_id);
-            if let Some((from, to)) = self.axon_edges.remove(&axon_id) {
-                if let Some(list) = self.axons_out.get_mut(&from) {
-                    list.retain(|id| id != &axon_id);
-                    if list.is_empty() {
-                        self.axons_out.remove(&from);
-                    }
-                }
-                if let Some(list) = self.axons_in.get_mut(&to) {
-                    list.retain(|id| id != &axon_id);
-                    if list.is_empty() {
-                        self.axons_in.remove(&to);
-                    }
-                }
-            }
-        }
-        self.root = self.compute_root();
-    }
 }
 
 impl Default for BbgState {

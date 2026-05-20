@@ -58,10 +58,10 @@ pub struct CoinRecord {
     pub total_supply: u64,
 }
 
-/// A card (conviction UTXO ownership record) in the cards dimension.
+/// A card in the cards dimension.
 ///
 /// Every cyberlink is a card (A6). This records the current beneficial owner
-/// of the conviction UTXO attached to an axon-particle.
+/// of the conviction box attached to an axon-particle.
 pub struct CardRecord {
     /// current owner neuron
     pub owner: NeuronId,

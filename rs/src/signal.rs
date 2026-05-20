@@ -22,9 +22,9 @@ pub struct Cyberlink {
     pub valence: i8,
 }
 
-/// A nullifier movement: spend a conviction UTXO and optionally create a new one.
-pub struct UtxoMove {
-    /// nullifier of the spent UTXO
+/// A box movement: spend a conviction box and optionally create a new one.
+pub struct BoxMove {
+    /// nullifier of the spent box
     pub nullifier: Particle,
     /// new commitment point (if creating an output)
     pub commitment: Option<(Particle, u64)>,
@@ -40,8 +40,8 @@ pub struct Signal {
     pub neuron: NeuronId,
     /// one or more cyberlinks
     pub links: Vec<Cyberlink>,
-    /// UTXO movements (conviction spends and outputs)
-    pub utxo_moves: Vec<UtxoMove>,
+    /// box movements (conviction spends and outputs)
+    pub box_moves: Vec<BoxMove>,
     /// block height
     pub height: u64,
 }
