@@ -6,7 +6,7 @@
 //! Tiered storage: all backends active simultaneously.
 //!
 //! Routing:
-//!   write  → HOT always; write-through to WARM for durability
+//!   write  → HOT always; write-through to WARM for durability (not EPHEMERAL)
 //!   read   → HOT → WARM → COLD → NETWORK (cascade, no promotion on read)
 //!   commit → HOT + WARM flushed per block; COLD at archival checkpoints
 //!   evict  → called by soma when focus drops; moves HOT entry to WARM
@@ -16,7 +16,7 @@
 
 use nebu::Goldilocks;
 
-use super::{NetworkStore, ShardStore};
+use super::{dim, NetworkStore, ShardStore};
 use crate::types::Particle;
 
 pub struct TieredStore {
@@ -76,10 +76,7 @@ impl TieredStore {
                 warm.put(dimension, *key, owned);
             }
         }
-        // hot does not expose remove; eviction is handled by policy — the
-        // entry stays in hot's HashMap until replaced, but soma stops
-        // routing new writes to it. Full eviction requires hot to implement
-        // a remove() method (future).
+        self.hot.remove(dimension, key);
     }
 
     /// Fetch raw content bytes for a particle from the network tier.
@@ -112,10 +109,12 @@ impl ShardStore for TieredStore {
         None
     }
 
-    /// Write-through: HOT always, WARM for durability.
+    /// Write-through: HOT always, WARM for durability. EPHEMERAL stays in HOT only.
     fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) {
-        if let Some(warm) = &mut self.warm {
-            warm.put(dimension, key, value.clone());
+        if dimension != dim::EPHEMERAL {
+            if let Some(warm) = &mut self.warm {
+                warm.put(dimension, key, value.clone());
+            }
         }
         self.hot.put(dimension, key, value);
     }
@@ -132,6 +131,31 @@ impl ShardStore for TieredStore {
             let _ = warm.commit();
         }
         sub_root
+    }
+
+    fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [Goldilocks]> {
+        self.hot.get_mut(dimension, key)
+    }
+
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) {
+        self.hot.mark_dirty(dimension, key);
+    }
+
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
+        // Materialize from cascade before mutating any tier.
+        let val = self.get(dimension, key).map(|s| s.to_vec())?;
+        self.hot.remove(dimension, key);
+        if let Some(warm) = &mut self.warm {
+            warm.remove(dimension, key);
+        }
+        if let Some(cold) = &mut self.cold {
+            cold.remove(dimension, key);
+        }
+        Some(val)
+    }
+
+    fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_> {
+        self.hot.iter(dimension)
     }
 }
 
@@ -203,5 +227,69 @@ mod tests {
         let promoted = store.promote(0, &key(4));
         assert!(promoted);
         assert_eq!(store.hot.get(0, &key(4)), Some([g(77)].as_slice()));
+    }
+
+    #[test]
+    fn ephemeral_not_written_to_warm() {
+        let hot  = Box::new(MemStore::new());
+        let warm = Box::new(MemStore::new());
+        let mut store = TieredStore::new(hot).with_warm(warm);
+
+        store.put(dim::EPHEMERAL, key(5), vec![g(123)]);
+
+        assert_eq!(store.hot.get(dim::EPHEMERAL, &key(5)), Some([g(123)].as_slice()));
+        assert!(store.warm.as_ref().unwrap().get(dim::EPHEMERAL, &key(5)).is_none(),
+            "EPHEMERAL must not be written to warm tier");
+    }
+
+    #[test]
+    fn ephemeral_not_in_dirty_after_commit() {
+        let mut store = TieredStore::default();
+        store.put(dim::EPHEMERAL, key(6), vec![g(7)]);
+        assert!(store.dirty_entries().is_empty(), "EPHEMERAL must not appear in dirty");
+    }
+
+    #[test]
+    fn remove_clears_from_all_tiers() {
+        let hot  = Box::new(MemStore::new());
+        let warm = Box::new(MemStore::new());
+        let mut store = TieredStore::new(hot).with_warm(warm);
+
+        store.put(0, key(7), vec![g(55)]);
+        let removed = store.remove(0, &key(7));
+
+        assert_eq!(removed, Some(vec![g(55)]));
+        assert!(store.hot.get(0, &key(7)).is_none());
+        assert!(store.warm.as_ref().unwrap().get(0, &key(7)).is_none());
+    }
+
+    #[test]
+    fn get_mut_and_mark_dirty_roundtrip() {
+        let mut store = TieredStore::default();
+        store.put(0, key(8), vec![g(10), g(20)]);
+        store.commit(); // clear dirty
+
+        {
+            let slice = store.get_mut(0, &key(8)).unwrap();
+            slice[0] = g(99);
+        }
+        store.mark_dirty(0, key(8));
+
+        let dirty = store.dirty_entries();
+        assert_eq!(dirty.len(), 1);
+        assert_eq!(dirty[0].2[0], g(99));
+    }
+
+    #[test]
+    fn iter_returns_dimension_entries() {
+        let mut store = TieredStore::default();
+        store.put(0, key(1), vec![g(1)]);
+        store.put(0, key(2), vec![g(2)]);
+        store.put(1, key(3), vec![g(3)]);
+
+        let dim0: Vec<_> = store.iter(0).collect();
+        assert_eq!(dim0.len(), 2);
+        let dim1: Vec<_> = store.iter(1).collect();
+        assert_eq!(dim1.len(), 1);
     }
 }

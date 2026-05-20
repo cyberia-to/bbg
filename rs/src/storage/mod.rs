@@ -47,7 +47,7 @@ pub use unimem::UnimemStore;
 
 use nebu::Goldilocks;
 
-/// Dimension identifiers — maps to the 10 BBG_poly dimensions + 2 private polynomials.
+/// Dimension identifiers — 10 BBG_poly dimensions + 2 private polynomials + 1 local-only.
 pub mod dim {
     pub const PARTICLES:   u8 = 0;
     pub const AXONS_OUT:   u8 = 1;
@@ -63,6 +63,10 @@ pub mod dim {
     pub const COMMITMENTS: u8 = 10;
     /// N(x) — private nullifier polynomial (NOT a BBG_poly dimension)
     pub const NULLIFIERS:  u8 = 11;
+    /// Local-only state (Transform, AnimationPhase, etc.).
+    /// put() skips dirty push; commit() never includes these entries.
+    /// Never contributes to BBG_root and never written to warm/cold tiers.
+    pub const EPHEMERAL:   u8 = 12;
 }
 
 /// Storage interface for a polynomial evaluation shard.
@@ -75,6 +79,21 @@ pub trait ShardStore: Send + Sync {
     fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>);
     fn dirty_entries(&self) -> &[(u8, [u8; 32], Vec<Goldilocks>)];
     fn commit(&mut self) -> [u8; 32];
+
+    /// In-place mutation. Caller must call `mark_dirty` after writing.
+    /// Returns `None` on disk backends (fjall, redb) or if key is absent.
+    fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [Goldilocks]>;
+
+    /// Marks an existing entry dirty for the next `commit()`.
+    /// No-op for `dim::EPHEMERAL` and on disk backends.
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]);
+
+    /// Removes an entry. Returns the previous value, or `None` if absent.
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>>;
+
+    /// Iterates all entries stored for a dimension.
+    /// On disk backends, only entries loaded into the write-through cache are visible.
+    fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_>;
 }
 
 /// Serialize a Goldilocks slice to LE bytes (8 bytes per element).

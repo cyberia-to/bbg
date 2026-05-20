@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use nebu::Goldilocks;
 
-use super::{hash_dirty, ShardStore};
+use super::{dim, hash_dirty, ShardStore};
 
 pub struct MemStore {
     data:  HashMap<(u8, [u8; 32]), Vec<Goldilocks>>,
@@ -32,7 +32,9 @@ impl ShardStore for MemStore {
     }
 
     fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) {
-        self.dirty.push((dimension, key, value.clone()));
+        if dimension != dim::EPHEMERAL {
+            self.dirty.push((dimension, key, value.clone()));
+        }
         self.data.insert((dimension, key), value);
     }
 
@@ -44,5 +46,31 @@ impl ShardStore for MemStore {
         let out = hash_dirty(&self.dirty);
         self.dirty.clear();
         out
+    }
+
+    fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [Goldilocks]> {
+        self.data.get_mut(&(dimension, *key)).map(Vec::as_mut_slice)
+    }
+
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) {
+        if dimension == dim::EPHEMERAL { return; }
+        let val = self.data.get(&(dimension, key)).map(|v| v.clone());
+        if let Some(v) = val {
+            self.dirty.push((dimension, key, v));
+        }
+    }
+
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
+        let val = self.data.remove(&(dimension, *key))?;
+        self.dirty.retain(|(d, k, _)| !(*d == dimension && k == key));
+        Some(val)
+    }
+
+    fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_> {
+        Box::new(
+            self.data.iter()
+                .filter(move |(k, _)| k.0 == dimension)
+                .map(|(k, v)| (&k.1, v.as_slice()))
+        )
     }
 }

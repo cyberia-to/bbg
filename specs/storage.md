@@ -31,10 +31,26 @@ the polynomial commitment provides authentication. the local data structure prov
 
 ```rust
 trait ShardStore {
+    // ── core ──────────────────────────────────────────────────────────────────
     fn get(&self, dimension: u8, key: &[u8; 32]) -> Option<&[FieldElement]>;
     fn put(&mut self, dimension: u8, key: &[u8; 32], value: &[FieldElement]);
-    fn dirty_entries(&self) -> impl Iterator<Item = (u8, [u8; 32], &[FieldElement])>;
+    fn dirty_entries(&self) -> &[(u8, [u8; 32], Vec<FieldElement>)];
     fn commit(&mut self) -> [u8; 32];  // returns shard sub-commitment
+
+    // ── mutation ──────────────────────────────────────────────────────────────
+    /// In-place mutation. Caller must call mark_dirty() after writing.
+    /// Returns None on disk backends (fjall, redb) or if key is absent.
+    fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [FieldElement]>;
+
+    /// Marks an existing entry dirty for the next commit(). No-op for EPHEMERAL.
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]);
+
+    /// Removes an entry. Returns the previous value.
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<FieldElement>>;
+
+    // ── iteration ─────────────────────────────────────────────────────────────
+    /// Iterates all entries for a dimension. Disk backends yield cache only.
+    fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[FieldElement])> + '_>;
 }
 
 /// Content retrieval from the network tier (L3). Injected by cybergraph;
@@ -47,6 +63,53 @@ trait NetworkStore: Send + Sync {
     fn das_sample(&self, particle: &[u8; 32], offset: u64) -> Option<QueryProof>;
 }
 ```
+
+### dimension constants
+
+| constant | value | scope | notes |
+|---|---|---|---|
+| PARTICLES | 0 | BBG_poly | aggregate particle state |
+| AXONS_OUT | 1 | BBG_poly | outgoing axon index |
+| AXONS_IN | 2 | BBG_poly | incoming axon index |
+| NEURONS | 3 | BBG_poly | neuron focus/karma/stake |
+| LOCATIONS | 4 | BBG_poly | validator location proofs |
+| COINS | 5 | BBG_poly | fungible token supply |
+| CARDS | 6 | BBG_poly | non-fungible knowledge assets |
+| FILES | 7 | BBG_poly | content availability records |
+| TIME | 8 | BBG_poly | temporal evaluation snapshots |
+| SIGNALS | 9 | BBG_poly | finalized signal batches |
+| COMMITMENTS | 10 | A(x) | private commitment polynomial |
+| NULLIFIERS | 11 | N(x) | private nullifier polynomial |
+| EPHEMERAL | 12 | local-only | evy ECS: Transform, AnimationPhase, etc. |
+
+**EPHEMERAL rules**: `put(EPHEMERAL, …)` skips `dirty.push`; `commit()` never includes ephemeral entries; `TieredStore` does not write-through to warm/cold. EPHEMERAL never contributes to BBG_root and never leaves the local node.
+
+### UnimemStore slot pool
+
+for Apple Silicon deployments, `UnimemStore` supports pre-allocated dimension pools:
+
+```rust
+impl UnimemStore {
+    /// Pre-allocate one contiguous IOSurface Block for `dimension`.
+    /// Subsequent put() into this dimension allocates from the pool.
+    pub fn reserve_pool(
+        &mut self,
+        dimension: u8,
+        expected_count: usize,
+        bytes_per_entry: usize,
+    ) -> Result<(), unimem::MemError>;
+
+    /// Pool Block + slot index for direct GPU/ANE descriptor binding.
+    /// Address block.as_bytes()[slot * bytes_per_entry..] is stable until remove().
+    pub fn cell(&self, dimension: u8, key: &[u8; 32]) -> Option<(&Block, usize)>;
+}
+```
+
+without a pool, each entry gets its own IOSurface Block (~1 μs allocation). with a pool, entries share one Block and allocation is O(1) slot index assignment. use `reserve_pool` for dimensions that are written at render-frame rate (evy transforms, animation phases).
+
+### concurrency model
+
+`&mut self` exclusive borrow is kept across all backends. evy batches writes per-thread and merges at frame boundary. this preserves BBG's clean ownership model with no interior mutability required.
 
 three implementations, selected by scale:
 
@@ -334,7 +397,7 @@ when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 
 ## owner store (personal BBG)
 
-the chain always holds encrypted values. a personal BBG node holds plaintext for its own UTXOs.
+the chain always holds encrypted values. a personal BBG node holds plaintext for its own boxes.
 
 ```
 chain BBG:    commitments partition   key = c, value = commit_jali(v, ρ)   RLWE ciphertext (n field elements)
@@ -355,7 +418,7 @@ scan (chain → plaintext):
   plaintext written to owner partition for local computation
 ```
 
-privacy is not optional at the protocol level — chain state is always encrypted. the personal store is a local decrypted index over the owner's own UTXOs. validators never see plaintext amounts.
+privacy is not optional at the protocol level — chain state is always encrypted. the personal store is a local decrypted index over the owner's own boxes. validators never see plaintext amounts.
 
 ## validator vs light client
 

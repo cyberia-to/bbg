@@ -15,9 +15,9 @@ use std::path::Path;
 use redb::{Database, TableDefinition};
 use nebu::Goldilocks;
 
-use super::{deserialize_goldilocks, hash_dirty, serialize_goldilocks, ShardStore};
+use super::{deserialize_goldilocks, dim, hash_dirty, serialize_goldilocks, ShardStore};
 
-const TABLES: [TableDefinition<&[u8], &[u8]>; 12] = [
+const TABLES: [TableDefinition<&[u8], &[u8]>; 13] = [
     TableDefinition::new("particles"),
     TableDefinition::new("axons_out"),
     TableDefinition::new("axons_in"),
@@ -30,6 +30,7 @@ const TABLES: [TableDefinition<&[u8], &[u8]>; 12] = [
     TableDefinition::new("signals"),
     TableDefinition::new("commitments"),
     TableDefinition::new("nullifiers"),
+    TableDefinition::new("ephemeral"),
 ];
 
 pub struct RedbStore {
@@ -50,7 +51,9 @@ impl ShardStore for RedbStore {
     }
 
     fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) {
-        self.dirty.push((dimension, key, value.clone()));
+        if dimension != dim::EPHEMERAL {
+            self.dirty.push((dimension, key, value.clone()));
+        }
         self.cache.insert((dimension, key), value);
     }
 
@@ -62,7 +65,7 @@ impl ShardStore for RedbStore {
         let out = hash_dirty(&self.dirty);
 
         // Group by dimension so each table is opened exactly once per transaction.
-        let mut by_dim: [Vec<([u8; 32], Vec<u8>)>; 12] =
+        let mut by_dim: [Vec<([u8; 32], Vec<u8>)>; 13] =
             std::array::from_fn(|_| Vec::new());
         for (d, k, v) in &self.dirty {
             by_dim[*d as usize].push((*k, serialize_goldilocks(v)));
@@ -82,6 +85,37 @@ impl ShardStore for RedbStore {
 
         self.dirty.clear();
         out
+    }
+
+    fn get_mut(&mut self, _dimension: u8, _key: &[u8; 32]) -> Option<&mut [Goldilocks]> {
+        // Disk backends do not support in-place mutation.
+        None
+    }
+
+    fn mark_dirty(&mut self, _dimension: u8, _key: [u8; 32]) {
+        // No-op: get_mut always returns None, so callers have nothing to dirty.
+    }
+
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
+        let val = self.cache.remove(&(dimension, *key))?;
+        self.dirty.retain(|(d, k, _)| !(*d == dimension && k == key));
+        if dimension != dim::EPHEMERAL {
+            if let Ok(txn) = self.db.begin_write() {
+                if let Ok(mut table) = txn.open_table(TABLES[dimension as usize]) {
+                    let _ = table.remove(key.as_slice());
+                }
+                let _ = txn.commit();
+            }
+        }
+        Some(val)
+    }
+
+    fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_> {
+        Box::new(
+            self.cache.iter()
+                .filter(move |(k, _)| k.0 == dimension)
+                .map(|(k, v)| (&k.1, v.as_slice()))
+        )
     }
 }
 
