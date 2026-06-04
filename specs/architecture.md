@@ -250,3 +250,32 @@ submit to network
 | query | [[query]] (verifiable query compiler) | ~200 bytes to ~5 KiB proof |
 
 see [[state]] for transaction types, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated, [[sync]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension, [[query]] for verifiable queries
+
+## topological layer
+
+BBG carries two structural properties that are topological invariants — preserved under any valid state transition, not by access control but by algebraic geometry.
+
+focus conservation (A5): Σ φ*(p) = 1. the integral of the attention form over all particles is exactly 1. every block update preserves this — the tri-kernel update is a doubly stochastic matrix operation, which conserves the probability measure. violating it would require a non-stochastic update, which the circuit rejects.
+
+content-address isolation (A1): particle identity = hemera(Lens.commit(content)). two distinct content polynomials produce distinct identities with probability 1 − 1/|𝔽_p| ≈ 1. particles are topologically isolated points — there is no continuous path between them. changing content changes identity; the old particle persists by A3.
+
+### commitment as topological charge
+
+a Lens commitment Lens.commit(f) is the topological charge of the polynomial f. the charge is defined by the evaluation of f at a random point drawn from the Fiat-Shamir transcript — a winding number in the algebraic sense. the opening Lens.open(commit, x) → v proves that the charge at x equals v, without revealing f.
+
+the topological interpretation: `Lens.open` is the measurement of topological charge at a point. `Lens.commit` is the total charge. the conservation law: Σ charges = BBG_root. folding (HyperNova) composes charges — the accumulated charge grows each block without changing the verification cost.
+
+### implication for soft3
+
+the serde blocker on `Commitment`/`Opening` resolves naturally from this view. a `Commitment` is a topological charge (32 bytes: the point on the algebraic curve). an `Opening` is a charge measurement at one point (proof bytes + evaluation). neither needs to serialize the polynomial that carries it — only the charge and its measurement.
+
+```rust
+// soft3 wire types — topology-aware
+struct Commitment([u8; 32]);   // topological charge: Lens.commit output
+struct Opening {               // charge measurement at one point
+    eval:  u64,                // value at query point
+    proof: Vec<u8>,            // Brakedown proof bytes (~2 KiB)
+}
+```
+
+this separates topology (portable, serializable) from algebra (backend-specific, internal to lens).
