@@ -17,7 +17,7 @@ use nebu::Goldilocks;
 
 use super::{deserialize_goldilocks, dim, hash_dirty, serialize_goldilocks, ShardStore};
 
-const TABLES: [TableDefinition<&[u8], &[u8]>; 13] = [
+const TABLES: [TableDefinition<&[u8], &[u8]>; 14] = [
     TableDefinition::new("particles"),
     TableDefinition::new("axons_out"),
     TableDefinition::new("axons_in"),
@@ -30,6 +30,7 @@ const TABLES: [TableDefinition<&[u8], &[u8]>; 13] = [
     TableDefinition::new("signals"),
     TableDefinition::new("commitments"),
     TableDefinition::new("nullifiers"),
+    TableDefinition::new("intents"),
     TableDefinition::new("ephemeral"),
 ];
 
@@ -65,7 +66,7 @@ impl ShardStore for RedbStore {
         let out = hash_dirty(&self.dirty);
 
         // Group by dimension so each table is opened exactly once per transaction.
-        let mut by_dim: [Vec<([u8; 32], Vec<u8>)>; 13] =
+        let mut by_dim: [Vec<([u8; 32], Vec<u8>)>; 14] =
             std::array::from_fn(|_| Vec::new());
         for (d, k, v) in &self.dirty {
             by_dim[*d as usize].push((*k, serialize_goldilocks(v)));

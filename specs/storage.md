@@ -80,7 +80,8 @@ trait NetworkStore: Send + Sync {
 | SIGNALS | 9 | BBG_poly | finalized signal batches |
 | COMMITMENTS | 10 | A(x) | private commitment polynomial |
 | NULLIFIERS | 11 | N(x) | private nullifier polynomial |
-| EPHEMERAL | 12 | local-only | evy ECS: Transform, AnimationPhase, etc. |
+| INTENTS | 12 | unsealed declarations | persisted by `apply_intent` until sealed or abandoned |
+| EPHEMERAL | 13 | local-only | evy ECS: Transform, AnimationPhase, etc. |
 
 **EPHEMERAL rules**: `put(EPHEMERAL, …)` skips `dirty.push`; `commit()` never includes ephemeral entries; `TieredStore` does not write-through to warm/cold. EPHEMERAL never contributes to BBG_root and never leaves the local node.
 

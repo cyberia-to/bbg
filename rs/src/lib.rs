@@ -33,7 +33,7 @@ pub use query::{
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use state::BbgState;
-pub use types::{Particle, NeuronId};
+pub use types::{IntentRecord, NeuronId, Particle, SignalRecord};
 
 /// The BBG facade: state + checkpoint + pruning policy as a single unit.
 pub struct Bbg {
@@ -128,6 +128,18 @@ impl Bbg {
 
     pub fn prove_balances(&self, owner: &[u8; 32], token: &[u8; 32]) -> Option<QueryProof> {
         prove_balances(&self.state, owner, token)
+    }
+
+    /// Persist an unsealed intent. Validation (identity signature) is sync's job.
+    /// Returns the intent key = H(ν ‖ h0 ‖ scope_hash).
+    pub fn apply_intent(&mut self, intent: &IntentRecord) -> Particle {
+        self.state.apply_intent(intent)
+    }
+
+    /// Persist a signal header without applying its cyberlinks.
+    /// Used when sealing follows a separate intent → seal lifecycle.
+    pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
+        self.state.apply_signal_record(step, record);
     }
 }
 

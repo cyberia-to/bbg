@@ -82,3 +82,20 @@ pub struct SignalRecord {
     pub block_height: u64,
     pub proof_hash: Particle,
 }
+
+/// An intent record committed to the intents dimension.
+///
+/// An intent is an unsealed declaration: the neuron commits to a scope
+/// and signs it, but the STARK proof is deferred until sealing. If the
+/// intent is never sealed, the record persists at its inception height —
+/// abandonment is on the record.
+pub struct IntentRecord {
+    /// declaring neuron
+    pub neuron: NeuronId,
+    /// inception height
+    pub h0: u64,
+    /// hash of the structured scope (target, predicate, deadline, constraints)
+    pub scope_hash: Particle,
+    /// neuron's signature over (ν ‖ h0 ‖ scope_hash)
+    pub signature: [u8; 64],
+}

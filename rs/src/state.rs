@@ -19,8 +19,8 @@ use crate::dim::{
 };
 use crate::signal::{InsertError, Signal};
 use crate::types::{
-    CardRecord, Particle, CoinRecord, FileRecord, LocationRecord, NeuronId, NeuronRecord,
-    ParticleRecord, SignalRecord,
+    CardRecord, Particle, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId,
+    NeuronRecord, ParticleRecord, SignalRecord,
 };
 
 /// Compute the axon-particle id: H(from || to).
@@ -67,6 +67,8 @@ pub struct BbgState {
     pub nullifiers: BTreeSet<[u8; 32]>,
     /// balances: H(owner_id || token_id) → u64  (public opt-in balances)
     pub balances: BTreeMap<[u8; 32], u64>,
+    /// intents: H(ν || h0 || scope_hash) → IntentRecord (unsealed declarations)
+    pub intents: BTreeMap<Particle, IntentRecord>,
     /// Reverse map: axon_id → (from, to). Not committed; used for pruning.
     pub axon_edges: BTreeMap<Particle, (Particle, Particle)>,
     pub height: u64,
@@ -94,6 +96,7 @@ impl BbgState {
             commitments: BTreeMap::new(),
             nullifiers: BTreeSet::new(),
             balances: BTreeMap::new(),
+            intents: BTreeMap::new(),
             axon_edges: BTreeMap::new(),
             height: 0,
             root: empty_root,
@@ -387,6 +390,46 @@ impl BbgState {
         Ok(())
     }
 
+    // ── intent persistence ───────────────────────────────────────
+
+    /// Persist an unsealed intent record at its inception height.
+    ///
+    /// Sync is responsible for validating the identity proof before calling.
+    /// The record is keyed by H(ν ‖ h0 ‖ scope_hash) so identical intents
+    /// dedupe and abandonment is observable.
+    pub fn apply_intent(&mut self, intent: &IntentRecord) -> Particle {
+        let key = intent_key(&intent.neuron, intent.h0, &intent.scope_hash);
+        self.intents.insert(key, IntentRecord {
+            neuron:     intent.neuron,
+            h0:         intent.h0,
+            scope_hash: intent.scope_hash,
+            signature:  intent.signature,
+        });
+        key
+    }
+
+    /// Persist a signal header-only record (no cyberlinks applied).
+    ///
+    /// Used when the signal has already been validated and ordered by sync
+    /// but the cyberlink batch is being applied separately (e.g., for sealing
+    /// a previously-declared intent).
+    pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
+        self.signals.insert(step, record);
+    }
+
+}
+
+/// Compute the intent key = H(ν ‖ h0 ‖ scope_hash).
+fn intent_key(neuron: &NeuronId, h0: u64, scope_hash: &Particle) -> Particle {
+    let mut buf = [0u8; 32 + 8 + 32];
+    buf[..32].copy_from_slice(neuron);
+    buf[32..40].copy_from_slice(&h0.to_le_bytes());
+    buf[40..].copy_from_slice(scope_hash);
+    let h = hemera_hash(&buf);
+    let b = h.as_bytes();
+    let mut out = [0u8; 32];
+    out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
+    out
 }
 
 impl Default for BbgState {

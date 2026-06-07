@@ -47,7 +47,7 @@ pub use unimem::UnimemStore;
 
 use nebu::Goldilocks;
 
-/// Dimension identifiers — 10 BBG_poly dimensions + 2 private polynomials + 1 local-only.
+/// Dimension identifiers — 10 BBG_poly dimensions + 2 private polynomials + 1 intent + 1 local-only.
 pub mod dim {
     pub const PARTICLES:   u8 = 0;
     pub const AXONS_OUT:   u8 = 1;
@@ -63,10 +63,13 @@ pub mod dim {
     pub const COMMITMENTS: u8 = 10;
     /// N(x) — private nullifier polynomial (NOT a BBG_poly dimension)
     pub const NULLIFIERS:  u8 = 11;
+    /// Unsealed intent records — declared scope + identity proof, no STARK yet.
+    /// Persisted independently from signals so abandonment is on the record.
+    pub const INTENTS:     u8 = 12;
     /// Local-only state (Transform, AnimationPhase, etc.).
     /// put() skips dirty push; commit() never includes these entries.
     /// Never contributes to BBG_root and never written to warm/cold tiers.
-    pub const EPHEMERAL:   u8 = 12;
+    pub const EPHEMERAL:   u8 = 13;
 }
 
 /// Storage interface for a polynomial evaluation shard.

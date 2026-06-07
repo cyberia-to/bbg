@@ -19,7 +19,7 @@ use super::{deserialize_goldilocks, dim, hash_dirty, serialize_goldilocks, Shard
 
 pub struct FjallStore {
     keyspace: Keyspace,
-    parts:    [PartitionHandle; 13],
+    parts:    [PartitionHandle; 14],
     cache:    HashMap<(u8, [u8; 32]), Vec<Goldilocks>>,
     dirty:    Vec<(u8, [u8; 32], Vec<Goldilocks>)>,
 }
@@ -32,7 +32,7 @@ impl FjallStore {
             p("particles")?, p("axons_out")?, p("axons_in")?, p("neurons")?,
             p("locations")?, p("coins")?,     p("cards")?,    p("files")?,
             p("time")?,      p("signals")?,   p("commitments")?, p("nullifiers")?,
-            p("ephemeral")?,
+            p("intents")?,   p("ephemeral")?,
         ];
         Ok(Self { keyspace: ks, parts, cache: HashMap::new(), dirty: Vec::new() })
     }
