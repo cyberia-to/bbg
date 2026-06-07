@@ -18,6 +18,7 @@ use crate::dim::{
     bbg_poly_commit, commit_dim, goldilocks_from_bytes32, goldilocks_from_u64,
 };
 use crate::signal::{InsertError, Signal};
+use crate::stats::{GraphStats, STAT_RELATIONS};
 use crate::types::{
     CardRecord, Particle, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId,
     NeuronRecord, ParticleRecord, SignalRecord,
@@ -71,6 +72,9 @@ pub struct BbgState {
     pub intents: BTreeMap<Particle, IntentRecord>,
     /// Reverse map: axon_id → (from, to). Not committed; used for pruning.
     pub axon_edges: BTreeMap<Particle, (Particle, Particle)>,
+    /// Tighter diameter bound installed by tru. None → use the trivial
+    /// node_count−1 bound. Always an upper bound on the true diameter.
+    pub diameter_override: Option<u64>,
     pub height: u64,
     pub root: Particle,
 }
@@ -98,12 +102,16 @@ impl BbgState {
             balances: BTreeMap::new(),
             intents: BTreeMap::new(),
             axon_edges: BTreeMap::new(),
+            diameter_override: None,
             height: 0,
             root: empty_root,
         }
     }
 
-    /// Compute BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N)).
+    /// Compute BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N) ‖ commit(stats)).
+    ///
+    /// The graph statistics commitment is folded in so inf's cost model and
+    /// recursion bounds rest on proven values (see [[stats]]).
     pub fn compute_root(&self) -> Particle {
         let dim_commits = [
             self.commit_particles(),
@@ -121,11 +129,13 @@ impl BbgState {
         let bbg_poly_particle = bbg_poly_commit(&dim_commits);
         let a_commit = self.commit_a();
         let n_commit = self.commit_n();
+        let stats_commit = self.statistics().commit();
 
-        let mut buf = Vec::with_capacity(96);
+        let mut buf = Vec::with_capacity(128);
         buf.extend_from_slice(&bbg_poly_particle);
         buf.extend_from_slice(a_commit.as_bytes());
         buf.extend_from_slice(n_commit.as_bytes());
+        buf.extend_from_slice(&stats_commit);
 
         let hash = hemera_hash(&buf);
         let hash_bytes = hash.as_bytes();
@@ -133,6 +143,50 @@ impl BbgState {
         let len = hash_bytes.len().min(32);
         out[..len].copy_from_slice(&hash_bytes[..len]);
         out
+    }
+
+    // ── committed graph statistics (bbg → inf interface) ──────────
+
+    /// Compute the committed graph statistics from current state.
+    ///
+    /// node_count, relation_sizes, and max_degree are exact. diameter_bound is
+    /// a sound upper bound: `diameter_override` if tru installed one, else the
+    /// trivial connected-graph worst case `node_count − 1`.
+    pub fn statistics(&self) -> GraphStats {
+        let node_count = self.particles.len() as u64;
+
+        let relation_sizes: [u64; STAT_RELATIONS] = [
+            self.particles.len()  as u64,
+            self.axons_out.len()  as u64,
+            self.axons_in.len()   as u64,
+            self.neurons.len()    as u64,
+            self.locations.len()  as u64,
+            self.coins.len()      as u64,
+            self.cards.len()      as u64,
+            self.files.len()      as u64,
+            self.time.len()       as u64,
+            self.signals.len()    as u64,
+            self.balances.len()   as u64,
+        ];
+
+        let max_out = self.axons_out.values().map(|v| v.len()).max().unwrap_or(0);
+        let max_in  = self.axons_in.values().map(|v| v.len()).max().unwrap_or(0);
+        let max_degree = max_out.max(max_in) as u64;
+
+        let diameter_bound = self
+            .diameter_override
+            .unwrap_or_else(|| node_count.saturating_sub(1));
+
+        GraphStats { node_count, relation_sizes, max_degree, diameter_bound }
+    }
+
+    /// Install a tighter diameter bound (computed and proven by tru).
+    ///
+    /// Must be a sound upper bound on the true diameter — recursion in inf is
+    /// only guaranteed to terminate correctly if this holds. Takes effect on
+    /// the next `compute_root`.
+    pub fn set_diameter_bound(&mut self, bound: u64) {
+        self.diameter_override = Some(bound);
     }
 
     // ── dimension serializers ─────────────────────────────────────

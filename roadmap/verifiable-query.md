@@ -153,9 +153,18 @@ gravity commitment ([[gravity-commitment]]) makes common queries cheaper:
 
 the query compiler is aware of gravity layers and routes openings to the cheapest layer.
 
+## committed statistics — the cost/recursion contract with inf
+
+Open question 1 (unbounded recursion depth) is closed by a committed-statistics interface. bbg folds four graph statistics into `BBG_root` — `node_count`, `relation_sizes`, `max_degree`, `diameter_bound` (see [[statistics]]). This is the cross-repo contract:
+
+- inf bounds every recursive query (transitive closure, reachability) by the committed `diameter_bound`. Because the bound lives under the root, the iteration count — and therefore termination and circuit depth — is proven, not a trusted per-query parameter.
+- the same committed statistics that *bound* recursion also *cost* it: `inf cost = read_cost (bbg) + combine (inf coefficients) + recursion (diameter_bound × per-iter)`. Every term is a fixed coefficient or a committed statistic, so cost is static once the root is fixed.
+
+requirement inf places on bbg, now satisfied: the statistics must be committed in the root, else the recursion bound is a trusted input. Implemented as `GraphStats` folded into `compute_root`; `Bbg::statistics()` is the read side, `Bbg::set_diameter_bound()` lets [[tru]] install a tighter proven bound.
+
 ## open questions
 
-1. **query expressiveness**: which CozoDB operations are efficiently provable? recursive queries (transitive closure) may require unbounded circuit depth. practical bound: max depth parameter per query
+1. **query expressiveness**: which CozoDB operations are efficiently provable beyond the diameter-bounded recursive case above? aggregation over private data and ZK-friendly join encodings remain open
 2. **query privacy**: the proof reveals the query was correctly executed, but does it reveal the query itself? for private queries (e.g., "my balance"), the proof should not leak what was queried. ZK-friendly query encoding needed
 3. **compilation cost**: translating CozoDB to CCS is a compile-time cost. caching compiled query plans for common patterns (top-k, neighbor lookup) amortizes this
 4. **CozoDB integration**: CozoDB already has a query optimizer. extending it to output circuit plans instead of (or alongside) execution plans. the optimizer's cost model must account for proof cost, not just execution cost

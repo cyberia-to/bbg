@@ -17,6 +17,7 @@ pub mod prune;
 pub mod query;
 pub mod signal;
 pub mod state;
+pub mod stats;
 pub mod storage;
 pub mod types;
 
@@ -33,6 +34,7 @@ pub use query::{
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use state::BbgState;
+pub use stats::{GraphStats, STAT_RELATIONS};
 pub use types::{IntentRecord, NeuronId, Particle, SignalRecord};
 
 /// The BBG facade: state + checkpoint + pruning policy as a single unit.
@@ -141,6 +143,18 @@ impl Bbg {
     pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
         self.state.apply_signal_record(step, record);
     }
+
+    /// Committed graph statistics — the bbg → inf cost/recursion interface.
+    /// Authenticated by inclusion in BBG_root.
+    pub fn statistics(&self) -> GraphStats {
+        self.state.statistics()
+    }
+
+    /// Install a tighter (proven) diameter bound from tru. Takes effect on the
+    /// next `finalize_block`.
+    pub fn set_diameter_bound(&mut self, bound: u64) {
+        self.state.set_diameter_bound(bound);
+    }
 }
 
 impl Default for Bbg {
@@ -233,5 +247,49 @@ mod tests {
     #[test]
     fn prove_particle_returns_none_for_unknown_cid() {
         assert!(Bbg::new().prove_particle(&particle(255)).is_none());
+    }
+
+    #[test]
+    fn statistics_count_nodes_and_relations() {
+        let mut bbg = Bbg::new();
+        seed_neuron(&mut bbg, neuron_id(1), 100);
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+
+        let s = bbg.statistics();
+        // particle(3) target + axon-particle H(2,3) = 2 nodes
+        assert_eq!(s.node_count, s.relation_sizes[stats::rel::PARTICLES]);
+        assert_eq!(s.relation_sizes[stats::rel::AXONS_OUT], 1);
+        assert_eq!(s.relation_sizes[stats::rel::AXONS_IN], 1);
+        assert_eq!(s.relation_sizes[stats::rel::NEURONS], 1);
+    }
+
+    #[test]
+    fn diameter_bound_defaults_to_node_count_minus_one() {
+        let mut bbg = Bbg::new();
+        seed_neuron(&mut bbg, neuron_id(1), 100);
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        let s = bbg.statistics();
+        assert_eq!(s.diameter_bound, s.node_count.saturating_sub(1));
+    }
+
+    #[test]
+    fn installed_diameter_bound_is_used_and_changes_root() {
+        let mut bbg = Bbg::new();
+        seed_neuron(&mut bbg, neuron_id(1), 100);
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        let root_before = bbg.state.compute_root();
+        // Default for 2 nodes is node_count-1 = 1; install a distinct (sound
+        // upper) bound to show the committed value flows into the root.
+        bbg.set_diameter_bound(8);
+        assert_eq!(bbg.statistics().diameter_bound, 8);
+        assert_ne!(bbg.state.compute_root(), root_before);
+    }
+
+    #[test]
+    fn empty_graph_stats_are_zero() {
+        let s = Bbg::new().statistics();
+        assert_eq!(s.node_count, 0);
+        assert_eq!(s.max_degree, 0);
+        assert_eq!(s.diameter_bound, 0); // node_count.saturating_sub(1) on empty
     }
 }
