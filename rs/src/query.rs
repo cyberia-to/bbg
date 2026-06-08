@@ -479,6 +479,51 @@ mod tests {
         assert!(second.is_empty(), "take drains the buffer");
     }
 
+    // ── proof-path value semantics (corner opening, L0 fix) ───────────────────
+
+    // Before the L0 fix, ProofLookProvider returned poly.evaluate(key_point) — an
+    // off-corner MLE fingerprint that disagreed with the real column. After the fix
+    // it opens the value cell at its hypercube corner and returns the real cell, so
+    // the proof path and the fast path must agree.
+    #[test]
+    fn proof_provider_value_matches_fast_provider_neuron() {
+        let mut state = BbgState::new();
+        let mut key = [0u8; 32];
+        key[..8].copy_from_slice(&42u64.to_le_bytes());
+        state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0 });
+
+        let fast  = BbgLookProvider { state: &state };
+        let proof = ProofLookProvider::new(&state);
+        let ns = Goldilocks::new(Dim::Neurons as u64);
+        let k  = Goldilocks::new(42);
+
+        // both return the REAL focus (777), not a fingerprint
+        assert_eq!(fast.look(ct(), ns, k), Some(Goldilocks::new(777)));
+        assert_eq!(
+            proof.look(ct(), ns, k),
+            Some(Goldilocks::new(777)),
+            "proof provider must return the real cell, matching the fast provider"
+        );
+
+        // and the opening it accumulated verifies
+        let openings = proof.take_look_openings();
+        assert_eq!(openings.len(), 1);
+        assert_eq!(openings[0].value, Goldilocks::new(777));
+        assert!(verify_opening(&openings[0]), "corner opening must verify");
+    }
+
+    #[test]
+    fn proof_provider_value_matches_fast_provider_time() {
+        let state = seeded_state(); // time[0] = particle(99)
+        let fast  = BbgLookProvider { state: &state };
+        let proof = ProofLookProvider::new(&state);
+        let ns  = Goldilocks::new(Dim::Time as u64);
+        let key = Goldilocks::new(0);
+        let fast_v = fast.look(ct(), ns, key);
+        assert!(fast_v.is_some());
+        assert_eq!(proof.look(ct(), ns, key), fast_v, "proof and fast providers must agree");
+    }
+
     // ── collect_look_openings ─────────────────────────────────────────────────
 
     #[test]
