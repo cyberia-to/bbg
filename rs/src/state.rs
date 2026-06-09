@@ -333,6 +333,7 @@ impl BbgState {
                 let mut key = [0u8; 32];
                 key[..8].copy_from_slice(&step.to_le_bytes());
                 let mut vals: Vec<Goldilocks> = goldilocks_from_bytes32(&v.neuron).to_vec();
+                vals.extend_from_slice(&goldilocks_from_bytes32(&v.network));
                 vals.push(goldilocks_from_u64(v.link_count as u64));
                 vals.push(goldilocks_from_u64(v.block_height));
                 vals.extend_from_slice(&goldilocks_from_bytes32(&v.proof_hash));

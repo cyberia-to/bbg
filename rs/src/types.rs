@@ -78,6 +78,8 @@ pub struct FileRecord {
 /// A signal finalization record committed to the signals dimension.
 pub struct SignalRecord {
     pub neuron: NeuronId,
+    /// destination network this signal was delivered to (a card id)
+    pub network: Particle,
     pub link_count: u32,
     pub block_height: u64,
     pub proof_hash: Particle,

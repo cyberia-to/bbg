@@ -13,15 +13,17 @@
 //!      for passing to `zheng::commit()` after execution
 //!
 //! Key encoding for look providers:
-//!   namespace = Dim index (0–9, the look pattern rejects > 9 before calling).
-//!   key = first 8 bytes of particle ID as u64 LE.
-//!   For Time/Signals the key is the full u64 height/step.
-//!   For Balances (index 10): unreachable via look pattern (ns > 9 rejected by nox).
+//!   namespace = Dim index (0–9; the look pattern rejects > 9 before calling).
+//!   key = flat cell index into the dimension polynomial → returns `evals[key]`.
+//! This is the index-addressed convention nox's `BrakedownLookProvider` and
+//! zheng's `look_openings_from_provider` already use. Entity → (index, record)
+//! navigation is composed ABOVE this in inf (locate by reading key cells + `eq`);
+//! `bbg_query` / `prove_*` are entity-keyed conveniences for light clients.
 
 use std::sync::Mutex;
 
 use nebu::Goldilocks;
-use nox::{CallProvider, LookProvider, NounId, Order};
+use nox::{CallProvider, LookProvider, Reduction, Order};
 use zheng::LookOpening;
 
 use crate::dim::goldilocks_from_bytes32;
@@ -113,22 +115,23 @@ pub fn verify_query(proof: &QueryProof) -> bool {
 
 /// nox `LookProvider` backed by live `BbgState` — fast, no proofs generated.
 ///
-/// Converts the single-Goldilocks `key` to a 32-byte particle key by writing
-/// `key.as_u64()` into the first 8 bytes and zero-filling the rest. This
-/// works exactly for `Time` and `Signals` (where the key IS a u64). For
-/// particle-keyed dimensions (Particles, Neurons, …) it matches entries whose
-/// first 8 bytes equal the key — programmes must use the particle's first limb
-/// as the lookup key or call `bbg_query` directly for full 32-byte resolution.
+/// `key` is the flat cell index into the dimension polynomial; `look` returns
+/// `evals[key]`. Composing entity/record reads on top is inf's job.
 pub struct BbgLookProvider<'a> {
     pub state: &'a BbgState,
 }
 
 impl<'a> LookProvider for BbgLookProvider<'a> {
+    /// `key` is the flat cell index into dimension `namespace` — the convention
+    /// nox's look pattern and zheng's openings assume. Returns `evals[key]`.
+    /// Serves the public dimensions only (ns 0..9); private dims (balances) live
+    /// in the mutator set and are never exposed through the public look.
     fn look(&self, _commitment: Goldilocks, namespace: Goldilocks, key: Goldilocks) -> Option<Goldilocks> {
+        if namespace.as_u64() > 9 {
+            return None;
+        }
         let dim = Dim::from_u64(namespace.as_u64())?;
-        let mut key_bytes = [0u8; 32];
-        key_bytes[..8].copy_from_slice(&key.as_u64().to_le_bytes());
-        look_scalar(self.state, dim, &key_bytes)
+        crate::proof::cell_value(self.state, dim, key.as_u64() as usize)
     }
 }
 
@@ -162,16 +165,15 @@ impl<'a> ProofLookProvider<'a> {
 }
 
 impl<'a> LookProvider for ProofLookProvider<'a> {
+    /// `key` is the flat cell index; opens `evals[key]` at its corner and records
+    /// the `LookOpening`. `None` (no opening) if `key` is out of range. Public
+    /// dimensions only (ns 0..9).
     fn look(&self, _commitment: Goldilocks, namespace: Goldilocks, key: Goldilocks) -> Option<Goldilocks> {
+        if namespace.as_u64() > 9 {
+            return None;
+        }
         let dim = Dim::from_u64(namespace.as_u64())?;
-        let mut key_bytes = [0u8; 32];
-        key_bytes[..8].copy_from_slice(&key.as_u64().to_le_bytes());
-
-        // Gate proof generation on BTreeMap presence: the polynomial evaluates at
-        // any point (returning Some), but we only want proofs for keys that exist.
-        look_scalar(self.state, dim, &key_bytes)?;
-
-        let proof = bbg_query(self.state, dim, &key_bytes)?;
+        let proof = crate::proof::open_cell(self.state, dim, key.as_u64() as usize)?;
         let value = query_value(&proof);
         let opening = LookOpening {
             commitment:      proof.commitment,
@@ -194,7 +196,7 @@ impl<'a> LookProvider for ProofLookProvider<'a> {
 /// The `Sync` bound is satisfied because `Mutex` is `Sync` when its content
 /// is `Send`, and `Vec<LookOpening>` is `Send`.
 impl<'a, const N: usize> CallProvider<N> for ProofLookProvider<'a> {
-    fn provide(&self, _order: &mut Order<N>, _tag: Goldilocks, _object: NounId) -> Option<NounId> {
+    fn provide(&self, _reduction: &mut Reduction<N>, _tag: Goldilocks, _object: Order) -> Option<Order> {
         None
     }
 }
@@ -204,12 +206,11 @@ impl<'a, const N: usize> CallProvider<N> for ProofLookProvider<'a> {
 /// Generate `LookOpening`s for every look row in `trace` without re-executing.
 ///
 /// Scans for rows where `r[0] == 17` (look tag), reads `r[5]` as namespace and
-/// `r[6]` as key, and calls `bbg_query()` to produce the opening. Rows whose
-/// lookup fails (key absent or dimension ≥ 10) are skipped.
+/// `r[6]` as the flat cell index, and opens that cell. Rows whose index is out
+/// of range or whose dimension is ≥ 10 are skipped.
 ///
-/// This is the post-execution alternative to `ProofLookProvider`: execute with
-/// any provider, then call this function on the resulting trace to derive all
-/// necessary openings for `zheng::commit()`.
+/// Post-execution alternative to `ProofLookProvider`: execute with any provider,
+/// then derive all openings for `zheng::commit()` from the trace.
 pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<LookOpening> {
     let mut result = Vec::new();
     for row in trace {
@@ -218,12 +219,11 @@ pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<L
         }
         let ns  = Goldilocks::new(row.r()[5]);
         let key = Goldilocks::new(row.r()[6]);
+        if ns.as_u64() > 9 {
+            continue; // public dimensions only
+        }
         let Some(dim) = Dim::from_u64(ns.as_u64()) else { continue };
-        let mut key_bytes = [0u8; 32];
-        key_bytes[..8].copy_from_slice(&key.as_u64().to_le_bytes());
-        // Gate proof generation on BTreeMap presence (same as ProofLookProvider).
-        if look_scalar(state, dim, &key_bytes).is_none() { continue }
-        let Some(proof) = bbg_query(state, dim, &key_bytes) else { continue };
+        let Some(proof) = crate::proof::open_cell(state, dim, key.as_u64() as usize) else { continue };
         let value = query_value(&proof);
         result.push(LookOpening {
             commitment:      proof.commitment,
@@ -237,32 +237,6 @@ pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<L
         });
     }
     result
-}
-
-/// Fast scalar lookup (no proof generated).
-///
-/// Returns the primary u64 field of the record as a Goldilocks element, or
-/// `None` if the key is not present.
-fn look_scalar(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<Goldilocks> {
-    match dim {
-        Dim::Particles => state.particles.get(key).map(|p| Goldilocks::new(p.energy)),
-        Dim::AxonsOut  => state.axons_out.get(key).map(|v| Goldilocks::new(v.len() as u64)),
-        Dim::AxonsIn   => state.axons_in.get(key).map(|v| Goldilocks::new(v.len() as u64)),
-        Dim::Neurons   => state.neurons.get(key).map(|n| Goldilocks::new(n.focus)),
-        Dim::Locations => state.locations.get(key).map(|l| Goldilocks::new(l.lat as u32 as u64)),
-        Dim::Coins     => state.coins.get(key).map(|c| Goldilocks::new(c.total_supply)),
-        Dim::Cards     => state.cards.get(key).map(|c| goldilocks_from_bytes32(&c.owner)[0]),
-        Dim::Files     => state.files.get(key).map(|f| Goldilocks::new(f.available as u64)),
-        Dim::Time      => {
-            let h = u64::from_le_bytes(key[..8].try_into().ok()?);
-            state.time.get(&h).map(|p| goldilocks_from_bytes32(p)[0])
-        }
-        Dim::Signals   => {
-            let step = u64::from_le_bytes(key[..8].try_into().ok()?);
-            state.signals.get(&step).map(|s| Goldilocks::new(s.link_count as u64))
-        }
-        Dim::Balances  => None,
-    }
 }
 
 fn query_value(proof: &QueryProof) -> Goldilocks {
@@ -366,12 +340,13 @@ mod tests {
     fn ct() -> Goldilocks { Goldilocks::ZERO } // commitment arg not checked by BbgLookProvider
 
     #[test]
-    fn look_provider_time_by_height() {
-        let state = seeded_state();
+    fn look_provider_reads_cell_by_index() {
+        let state = seeded_state(); // time[0] = particle(99); entry = [key(4) | root(4)]
         let prov  = BbgLookProvider { state: &state };
         let ns  = Goldilocks::new(Dim::Time as u64);
-        let key = Goldilocks::new(0); // height = 0
-        assert!(prov.look(ct(), ns, key).is_some());
+        // cell 4 is the first value field = root[0]
+        let expect = crate::dim::goldilocks_from_bytes32(&[99u8; 32])[0];
+        assert_eq!(prov.look(ct(), ns, Goldilocks::new(4)), Some(expect));
     }
 
     #[test]
@@ -397,10 +372,10 @@ mod tests {
         assert!(prov.look(ct(), Goldilocks::new(Dim::Balances as u64), Goldilocks::ZERO).is_none());
     }
 
-    // look_provider for particle-keyed dimensions matches on first 8 bytes only.
-    // Neurons keyed by u64-compatible IDs (bytes 8..32 = 0) work correctly.
+    // Cells are addressed by flat index; a neuron's focus is value field 0 = cell 4
+    // (after its 4 key cells). Entity → index navigation is composed above, in inf.
     #[test]
-    fn look_provider_neuron_u64_compatible_key() {
+    fn look_provider_neuron_focus_cell_by_index() {
         let mut state = BbgState::new();
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
@@ -408,18 +383,7 @@ mod tests {
 
         let prov = BbgLookProvider { state: &state };
         let ns   = Goldilocks::new(Dim::Neurons as u64);
-        let k    = Goldilocks::new(42);
-        assert_eq!(prov.look(ct(), ns, k), Some(Goldilocks::new(777)));
-    }
-
-    // full 32-byte particle ID (non-zero bytes 8..32) is NOT addressable via single u64 key
-    #[test]
-    fn look_provider_full_particle_key_not_addressable() {
-        let state = seeded_state(); // neurons stored as particle(1) = [1;32]
-        let prov  = BbgLookProvider { state: &state };
-        let ns    = Goldilocks::new(Dim::Neurons as u64);
-        let key   = Goldilocks::new(u64::from_le_bytes([1; 8]));
-        assert!(prov.look(ct(), ns, key).is_none()); // [1,1,1,1,1,1,1,1,0...0] ≠ [1;32]
+        assert_eq!(prov.look(ct(), ns, Goldilocks::new(4)), Some(Goldilocks::new(777)));
     }
 
     // ── ProofLookProvider ─────────────────────────────────────────────────────
@@ -495,7 +459,8 @@ mod tests {
         let fast  = BbgLookProvider { state: &state };
         let proof = ProofLookProvider::new(&state);
         let ns = Goldilocks::new(Dim::Neurons as u64);
-        let k  = Goldilocks::new(42);
+        // focus is value field 0 = cell 4 (after the 4 key cells)
+        let k  = Goldilocks::new(4);
 
         // both return the REAL focus (777), not a fingerprint
         assert_eq!(fast.look(ct(), ns, k), Some(Goldilocks::new(777)));
@@ -514,11 +479,11 @@ mod tests {
 
     #[test]
     fn proof_provider_value_matches_fast_provider_time() {
-        let state = seeded_state(); // time[0] = particle(99)
+        let state = seeded_state(); // time[0] = particle(99); root cell at index 4
         let fast  = BbgLookProvider { state: &state };
         let proof = ProofLookProvider::new(&state);
         let ns  = Goldilocks::new(Dim::Time as u64);
-        let key = Goldilocks::new(0);
+        let key = Goldilocks::new(4);
         let fast_v = fast.look(ct(), ns, key);
         assert!(fast_v.is_some());
         assert_eq!(proof.look(ct(), ns, key), fast_v, "proof and fast providers must agree");
@@ -548,37 +513,37 @@ mod tests {
     /// Object:  [[l0|[l1|[l2|l3]]]|rest] — 4-limb BBG root layout
     #[test]
     fn collect_look_openings_from_real_trace() {
-        use nox::{reduce, Order, Tag, VecTrace, Outcome};
+        use nox::{reduce, Reduction, VecTrace, Outcome};
 
         let state = seeded_state();
         let prov  = ProofLookProvider::new(&state);
 
-        let mut order = Order::<1024>::new();
+        let mut reduction = Reduction::<1024>::new();
         let g = |v: u64| Goldilocks::new(v);
 
         // Object: [[0|[0|[0|0]]]|0] — 4-limb BBG root, all limbs zero
-        let al0  = order.atom(g(0), Tag::Field).unwrap();
-        let al1  = order.atom(g(0), Tag::Field).unwrap();
-        let al2  = order.atom(g(0), Tag::Field).unwrap();
-        let al3  = order.atom(g(0), Tag::Field).unwrap();
-        let inner2    = order.cell(al2, al3).unwrap();
-        let mid       = order.cell(al1, inner2).unwrap();
-        let root_cell = order.cell(al0, mid).unwrap();
-        let rest      = order.atom(g(0), Tag::Field).unwrap();
-        let obj       = order.cell(root_cell, rest).unwrap();
+        let al0  = reduction.atom(g(0)).unwrap();
+        let al1  = reduction.atom(g(0)).unwrap();
+        let al2  = reduction.atom(g(0)).unwrap();
+        let al3  = reduction.atom(g(0)).unwrap();
+        let inner2    = reduction.pair(al2, al3).unwrap();
+        let mid       = reduction.pair(al1, inner2).unwrap();
+        let root_cell = reduction.pair(al0, mid).unwrap();
+        let rest      = reduction.atom(g(0)).unwrap();
+        let obj       = reduction.pair(root_cell, rest).unwrap();
 
         // Formula: [17 [[1 8] [1 0]]]
-        let t17   = order.atom(g(17), Tag::Field).unwrap();
-        let t1    = order.atom(g(1),  Tag::Field).unwrap();
-        let vns   = order.atom(g(8),  Tag::Field).unwrap(); // Dim::Time
-        let vkey  = order.atom(g(0),  Tag::Field).unwrap(); // height 0
-        let ns_f  = order.cell(t1, vns).unwrap();
-        let key_f = order.cell(t1, vkey).unwrap();
-        let body  = order.cell(ns_f, key_f).unwrap();
-        let f     = order.cell(t17, body).unwrap();
+        let t17   = reduction.atom(g(17)).unwrap();
+        let t1    = reduction.atom(g(1)).unwrap();
+        let vns   = reduction.atom(g(8)).unwrap(); // Dim::Time
+        let vkey  = reduction.atom(g(0)).unwrap(); // cell index 0
+        let ns_f  = reduction.pair(t1, vns).unwrap();
+        let key_f = reduction.pair(t1, vkey).unwrap();
+        let body  = reduction.pair(ns_f, key_f).unwrap();
+        let f     = reduction.pair(t17, body).unwrap();
 
         let mut trace = VecTrace::default();
-        let outcome = reduce(&mut order, obj, f, 1000, &prov, &mut trace);
+        let outcome = reduce(&mut reduction, obj, f, 1000, &prov, &mut trace);
         assert!(matches!(outcome, Outcome::Ok(_, _)), "look must succeed with ProofLookProvider");
 
         // ProofLookProvider accumulated 1 opening during execution.
