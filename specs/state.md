@@ -80,8 +80,11 @@ BBG has one operation: insert(signal).
 BBG_poly updated at all affected evaluation dimensions.
 cross-index consistency is free — same polynomial, no LogUp needed.
 
-INPUT: Signal s = (ν, ℓ⃗, Δφ*, σ, t)
+INPUT: Signal s = (ν, net, ℓ⃗, Δφ*, σ, t)
   ν     — neuron (signing agent)
+  net   — destination network (a card id). each BBG instance holds ONE
+          network's state; net is recorded in the signals dimension and is
+          network-local — insert effects do not cross networks
   ℓ⃗    — one or more cyberlinks, each ℓ = (p, q, τ, a, v)
   Δφ*  — proven focus shift (sparse update)
   σ     — single zheng proof covering the entire signal

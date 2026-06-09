@@ -169,6 +169,7 @@ time entry:
 
 signals entry:
   key: batch_index                     8 bytes
+  network: F_p⁴                       32 bytes   (destination network card id)
   signal_batch_hash: F_p⁴             32 bytes
   recursive_proof_hash: F_p⁴          32 bytes
 ```
