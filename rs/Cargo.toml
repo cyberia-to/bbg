@@ -15,7 +15,7 @@ nebu   = { package = "cyb-nebu",    path = "../../strata/nebu/rs" }
 hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
 lens   = { package = "cyber-lens",  path = "../../lens/src" }
 nox    = { path = "../../nox/rs" }
-zheng  = { path = "../../zheng" }
+zheng  = { path = "../../zheng/rs" }
 
 # storage backends (optional)
 fjall  = { version = "2", optional = true }
