@@ -1,0 +1,20 @@
+# ---
+# tags: bbg, cli, config
+# crystal-type: source
+# crystal-domain: cyber
+# ---
+[package]
+name = "bbg-cli"
+version = "0.1.0"
+edition = "2021"
+description = "bbg — the authenticated state store, on the command line"
+license = "Cyber"
+
+[[bin]]
+name = "bbg"
+path = "src/main.rs"
+
+[dependencies]
+bbg  = { path = "../rs" }
+tape = { path = "../../tape/impl/rust" }
+clap = { version = "4", features = ["derive"] }
