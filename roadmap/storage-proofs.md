@@ -24,7 +24,7 @@ see [[cyber/proofs]] for the full proof taxonomy.
 
 ## resolution via signal-first + algebraic DAS
 
-the signal-first architecture ([[sync]], [[storage]]) resolves the retention question for STATE data: prove signal availability → derive all state via deterministic replay.
+the signal-first architecture ([[foculus]], [[storage]]) resolves the retention question for STATE data: prove signal availability → derive all state via deterministic replay.
 
 the remaining open problem: CONTENT availability. signals carry cyberlink CIDs but not the content behind them. content availability requires:
 - DAS over files dimension of BBG_poly

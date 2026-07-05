@@ -130,4 +130,4 @@ verification is ALWAYS ~5 μs (one zheng decider). proof size is always < 10 KiB
 
 query cost optimization via polynomial layering is a roadmap item (see roadmap/).
 
-see [[architecture]] for BBG_poly structure, [[state]] for evaluation dimensions, [[sync]] for namespace query protocol, [[data-availability]] for algebraic DAS queries
+see [[architecture]] for BBG_poly structure, [[state]] for evaluation dimensions, [[foculus]] for namespace query protocol, [[data-availability]] for algebraic DAS queries

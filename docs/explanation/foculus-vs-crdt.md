@@ -5,7 +5,7 @@ crystal-domain: cyber
 ---
 # foculus as merge layer
 
-the five verification layers of [[sync]] share four layers between local sync and global network sync: validity ([[zheng]] proof), ordering (hash chain + VDF), completeness (per-neuron signal polynomial commitment), availability (DAS + erasure coding). the fifth layer — merge — is where local and global diverge. local sync uses a CRDT. global sync uses [[foculus]]. understanding why illuminates both.
+the five verification layers of [[foculus]] share four layers between local sync and global network sync: validity ([[zheng]] proof), ordering (hash chain + VDF), completeness (per-neuron signal polynomial commitment), availability (DAS + erasure coding). the fifth layer — merge — is where local and global diverge. local sync uses a CRDT. global sync uses [[foculus]]. understanding why illuminates both.
 
 ## what the merge layer does
 
@@ -78,4 +78,4 @@ the CRDT merge is O(1) — union of sets. foculus merge is O(iterations x edges)
 
 local sync and global consensus are not separate protocols with a bridge between them. they are the same protocol with a different merge layer. a signal created on a neuron, synced to other local neurons via CRDT merge, and submitted to the network via foculus merge — traverses the full spectrum without transformation. the canonical signal fields ($\nu, \vec\ell, \Delta\phi^*, \sigma$) are unchanged. the ordering fields (prev, merkle_clock, vdf_proof, step) serve both scales. only the merge semantics change at the boundary between private sync and public consensus.
 
-see [[sync]] for the full sync specification, [[foculus]] for consensus details, [[design-principles]] for the three laws
+see [[foculus]] for the full specification and consensus details, [[design-principles]] for the three laws

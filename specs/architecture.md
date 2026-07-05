@@ -243,13 +243,13 @@ submit to network
 | stage | where specified | cost |
 |-------|----------------|------|
 | signal creation | [[nox]] reduction.md (proof-carrying) | ~30 field ops per step |
-| local sync | [[sync]] (structural sync layers 1-5) | ~200 bytes per namespace |
+| local sync | [[foculus]] (structural sync layers 1-5) | ~200 bytes per namespace |
 | block processing | [[state]] (polynomial updates) | ~3,200 constraints per cyberlink |
-| epoch composition | [[sync]] + zheng recursion.md | ~100K constraints per epoch |
-| light client | [[sync]] (checkpoint + Lens) | < 10 KiB, ~5 μs |
+| epoch composition | [[foculus]] + zheng recursion.md | ~100K constraints per epoch |
+| light client | [[foculus]] (checkpoint + Lens) | < 10 KiB, ~5 μs |
 | query | [[query]] (verifiable query compiler) | ~200 bytes to ~5 KiB proof |
 
-see [[state]] for transaction types, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated, [[sync]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension, [[query]] for verifiable queries
+see [[state]] for transaction types, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated, [[foculus]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension, [[query]] for verifiable queries
 
 ## topological layer
 
