@@ -55,7 +55,7 @@ light client join:    one zheng verification + namespace sync
 | [[indexes]] | 9 NMT indexes, leaf structures, namespace semantics |
 | [[privacy]] | mutator set (AOCL + SWBF), record model, transfer circuit |
 | [[cross-index]] | LogUp cross-index consistency, batch verification |
-| [[sync]] | sync at three scales: local (device CRDT), global (foculus), query (light client) |
+| [[foculus]] | sync at three scales: local (device CRDT), global (consensus), query (light client) |
 | [[data-availability]] | 2D Reed-Solomon, NMT commitment, fraud proofs, DAS |
 | [[temporal]] | edge decay, pruning protocol, storage reclamation |
 | [[storage]] | tiered storage model, private record lifecycle |

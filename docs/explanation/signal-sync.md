@@ -104,4 +104,4 @@ for personal sync this matters because:
 
 the three layers are orthogonal: CRDT handles merge semantics (no conflicts for content), Lens handles completeness (no withholding), DAS handles availability (no data loss). each solves a different failure mode. together they provide **extremely reliable sync** — provably complete, provably available, correctly merged.
 
-see [[sync]] for the full specification, [[design-principles]] for the three laws, [[data-availability]] for DAS in bbg
+see [[foculus]] for the full specification, [[design-principles]] for the three laws, [[data-availability]] for DAS in bbg

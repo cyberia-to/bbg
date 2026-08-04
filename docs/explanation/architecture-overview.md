@@ -120,4 +120,4 @@ hemera calls/block:      0 for state verification
 NMT internal nodes:      0 (polynomial replaces tree structure)
 ```
 
-see [[architecture]] for the full specification, [[state]] for transaction types, [[sync]] for the five-layer protocol, [[polynomial-privacy]] for the private state model, [[why-polynomial-state]] for why polynomial over hash tree, [[why-signal-first]] for the state derivation model
+see [[architecture]] for the full specification, [[state]] for transaction types, [[foculus]] for the five-layer protocol, [[polynomial-privacy]] for the private state model, [[why-polynomial-state]] for why polynomial over hash tree, [[why-signal-first]] for the state derivation model
