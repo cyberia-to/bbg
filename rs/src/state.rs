@@ -171,7 +171,7 @@ impl BbgState {
         }
     }
 
-    /// Compute BBG_root: the Poseidon2 compression chain over [`Self::root_leaves`].
+    /// Compute BBG_root: the hemera compression chain over [`Self::root_leaves`].
     ///
     /// Field-native — the same limbs, permutation, and order as the in-circuit
     /// replay, so the root a program declares is the root the proof recomputes.
