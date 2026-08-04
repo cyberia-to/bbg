@@ -16,7 +16,6 @@ pub const EPOCH_BLOCKS: u64 = 100;
 use hemera::hash as hemera_hash;
 use nebu::Goldilocks;
 
-use crate::dim::bbg_poly_commit;
 use crate::signal::{InsertError, Signal};
 use crate::stats::{GraphStats, STAT_RELATIONS};
 use crate::types::{
@@ -90,12 +89,9 @@ fn filled_cache(root: Particle) -> OnceLock<Particle> {
 }
 
 impl BbgState {
-    /// Create empty state. Root is hemera hash of empty commitments.
+    /// Create empty state. The root computes lazily through the same
+    /// [`Self::compute_root`] path as every other state — no special constant.
     pub fn new() -> Self {
-        let empty_root = *hemera_hash(b"bbg-empty-state")
-            .as_bytes()
-            .first_chunk::<32>()
-            .unwrap_or(&[0u8; 32]);
         Self {
             particles: BTreeMap::new(),
             axons_out: BTreeMap::new(),
@@ -114,7 +110,7 @@ impl BbgState {
             axon_edges: BTreeMap::new(),
             diameter_override: None,
             height: 0,
-            root_cache: filled_cache(empty_root),
+            root_cache: OnceLock::new(),
         }
     }
 
@@ -141,40 +137,50 @@ impl BbgState {
         self.root_cache = OnceLock::new();
     }
 
-    /// Compute BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N) ‖ commit(stats)).
+    /// The 14 leaves of the root preimage: the 11 dimension commitments (in
+    /// `Dim` order), A (private commitments), N (nullifiers), stats.
     ///
-    /// The graph statistics commitment is folded in so inf's cost model and
-    /// recursion bounds rest on proven values (see [[stats]]).
+    /// This is the exact structure zheng's look argument recomputes in-circuit
+    /// (`zheng::root_from_leaves`), so a look opening can bind its dimension
+    /// commitment to the root a nox program declares.
+    pub fn root_leaves(&self) -> zheng::RootLeaves {
+        let limbs = |c: &lens::Commitment| -> [Goldilocks; 4] {
+            let mut b = [0u8; 32];
+            let cb = c.as_bytes();
+            let len = cb.len().min(32);
+            b[..len].copy_from_slice(&cb[..len]);
+            crate::dim::goldilocks_from_bytes32(&b)
+        };
+        zheng::RootLeaves {
+            dims: [
+                limbs(&self.commit_particles()),
+                limbs(&self.commit_axons_out()),
+                limbs(&self.commit_axons_in()),
+                limbs(&self.commit_neurons()),
+                limbs(&self.commit_locations()),
+                limbs(&self.commit_coins()),
+                limbs(&self.commit_cards()),
+                limbs(&self.commit_files()),
+                limbs(&self.commit_time()),
+                limbs(&self.commit_signals()),
+                limbs(&self.commit_balances()),
+            ],
+            a: limbs(&self.commit_a()),
+            n: limbs(&self.commit_n()),
+            stats: crate::dim::goldilocks_from_bytes32(&self.statistics().commit()),
+        }
+    }
+
+    /// Compute BBG_root: the Poseidon2 compression chain over [`Self::root_leaves`].
+    ///
+    /// Field-native — the same limbs, permutation, and order as the in-circuit
+    /// replay, so the root a program declares is the root the proof recomputes.
     pub fn compute_root(&self) -> Particle {
-        let dim_commits = [
-            self.commit_particles(),
-            self.commit_axons_out(),
-            self.commit_axons_in(),
-            self.commit_neurons(),
-            self.commit_locations(),
-            self.commit_coins(),
-            self.commit_cards(),
-            self.commit_files(),
-            self.commit_time(),
-            self.commit_signals(),
-            self.commit_balances(),
-        ];
-        let bbg_poly_particle = bbg_poly_commit(&dim_commits);
-        let a_commit = self.commit_a();
-        let n_commit = self.commit_n();
-        let stats_commit = self.statistics().commit();
-
-        let mut buf = Vec::with_capacity(128);
-        buf.extend_from_slice(&bbg_poly_particle);
-        buf.extend_from_slice(a_commit.as_bytes());
-        buf.extend_from_slice(n_commit.as_bytes());
-        buf.extend_from_slice(&stats_commit);
-
-        let hash = hemera_hash(&buf);
-        let hash_bytes = hash.as_bytes();
+        let root = zheng::root_from_leaves(&self.root_leaves());
         let mut out = [0u8; 32];
-        let len = hash_bytes.len().min(32);
-        out[..len].copy_from_slice(&hash_bytes[..len]);
+        for (i, limb) in root.iter().enumerate() {
+            out[i * 8..(i + 1) * 8].copy_from_slice(&limb.as_u64().to_le_bytes());
+        }
         out
     }
 
