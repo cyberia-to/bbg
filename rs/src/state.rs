@@ -6,17 +6,17 @@
 //! BBG state: the 11-dimensional authenticated state of the cybergraph.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
+
+mod commits;
 
 /// Number of blocks per epoch. Pruning runs at epoch boundaries.
 pub const EPOCH_BLOCKS: u64 = 100;
 
 use hemera::hash as hemera_hash;
-use lens::Commitment;
 use nebu::Goldilocks;
 
-use crate::dim::{
-    bbg_poly_commit, commit_dim, goldilocks_from_bytes32, goldilocks_from_u64,
-};
+use crate::dim::bbg_poly_commit;
 use crate::signal::{InsertError, Signal};
 use crate::stats::{GraphStats, STAT_RELATIONS};
 use crate::types::{
@@ -76,7 +76,17 @@ pub struct BbgState {
     /// node_count−1 bound. Always an upper bound on the true diameter.
     pub diameter_override: Option<u64>,
     pub height: u64,
-    pub root: Particle,
+    /// Cached BBG_root. Empty ⇒ dirty: recomputed on the next [`Self::root`]
+    /// read. `OnceLock` (not `Cell`) so `&BbgState` stays `Sync` — the
+    /// `ProofLookProvider` in [[query]] requires it.
+    root_cache: OnceLock<Particle>,
+}
+
+/// A pre-filled root cache holding `root`.
+fn filled_cache(root: Particle) -> OnceLock<Particle> {
+    let cache = OnceLock::new();
+    let _ = cache.set(root);
+    cache
 }
 
 impl BbgState {
@@ -104,8 +114,31 @@ impl BbgState {
             axon_edges: BTreeMap::new(),
             diameter_override: None,
             height: 0,
-            root: empty_root,
+            root_cache: filled_cache(empty_root),
         }
+    }
+
+    /// The current BBG_root.
+    ///
+    /// Lazily recomputed on the first read after a mutation, then cached
+    /// until the next mutation. N inserts followed by one read cost one
+    /// `compute_root`, and the value equals the root the eager per-insert
+    /// path would have produced.
+    pub fn root(&self) -> Particle {
+        *self.root_cache.get_or_init(|| self.compute_root())
+    }
+
+    /// Recompute the root now and cache it. Eager equivalent of marking the
+    /// cache dirty and immediately reading [`Self::root`].
+    pub fn refresh_root(&mut self) -> Particle {
+        let root = self.compute_root();
+        self.root_cache = filled_cache(root);
+        root
+    }
+
+    /// Invalidate the cached root after a mutation of a committed dimension.
+    fn mark_root_dirty(&mut self) {
+        self.root_cache = OnceLock::new();
     }
 
     /// Compute BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N) ‖ commit(stats)).
@@ -187,188 +220,10 @@ impl BbgState {
     /// the next `compute_root`.
     pub fn set_diameter_bound(&mut self, bound: u64) {
         self.diameter_override = Some(bound);
+        self.mark_root_dirty();
     }
 
-    // ── dimension serializers ─────────────────────────────────────
-
-    fn commit_particles(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .particles
-            .iter()
-            .map(|(k, v)| {
-                let vals = vec![
-                    goldilocks_from_u64(v.energy),
-                    goldilocks_from_u64(v.pi_star),
-                    goldilocks_from_u64(v.weight),
-                    goldilocks_from_u64(v.s_yes),
-                    goldilocks_from_u64(v.s_no),
-                    goldilocks_from_u64(v.meta_score),
-                ];
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_axons_out(&self) -> Commitment {
-        // Serialize each adjacency list: key + count + each particle (4 field elems each)
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .axons_out
-            .iter()
-            .map(|(k, v)| {
-                let mut vals = vec![goldilocks_from_u64(v.len() as u64)];
-                for particle in v {
-                    vals.extend_from_slice(&goldilocks_from_bytes32(particle));
-                }
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_axons_in(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .axons_in
-            .iter()
-            .map(|(k, v)| {
-                let mut vals = vec![goldilocks_from_u64(v.len() as u64)];
-                for particle in v {
-                    vals.extend_from_slice(&goldilocks_from_bytes32(particle));
-                }
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_neurons(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .neurons
-            .iter()
-            .map(|(k, v)| {
-                let vals = vec![
-                    goldilocks_from_u64(v.focus),
-                    goldilocks_from_u64(v.karma),
-                    goldilocks_from_u64(v.stake),
-                ];
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_locations(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .locations
-            .iter()
-            .map(|(k, v)| {
-                // i32 stored as u64 via bit-cast
-                let vals = vec![
-                    goldilocks_from_u64(v.lat as u32 as u64),
-                    goldilocks_from_u64(v.lon as u32 as u64),
-                ];
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_coins(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .coins
-            .iter()
-            .map(|(k, v)| ((*k), vec![goldilocks_from_u64(v.total_supply)]))
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_cards(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .cards
-            .iter()
-            .map(|(k, v)| {
-                let mut vals: Vec<Goldilocks> = goldilocks_from_bytes32(&v.owner).to_vec();
-                vals.extend_from_slice(&goldilocks_from_bytes32(&v.particle));
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_files(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .files
-            .iter()
-            .map(|(k, v)| {
-                let vals = vec![
-                    goldilocks_from_u64(v.available as u64),
-                    goldilocks_from_u64(v.chunk_count as u64),
-                ];
-                (*k, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_time(&self) -> Commitment {
-        // Key: height as 32-byte key (8 bytes LE padded)
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .time
-            .iter()
-            .map(|(h, particle)| {
-                let mut key = [0u8; 32];
-                key[..8].copy_from_slice(&h.to_le_bytes());
-                let vals: Vec<Goldilocks> = goldilocks_from_bytes32(particle).to_vec();
-                (key, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_signals(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .signals
-            .iter()
-            .map(|(step, v)| {
-                let mut key = [0u8; 32];
-                key[..8].copy_from_slice(&step.to_le_bytes());
-                let mut vals: Vec<Goldilocks> = goldilocks_from_bytes32(&v.neuron).to_vec();
-                vals.extend_from_slice(&goldilocks_from_bytes32(&v.network));
-                vals.push(goldilocks_from_u64(v.link_count as u64));
-                vals.push(goldilocks_from_u64(v.block_height));
-                vals.extend_from_slice(&goldilocks_from_bytes32(&v.proof_hash));
-                (key, vals)
-            })
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_balances(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .balances
-            .iter()
-            .map(|(k, v)| (*k, vec![goldilocks_from_u64(*v)]))
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_a(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .commitments
-            .iter()
-            .map(|(k, v)| (*k, vec![*v]))
-            .collect();
-        commit_dim(&entries)
-    }
-
-    fn commit_n(&self) -> Commitment {
-        let entries: Vec<(Particle, Vec<Goldilocks>)> = self
-            .nullifiers
-            .iter()
-            .map(|k| (*k, vec![goldilocks_from_u64(1)]))
-            .collect();
-        commit_dim(&entries)
-    }
+    // Dimension serializers live in [`commits`] (state/commits.rs).
 
     // ── signal insertion ─────────────────────────────────────────
 
@@ -441,7 +296,7 @@ impl BbgState {
             *bal = bal.saturating_sub(link.amount);
         }
 
-        self.root = self.compute_root();
+        self.mark_root_dirty();
         Ok(())
     }
 
@@ -470,6 +325,7 @@ impl BbgState {
     /// a previously-declared intent).
     pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
         self.signals.insert(step, record);
+        self.mark_root_dirty();
     }
 
 }

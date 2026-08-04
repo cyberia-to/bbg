@@ -181,7 +181,7 @@ impl<'a> LookProvider for ProofLookProvider<'a> {
             value,
             opening:         proof.opening,
             transcript_seed: b"bbg-dim-open".to_vec(),
-            bbg_root:        goldilocks_from_bytes32(&self.state.root),
+            bbg_root:        goldilocks_from_bytes32(&self.state.root()),
             namespace,
             a_commit:        None,
         };
@@ -231,7 +231,7 @@ pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<L
             value,
             opening:         proof.opening,
             transcript_seed: b"bbg-dim-open".to_vec(),
-            bbg_root:        goldilocks_from_bytes32(&state.root),
+            bbg_root:        goldilocks_from_bytes32(&state.root()),
             namespace:       ns,
             a_commit:        None,
         });
