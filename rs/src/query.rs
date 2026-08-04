@@ -26,7 +26,6 @@ use nebu::Goldilocks;
 use nox::{CallProvider, LookProvider, Reduction, Order};
 use zheng::LookOpening;
 
-use crate::dim::goldilocks_from_bytes32;
 use crate::proof::{
     prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_file, prove_location,
     prove_neuron, prove_particle, prove_signal, prove_time, QueryProof,
@@ -147,12 +146,15 @@ impl<'a> LookProvider for BbgLookProvider<'a> {
 /// `CallProvider<N>` bound when wrapped in a `ProofCallProvider`.
 pub struct ProofLookProvider<'a> {
     pub state: &'a BbgState,
+    /// The root-preimage leaves, computed once — every opening carries a clone
+    /// so zheng can recompute and bind the root in-circuit.
+    leaves: zheng::RootLeaves,
     openings: Mutex<Vec<LookOpening>>,
 }
 
 impl<'a> ProofLookProvider<'a> {
     pub fn new(state: &'a BbgState) -> Self {
-        Self { state, openings: Mutex::new(Vec::new()) }
+        Self { state, leaves: state.root_leaves(), openings: Mutex::new(Vec::new()) }
     }
 
     /// Drain and return all accumulated `LookOpening`s in insertion order.
@@ -181,9 +183,8 @@ impl<'a> LookProvider for ProofLookProvider<'a> {
             value,
             opening:         proof.opening,
             transcript_seed: b"bbg-dim-open".to_vec(),
-            bbg_root:        goldilocks_from_bytes32(&self.state.root),
+            leaves:          self.leaves.clone(),
             namespace,
-            a_commit:        None,
         };
         self.openings.lock().unwrap().push(opening);
         Some(value)
@@ -213,6 +214,7 @@ impl<'a, const N: usize> CallProvider<N> for ProofLookProvider<'a> {
 /// then derive all openings for `zheng::commit()` from the trace.
 pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<LookOpening> {
     let mut result = Vec::new();
+    let leaves = state.root_leaves();
     for row in trace {
         if row.r()[0] != 17 {
             continue;
@@ -231,9 +233,8 @@ pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<L
             value,
             opening:         proof.opening,
             transcript_seed: b"bbg-dim-open".to_vec(),
-            bbg_root:        goldilocks_from_bytes32(&state.root),
+            leaves:          leaves.clone(),
             namespace:       ns,
-            a_commit:        None,
         });
     }
     result

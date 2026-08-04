@@ -103,7 +103,7 @@ pub fn prune(state: &mut BbgState, ps: &mut PruneState, config: &PruneConfig, ep
     }
 
     if !state.particles.is_empty() {
-        state.root = state.compute_root();
+        state.refresh_root();
     }
 }
 

@@ -73,9 +73,9 @@ impl Bbg {
     /// and run pruning at epoch boundaries.
     pub fn finalize_block(&mut self) {
         let h = self.state.height;
-        let root = self.state.root;
+        let root = self.state.root();
         self.state.time.insert(h, root);
-        self.state.root = self.state.compute_root();
+        self.state.refresh_root();
         self.state.height += 1;
         if self.state.height % state::EPOCH_BLOCKS == 0 {
             let epoch = self.state.height / state::EPOCH_BLOCKS;
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn empty_root_is_deterministic() {
-        assert_eq!(BbgState::new().root, BbgState::new().root);
+        assert_eq!(BbgState::new().root(), BbgState::new().root());
     }
 
     #[test]
@@ -205,9 +205,9 @@ mod tests {
     fn cyberlink_changes_root() {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
-        let root_before = bbg.state.root;
+        let root_before = bbg.state.root();
         bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
-        assert_ne!(bbg.state.root, root_before);
+        assert_ne!(bbg.state.root(), root_before);
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
         bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
 
         let proof = bbg.prove_particle(&particle(3)).expect("particle proof must exist");
-        assert!(verify_particle(&proof, &bbg.state.root, &particle(3)));
+        assert!(verify_particle(&proof, &bbg.state.root(), &particle(3)));
     }
 
     #[test]
@@ -283,6 +283,25 @@ mod tests {
         bbg.set_diameter_bound(8);
         assert_eq!(bbg.statistics().diameter_bound, 8);
         assert_ne!(bbg.state.compute_root(), root_before);
+    }
+
+    #[test]
+    fn lazy_root_after_bulk_inserts_matches_per_insert_root() {
+        // `lazy` reads the root once after N inserts; `eager` materializes it
+        // after every insert (the historical per-insert path). Both must land
+        // on the same root, and it must equal a direct compute_root().
+        let mut lazy = Bbg::new();
+        let mut eager = Bbg::new();
+        seed_neuron(&mut lazy, neuron_id(1), 10_000);
+        seed_neuron(&mut eager, neuron_id(1), 10_000);
+        for i in 0..8u8 {
+            let sig = one_link(neuron_id(1), particle(10 + i), particle(100 + i));
+            lazy.insert(&sig).unwrap();
+            eager.insert(&sig).unwrap();
+            let _ = eager.state.root(); // force per-insert materialization
+        }
+        assert_eq!(lazy.state.root(), eager.state.root());
+        assert_eq!(lazy.state.root(), lazy.state.compute_root());
     }
 
     #[test]

@@ -65,26 +65,3 @@ pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
     Brakedown::commit(&poly)
 }
 
-/// Compute the BBG_poly commit: hemera hash of the concatenated 32-byte
-/// commitments for all 11 dimensions (d0..d10).
-///
-/// Uses `Brakedown::commit_raw` so all hemera types stay in the 0.2 version.
-pub fn bbg_poly_commit(dim_commits: &[Commitment; 11]) -> Particle {
-    let mut buf = Vec::with_capacity(352); // 11 × 32
-    for c in dim_commits.iter() {
-        buf.extend_from_slice(c.as_bytes());
-    }
-    // Encode the buffer as field elements and commit_raw to stay in 0.2 hemera.
-    let elems: Vec<Goldilocks> = buf.iter().map(|&b| Goldilocks::new(b as u64)).collect();
-    let target = elems.len().next_power_of_two();
-    let mut padded = elems;
-    padded.resize(target, Goldilocks::ZERO);
-    let commit = Brakedown::commit_raw(&padded);
-    // Extract the 32 bytes from the commitment.
-    let mut out = [0u8; 32];
-    let cb = commit.as_bytes();
-    let len = cb.len().min(32);
-    out[..len].copy_from_slice(&cb[..len]);
-    out
-}
-
