@@ -23,19 +23,19 @@ pub mod types;
 
 pub use checkpoint::Checkpoint;
 pub use proof::{
-    prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin, prove_commitment,
-    prove_file, prove_location, prove_neuron, prove_particle, prove_signal, prove_time,
-    verify_particle, QueryProof,
+    QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
+    prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,
+    prove_time, verify_particle,
 };
 pub use prune::{PruneConfig, PruneState};
 pub use query::{
-    bbg_query, collect_look_openings, verify_opening, verify_query,
-    BbgLookProvider, Dim, ProofLookProvider,
+    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
+    verify_query,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
-pub use state::BbgState;
+pub use state::{BbgState, balance_key};
 pub use stats::{GraphStats, STAT_RELATIONS};
-pub use types::{IntentRecord, NeuronId, Particle, SignalRecord};
+pub use types::{IntentRecord, NeuronId, NeuronRecord, Particle, SignalRecord};
 
 /// The BBG facade: state + checkpoint + pruning policy as a single unit.
 pub struct Bbg {
@@ -49,7 +49,12 @@ impl Bbg {
     pub fn new() -> Self {
         let state = BbgState::new();
         let checkpoint = Checkpoint::new(&state);
-        Self { state, checkpoint, prune_config: PruneConfig::default(), prune_state: PruneState::default() }
+        Self {
+            state,
+            checkpoint,
+            prune_config: PruneConfig::default(),
+            prune_state: PruneState::default(),
+        }
     }
 
     pub fn with_prune_config(mut self, config: PruneConfig) -> Self {
@@ -79,7 +84,12 @@ impl Bbg {
         self.state.height += 1;
         if self.state.height % state::EPOCH_BLOCKS == 0 {
             let epoch = self.state.height / state::EPOCH_BLOCKS;
-            prune::prune(&mut self.state, &mut self.prune_state, &self.prune_config, epoch);
+            prune::prune(
+                &mut self.state,
+                &mut self.prune_state,
+                &self.prune_config,
+                epoch,
+            );
         }
         self.checkpoint = self.checkpoint.advance(&self.state);
     }
@@ -169,17 +179,34 @@ mod tests {
     use signal::BoxMove;
     use types::NeuronRecord;
 
-    fn neuron_id(seed: u8) -> NeuronId { [seed; 32] }
-    fn particle(seed: u8) -> Particle { [seed; 32] }
+    fn neuron_id(seed: u8) -> NeuronId {
+        [seed; 32]
+    }
+    fn particle(seed: u8) -> Particle {
+        [seed; 32]
+    }
 
     fn seed_neuron(bbg: &mut Bbg, id: NeuronId, focus: u64) {
-        bbg.state.neurons.insert(id, NeuronRecord { focus, karma: 0, stake: 0 });
+        bbg.state.neurons.insert(
+            id,
+            NeuronRecord {
+                focus,
+                karma: 0,
+                stake: 0,
+            },
+        );
     }
 
     fn one_link(neuron: NeuronId, from: Particle, to: Particle) -> Signal {
         Signal {
             neuron,
-            links: vec![Cyberlink { from, to, token: particle(0), amount: 1, valence: 1 }],
+            links: vec![Cyberlink {
+                from,
+                to,
+                token: particle(0),
+                amount: 1,
+                valence: 1,
+            }],
             box_moves: vec![],
             height: 0,
         }
@@ -196,8 +223,10 @@ mod tests {
         let mut b = Bbg::new();
         seed_neuron(&mut a, neuron_id(1), 100);
         seed_neuron(&mut b, neuron_id(1), 100);
-        a.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
-        b.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        a.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
+        b.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
         assert_eq!(a.state.compute_root(), b.state.compute_root());
     }
 
@@ -206,7 +235,8 @@ mod tests {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
         let root_before = bbg.state.root();
-        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
         assert_ne!(bbg.state.root(), root_before);
     }
 
@@ -227,7 +257,10 @@ mod tests {
         let mk_signal = || Signal {
             neuron: neuron_id(1),
             links: vec![],
-            box_moves: vec![BoxMove { nullifier, commitment: None }],
+            box_moves: vec![BoxMove {
+                nullifier,
+                commitment: None,
+            }],
             height: 0,
         };
         bbg.insert(&mk_signal()).unwrap();
@@ -238,9 +271,12 @@ mod tests {
     fn prove_and_verify_particle_roundtrip() {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
-        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
 
-        let proof = bbg.prove_particle(&particle(3)).expect("particle proof must exist");
+        let proof = bbg
+            .prove_particle(&particle(3))
+            .expect("particle proof must exist");
         assert!(verify_particle(&proof, &bbg.state.root(), &particle(3)));
     }
 
@@ -253,7 +289,8 @@ mod tests {
     fn statistics_count_nodes_and_relations() {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
-        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
 
         let s = bbg.statistics();
         // particle(3) target + axon-particle H(2,3) = 2 nodes
@@ -267,7 +304,8 @@ mod tests {
     fn diameter_bound_defaults_to_node_count_minus_one() {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
-        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
         let s = bbg.statistics();
         assert_eq!(s.diameter_bound, s.node_count.saturating_sub(1));
     }
@@ -276,7 +314,8 @@ mod tests {
     fn installed_diameter_bound_is_used_and_changes_root() {
         let mut bbg = Bbg::new();
         seed_neuron(&mut bbg, neuron_id(1), 100);
-        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3))).unwrap();
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
         let root_before = bbg.state.compute_root();
         // Default for 2 nodes is node_count-1 = 1; install a distinct (sound
         // upper) bound to show the committed value flows into the root.
