@@ -163,7 +163,7 @@ execution:
   emit zheng proof of correct execution (sk_view is private witness)
 ```
 
-the proof is a STARK over the scan_exec circuit. `sk_view` is a private witness. the public claim is:
+the proof is a zheng proof over the scan_exec circuit. `sk_view` is a private witness. the public claim is:
 
 ```
 "running scan_exec with witness sk_view over epoch index E produced set O,
@@ -294,7 +294,7 @@ not yet implemented:
 2. **scan tag field** — `OutputAnnouncement` struct gains `tag: [u8; 32]` — block proof covers it
 3. **P_out epoch polynomial** — `bbg::state::OutputAccumulator` — maintained alongside A_live
 4. **GCD service** — `bbg::scan::gcd_query(commit_Q, epoch) → (commit_G, π₁, π₂)` — polynomial Euclidean algorithm over Goldilocks + Ikat division proofs
-5. **scan_exec circuit** — STARK over the scanning loop — sk_view as private witness
+5. **scan_exec circuit** — zheng proof over the scanning loop — sk_view as private witness
 6. **zheng scan folding** — `bbg::scan::fold_epoch(scan_acc, π_scan) → scan_acc'` — HyperNova accumulator step
 7. **PIR retrieval** — `bbg::scan::pir_retrieve(c_set, server_a, server_b)` — two-server linear PIR over Goldilocks
 
