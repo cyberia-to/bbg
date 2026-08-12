@@ -1,6 +1,6 @@
 [package]
 name = "bbg"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Big Badass Graph: authenticated state with polynomial commitments"
 license-file = "LICENSE"
@@ -9,11 +9,11 @@ keywords = ["graph", "commitment", "bbg", "cyber"]
 categories = ["cryptography", "data-structures"]
 
 [dependencies]
-nebu   = { package = "cyb-nebu", version = "0.1", path = "../../strata/nebu/rs" }
+nebu   = { package = "strata-nebu", version = "0.1", path = "../../strata/nebu/rs" }
 hemera = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
-lens   = { package = "cyb-lens", version = "0.1", path = "../../lens/src" }
-nox    = { package = "cyber-nox", version = "0.1", path = "../../nox/rs" }
-zheng  = { version = "0.1", path = "../../zheng/rs" }
+lens   = { package = "cyb-lens", version = "0.1.1", path = "../../lens/src" }
+nox    = { package = "cyber-nox", version = "0.1.1", path = "../../nox/rs" }
+zheng  = { version = "0.1.1", path = "../../zheng/rs" }
 
 fjall  = { version = "2", optional = true }
 redb   = { version = "2", optional = true }

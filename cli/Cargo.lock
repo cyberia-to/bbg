@@ -3,15 +3,6 @@
 version = 4
 
 [[package]]
-name = "acpu"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81089272e2a248781b1e2c38ad7247a98bea63a602c0a445dc63e955b2035375"
-dependencies = [
- "unimem",
-]
-
-[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -63,12 +54,12 @@ dependencies = [
 
 [[package]]
 name = "bbg"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "cyb-nebu",
+ "cyb-lens",
  "cyber-hemera",
- "cyber-lens",
- "nox",
+ "cyber-nox",
+ "strata-nebu",
  "zheng",
 ]
 
@@ -78,7 +69,7 @@ version = "0.1.0"
 dependencies = [
  "bbg",
  "clap",
- "tape",
+ "cyber-tape",
 ]
 
 [[package]]
@@ -134,128 +125,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
-name = "crossbeam-queue"
-version = "0.3.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
-
-[[package]]
-name = "cyb-genies"
-version = "0.1.0"
-dependencies = [
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-jali"
-version = "0.1.0"
-dependencies = [
- "cyb-nebu",
- "strata-core",
-]
-
-[[package]]
-name = "cyb-kuro"
-version = "0.1.0"
-dependencies = [
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-lens-assayer"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
- "cyb-trop",
-]
-
-[[package]]
-name = "cyb-lens-binius"
-version = "0.1.0"
-dependencies = [
- "cyb-kuro",
- "cyb-lens-core",
- "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-lens-brakedown"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-core",
- "cyb-nebu",
- "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-lens-core"
-version = "0.1.0"
-dependencies = [
- "cyb-nebu",
- "cyber-hemera",
- "strata-core",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-lens-ikat"
-version = "0.1.0"
-dependencies = [
- "cyb-jali",
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
-]
-
-[[package]]
-name = "cyb-lens-porphyry"
-version = "0.1.0"
-dependencies = [
- "cyb-genies",
- "cyb-lens-core",
- "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-nebu"
-version = "0.1.0"
-dependencies = [
- "acpu",
- "strata-compute",
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-trop"
-version = "0.1.0"
-dependencies = [
- "strata-core",
-]
-
-[[package]]
-name = "cyber-hemera"
-version = "0.3.0"
-
-[[package]]
-name = "cyber-lens"
-version = "0.1.0"
+name = "cyb-lens"
+version = "0.1.1"
 dependencies = [
  "cyb-lens-assayer",
  "cyb-lens-binius",
@@ -263,6 +134,84 @@ dependencies = [
  "cyb-lens-core",
  "cyb-lens-ikat",
  "cyb-lens-porphyry",
+]
+
+[[package]]
+name = "cyb-lens-assayer"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "strata-nebu",
+ "strata-trop",
+]
+
+[[package]]
+name = "cyb-lens-binius"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-kuro",
+]
+
+[[package]]
+name = "cyb-lens-brakedown"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-nebu",
+]
+
+[[package]]
+name = "cyb-lens-core"
+version = "0.1.1"
+dependencies = [
+ "cyber-hemera",
+ "strata-core",
+ "strata-nebu",
+ "strata-proof",
+]
+
+[[package]]
+name = "cyb-lens-ikat"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "strata-jali",
+ "strata-nebu",
+]
+
+[[package]]
+name = "cyb-lens-porphyry"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-genies",
+]
+
+[[package]]
+name = "cyber-hemera"
+version = "0.3.0"
+
+[[package]]
+name = "cyber-nox"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-nebu",
+]
+
+[[package]]
+name = "cyber-tape"
+version = "0.1.0"
+dependencies = [
+ "bytes",
 ]
 
 [[package]]
@@ -276,22 +225,6 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
-
-[[package]]
-name = "mutants"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
-
-[[package]]
-name = "nox"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
- "cyber-hemera",
-]
 
 [[package]]
 name = "once_cell_polyfill"
@@ -336,7 +269,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-genies"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "strata-jali"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-nebu",
+]
+
+[[package]]
+name = "strata-kuro"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "strata-nebu"
+version = "0.1.0"
+dependencies = [
+ "strata-compute",
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
 name = "strata-proof"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+]
+
+[[package]]
+name = "strata-trop"
 version = "0.1.0"
 dependencies = [
  "strata-core",
@@ -360,27 +336,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tape"
-version = "0.1.0"
-dependencies = [
- "bytes",
-]
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
-
-[[package]]
-name = "unimem"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a91794fe345844d09b134c55fde134bc9d51593964b906dde2f667162e49918d"
-dependencies = [
- "crossbeam-queue",
- "mutants",
-]
 
 [[package]]
 name = "utf8parse"
@@ -405,10 +364,10 @@ dependencies = [
 
 [[package]]
 name = "zheng"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "cyb-nebu",
+ "cyb-lens",
  "cyber-hemera",
- "cyber-lens",
- "nox",
+ "cyber-nox",
+ "strata-nebu",
 ]
