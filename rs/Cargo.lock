@@ -12,13 +12,12 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 name = "bbg"
 version = "0.1.0"
 dependencies = [
+ "cyb-lens",
  "cyb-nebu",
  "cyber-hemera",
- "cyber-lens",
+ "cyber-nox",
  "fjall",
- "nox",
  "redb",
- "unimem",
  "zheng",
 ]
 
@@ -57,15 +56,6 @@ name = "crossbeam-epoch"
 version = "0.9.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-queue"
-version = "0.3.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -110,6 +100,18 @@ dependencies = [
  "strata-core",
  "strata-ext",
  "strata-proof",
+]
+
+[[package]]
+name = "cyb-lens"
+version = "0.1.0"
+dependencies = [
+ "cyb-lens-assayer",
+ "cyb-lens-binius",
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyb-lens-ikat",
+ "cyb-lens-porphyry",
 ]
 
 [[package]]
@@ -191,15 +193,13 @@ name = "cyber-hemera"
 version = "0.3.0"
 
 [[package]]
-name = "cyber-lens"
+name = "cyber-nox"
 version = "0.1.0"
 dependencies = [
- "cyb-lens-assayer",
- "cyb-lens-binius",
  "cyb-lens-brakedown",
  "cyb-lens-core",
- "cyb-lens-ikat",
- "cyb-lens-porphyry",
+ "cyb-nebu",
+ "cyber-hemera",
 ]
 
 [[package]]
@@ -432,22 +432,6 @@ name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
-
-[[package]]
-name = "mutants"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
-
-[[package]]
-name = "nox"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
- "cyber-hemera",
-]
 
 [[package]]
 name = "once_cell"
@@ -701,14 +685,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "unimem"
-version = "0.2.0"
-dependencies = [
- "crossbeam-queue",
- "mutants",
-]
-
-[[package]]
 name = "value-log"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,10 +878,10 @@ checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 name = "zheng"
 version = "0.1.0"
 dependencies = [
+ "cyb-lens",
  "cyb-nebu",
  "cyber-hemera",
- "cyber-lens",
- "nox",
+ "cyber-nox",
 ]
 
 [[package]]

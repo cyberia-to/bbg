@@ -16,5 +16,5 @@ path = "src/main.rs"
 
 [dependencies]
 bbg  = { path = "../rs" }
-tape = { path = "../../tape/impl/rust" }
+tape = { package = "cyber-tape", path = "../../tape/impl/rust" }
 clap = { version = "4", features = ["derive"] }
