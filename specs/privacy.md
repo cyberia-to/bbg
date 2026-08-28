@@ -1,4 +1,6 @@
 ---
+title: bbg privacy
+alias: mutator set, bbg privacy model
 tags: cyber, cip
 crystal-type: entity
 crystal-domain: cyber
