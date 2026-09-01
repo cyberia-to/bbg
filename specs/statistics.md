@@ -79,4 +79,4 @@ struct GraphStats {
 }
 ```
 
-See [[bbg/specs/query]] for `read_cost` and the Lens-opening proof types, [[inf/cost]] for how inf consumes these statistics.
+See [[bbg/specs/query]] for `read_cost` and the Lens-opening proof types, [[inf cost]] for how inf consumes these statistics.
