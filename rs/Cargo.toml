@@ -21,3 +21,9 @@ redb   = { version = "2", optional = true }
 [features]
 backend-ssd = ["dep:fjall"]
 backend-hdd = ["dep:redb"]
+
+# storage/unimem.rs is gated on `backend-unimem`, which is not yet wired as a
+# feature (it needs an optional honeycrisp/unimem dependency). Declare the cfg
+# as expected so `cargo check` stays warning-free until the backend lands.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("backend-unimem"))'] }
