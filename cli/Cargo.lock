@@ -54,10 +54,10 @@ dependencies = [
 
 [[package]]
 name = "bbg"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "cyb-lens",
  "cyber-hemera",
+ "cyber-lens",
  "cyber-nox",
  "strata-nebu",
  "zheng",
@@ -125,47 +125,51 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
-name = "cyb-lens"
-version = "0.1.1"
+name = "cyber-hemera"
+version = "0.3.0"
+
+[[package]]
+name = "cyber-lens"
+version = "0.1.2"
 dependencies = [
- "cyb-lens-assayer",
- "cyb-lens-binius",
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-lens-ikat",
- "cyb-lens-porphyry",
+ "cyber-lens-assayer",
+ "cyber-lens-binius",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
+ "cyber-lens-ikat",
+ "cyber-lens-porphyry",
 ]
 
 [[package]]
-name = "cyb-lens-assayer"
+name = "cyber-lens-assayer"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
  "strata-nebu",
  "strata-trop",
 ]
 
 [[package]]
-name = "cyb-lens-binius"
+name = "cyber-lens-binius"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-core",
  "strata-kuro",
 ]
 
 [[package]]
-name = "cyb-lens-brakedown"
+name = "cyber-lens-brakedown"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-core",
  "strata-nebu",
 ]
 
 [[package]]
-name = "cyb-lens-core"
+name = "cyber-lens-core"
 version = "0.1.1"
 dependencies = [
  "cyber-hemera",
@@ -175,35 +179,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyb-lens-ikat"
+name = "cyber-lens-ikat"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
  "strata-jali",
  "strata-nebu",
 ]
 
 [[package]]
-name = "cyb-lens-porphyry"
+name = "cyber-lens-porphyry"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-core",
  "strata-genies",
 ]
 
 [[package]]
-name = "cyber-hemera"
-version = "0.3.0"
-
-[[package]]
 name = "cyber-nox"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
  "strata-nebu",
 ]
 
@@ -364,10 +364,10 @@ dependencies = [
 
 [[package]]
 name = "zheng"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "cyb-lens",
  "cyber-hemera",
+ "cyber-lens",
  "cyber-nox",
  "strata-nebu",
 ]

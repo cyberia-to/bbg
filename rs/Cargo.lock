@@ -17,6 +17,8 @@ dependencies = [
  "cyber-nox",
  "fjall",
  "redb",
+ "serde",
+ "serde_json",
  "strata-nebu",
  "zheng",
 ]
@@ -79,10 +81,13 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "cyber-hemera"
 version = "0.3.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cyber-lens"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-lens-assayer",
  "cyber-lens-binius",
@@ -125,6 +130,7 @@ name = "cyber-lens-core"
 version = "0.1.1"
 dependencies = [
  "cyber-hemera",
+ "serde",
  "strata-core",
  "strata-nebu",
  "strata-proof",
@@ -533,6 +539,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
