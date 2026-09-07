@@ -60,12 +60,16 @@ fn make_look<const N: usize>(ar: &mut Reduction<N>, ns: u64, key: u64) -> Order 
     ar.pair(t17, body).unwrap()
 }
 
-fn open_statement() -> Statement {
+/// Statement carrying the PUBLIC state root — since zheng's look-root
+/// milestone the root is a public input; the zero root is the
+/// no-state-read sentinel and look rows against it are rejected.
+fn open_statement(bbg_root: [u8; 32]) -> Statement {
     Statement {
         program_hash: [0u8; 32],
         input_hash: [0u8; 32],
         output_hash: [0u8; 32],
         focus_bound: 0,
+        bbg_root,
     }
 }
 
@@ -91,7 +95,7 @@ fn look_proof_verifies_against_state_root() {
     let openings = provider.take_look_openings();
     assert_eq!(openings.len(), 1);
 
-    let statement = open_statement();
+    let statement = open_statement(root);
     let proof = commit(&trace, &[], &[], &openings, &statement, &ProofParams::default())
         .expect("zheng commit with a real look opening");
     assert!(
@@ -125,7 +129,7 @@ fn look_against_stale_root_is_rejected() {
 
     // The openings carry the CURRENT leaves; the trace carries the STALE root.
     // The root-binding steps disagree — commit must fail, not produce a proof.
-    let statement = open_statement();
+    let statement = open_statement(state.root());
     let result = commit(&trace, &[], &[], &openings, &statement, &ProofParams::default());
     assert!(
         result.is_err(),
