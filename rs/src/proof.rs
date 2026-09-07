@@ -29,12 +29,48 @@ use crate::state::{balance_key, BbgState};
 use crate::types::{NeuronId, Particle};
 
 /// A proof that a committed cell of a BBG dimension has a given value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct QueryProof {
     pub commitment: Commitment,
     pub opening: Opening,
     pub value_bytes: Vec<u8>,
     /// The hypercube corner (LSB-first) of the opened cell.
+    #[cfg_attr(feature = "serde", serde(with = "goldilocks_vec"))]
     pub point: Vec<Goldilocks>,
+}
+
+/// Canonical serde for `Vec<Goldilocks>`: each element is its canonical u64
+/// in `[0, p)`. Deserialization rejects non-canonical values, so every point
+/// has exactly one valid encoding.
+#[cfg(feature = "serde")]
+mod goldilocks_vec {
+    use nebu::Goldilocks;
+    use nebu::field::P;
+
+    pub fn serialize<S: serde::Serializer>(
+        v: &Vec<Goldilocks>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(v.iter().map(|g| g.as_u64()))
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<Goldilocks>, D::Error> {
+        let raw: Vec<u64> = serde::Deserialize::deserialize(deserializer)?;
+        raw.into_iter()
+            .map(|u| {
+                if u < P {
+                    Ok(Goldilocks::new(u))
+                } else {
+                    Err(serde::de::Error::custom(format!(
+                        "non-canonical Goldilocks element {u} (>= modulus)"
+                    )))
+                }
+            })
+            .collect()
+    }
 }
 
 // ── dimension layout (single source of truth) ─────────────────────────────────

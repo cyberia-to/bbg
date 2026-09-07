@@ -17,10 +17,15 @@ zheng  = { version = "0.1.1", path = "../../zheng/rs" }
 
 fjall  = { version = "2", optional = true }
 redb   = { version = "2", optional = true }
+serde  = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
 
 [features]
 backend-ssd = ["dep:fjall"]
 backend-hdd = ["dep:redb"]
+serde = ["dep:serde", "lens/serde"]
 
 # storage/unimem.rs is gated on `backend-unimem`, which is not yet wired as a
 # feature (it needs an optional honeycrisp/unimem dependency). Declare the cfg
