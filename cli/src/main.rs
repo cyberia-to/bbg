@@ -80,7 +80,7 @@ fn run(cli: Cli) -> i32 {
     };
 
     match cli.command {
-        Command::Root => println!("{}", hex(&bbg.state.root)),
+        Command::Root => println!("{}", hex(&bbg.state.root())),
         Command::Height => println!("{}", bbg.state.height),
         Command::Stats => print_stats(&bbg, cli.json),
 
@@ -103,7 +103,7 @@ fn run(cli: Cli) -> i32 {
             };
             if let Err(e) = bbg.insert(&signal) { eprintln!("rejected: {e:?}"); return 2; }
             append(cli.store.as_ref(), &frame::encode_signal(&signal));
-            println!("{}", hex(&bbg.state.root));
+            println!("{}", hex(&bbg.state.root()));
         }
 
         Command::Intend { neuron, h0, scope } => {
@@ -120,7 +120,7 @@ fn run(cli: Cli) -> i32 {
         Command::Finalize => {
             bbg.finalize_block();
             append(cli.store.as_ref(), &frame::encode_finalize());
-            println!("height {}  root {}", bbg.state.height, hex(&bbg.state.root));
+            println!("height {}  root {}", bbg.state.height, hex(&bbg.state.root()));
         }
 
         Command::Prune => {
