@@ -126,4 +126,4 @@ layer 5 (merge):          CRDT locally, foculus globally — convergence guarant
 
 the signal log is the canonical state. BBG_root is a derived commitment. signals flow from neuron to light client through five layers, each independently verifiable. a node does not trust that its state is correct — it verifies, locally, from the signal log.
 
-see [[architecture-overview]] for the full pipeline, [[architecture]] for the specification, [[data-availability explained|data-availability]] for DAS mechanics
+see [[architecture-overview]] for the full pipeline, [[architecture]] for the specification, [[docs/explanation/data-availability]] for DAS mechanics

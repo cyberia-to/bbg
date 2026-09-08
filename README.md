@@ -68,10 +68,10 @@ light client join:    one zheng verification + namespace sync
 | [[why-polynomial-state]] | why polynomial > hash trees: 33x fewer constraints, 5 TB eliminated |
 | [[polynomial-privacy]] | the privacy boundary: commitment and nullifier polynomials |
 | [[why-signal-first]] | state is derived from signals: fold(genesis, signals[0..h]) |
-| [[nmt explained|nmt]] | NMT's surviving role: cold storage optimization, not authentication |
-| [[signal-sync explained|signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
+| [[docs/explanation/nmt]] | NMT's surviving role: cold storage optimization, not authentication |
+| [[docs/explanation/signal-sync]] | why signal DAG, VDF in the age of agents, structural BFT elimination |
 | [[foculus-vs-crdt]] | why φ* convergence replaces CRDTs at global scale |
-| [[data-availability explained|data-availability]] | algebraic DAS, erasure coding, and provable availability |
+| [[docs/explanation/data-availability]] | algebraic DAS, erasure coding, and provable availability |
 
 ## open design
 
