@@ -10,7 +10,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "bbg"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
@@ -80,14 +80,14 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "cyber-hemera"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "cyber-lens"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "cyber-lens-assayer",
  "cyber-lens-binius",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-assayer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-binius"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-brakedown"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-hemera",
  "serde",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-ikat"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-porphyry"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-nox"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-brakedown",
@@ -589,25 +589,25 @@ checksum = "33ae9eec00137a8eed469fb4148acd9fc6ac8c3f9b110f52cd34698c8b5bfa0e"
 
 [[package]]
 name = "strata-compute"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-core"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "strata-ext"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-genies"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-ext",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "strata-jali"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-nebu",
@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "strata-kuro"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-ext",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "strata-nebu"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-compute",
  "strata-core",
@@ -643,14 +643,14 @@ dependencies = [
 
 [[package]]
 name = "strata-proof"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-trop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
@@ -883,7 +883,7 @@ checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "zheng"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
