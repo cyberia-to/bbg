@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-assayer"
-version = "0.1.2"
+version = "0.1.1"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-binius"
-version = "0.1.2"
+version = "0.1.1"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-brakedown"
-version = "0.1.2"
+version = "0.1.1"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-ikat"
-version = "0.1.2"
+version = "0.1.1"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-porphyry"
-version = "0.1.2"
+version = "0.1.1"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -883,7 +883,7 @@ checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "zheng"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
