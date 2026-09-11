@@ -23,6 +23,9 @@ pub mod mem;
 pub mod network;
 pub mod tiered;
 
+#[cfg(feature = "backend-hdd")]
+pub mod application;
+
 #[cfg(feature = "backend-ssd")]
 pub mod fjall;
 
@@ -49,27 +52,27 @@ use nebu::Goldilocks;
 
 /// Dimension identifiers — 10 BBG_poly dimensions + 2 private polynomials + 1 intent + 1 local-only.
 pub mod dim {
-    pub const PARTICLES:   u8 = 0;
-    pub const AXONS_OUT:   u8 = 1;
-    pub const AXONS_IN:    u8 = 2;
-    pub const NEURONS:     u8 = 3;
-    pub const LOCATIONS:   u8 = 4;
-    pub const COINS:       u8 = 5;
-    pub const CARDS:       u8 = 6;
-    pub const FILES:       u8 = 7;
-    pub const TIME:        u8 = 8;
-    pub const SIGNALS:     u8 = 9;
+    pub const PARTICLES: u8 = 0;
+    pub const AXONS_OUT: u8 = 1;
+    pub const AXONS_IN: u8 = 2;
+    pub const NEURONS: u8 = 3;
+    pub const LOCATIONS: u8 = 4;
+    pub const COINS: u8 = 5;
+    pub const CARDS: u8 = 6;
+    pub const FILES: u8 = 7;
+    pub const TIME: u8 = 8;
+    pub const SIGNALS: u8 = 9;
     /// A(x) — private commitment polynomial (NOT a BBG_poly dimension)
     pub const COMMITMENTS: u8 = 10;
     /// N(x) — private nullifier polynomial (NOT a BBG_poly dimension)
-    pub const NULLIFIERS:  u8 = 11;
+    pub const NULLIFIERS: u8 = 11;
     /// Unsealed intent records — declared scope + identity proof, no STARK yet.
     /// Persisted independently from signals so abandonment is on the record.
-    pub const INTENTS:     u8 = 12;
+    pub const INTENTS: u8 = 12;
     /// Local-only state (Transform, AnimationPhase, etc.).
     /// put() skips dirty push; commit() never includes these entries.
     /// Never contributes to BBG_root and never written to warm/cold tiers.
-    pub const EPHEMERAL:   u8 = 13;
+    pub const EPHEMERAL: u8 = 13;
 }
 
 /// Storage interface for a polynomial evaluation shard.
