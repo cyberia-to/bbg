@@ -1,0 +1,120 @@
+---
+title: durable storage for the Cyber node
+tags: bbg, cybergraph, cyber, roadmap, storage
+crystal-type: plan
+crystal-domain: cyber
+status: active
+priority: P0
+date: 2026-09-11
+---
+
+# P0 — durable storage for the Cyber node
+
+Highest BBG delivery priority, assigned by the owner on 2026-09-11.
+The Cyber node's reliability depends on completing BBG's existing disk storage
+and exposing it through Cybergraph. This work blocks
+[Cyber A1](../../cyber/roadmap/a-local-node.md#a1-complete-the-existing-storage-contract)
+and the dependent local-node acceptance gates.
+
+BBG owns the persistence API, backend transactions and tier routing.
+Cybergraph owns validated graph transitions and their durable publication.
+Cyber/Soft3 owns host integration and migration of existing node homes.
+Reuse Fjall, redb and the existing application transaction machinery where
+their semantics fit. Keep one authoritative commit path per history domain.
+
+## delivery invariant
+
+Every operation acknowledged as durably accepted must survive restart with
+the same history position, resulting state and request receipt. A retry of
+the same request returns its original result; a conflicting payload fails.
+An uncertain commit outcome remains explicit until recovery resolves it.
+Local durability and network finality retain separate meanings.
+
+The [persistence audit](../audit/persistence.md) supplies the starting evidence.
+The presence of a backend, successful cache access or a change-set hash alone
+does not establish this invariant.
+
+## ordered work
+
+### D1: fallible durable storage contract
+
+Owner: BBG. First implementation task.
+
+- [ ] Specify disk reads, bounded scans, write/delete batches, commit outcomes
+  and recovery in [storage](../specs/storage.md), then update implementations
+  and supported callers together.
+- [ ] Distinguish absent data, malformed encoding, I/O failure and unknown commit
+  outcome. Read and iterate persisted values after reopening with an empty cache.
+- [ ] Propagate write/flush errors. Preserve the pending transaction and its
+  recovery identity until commit success or explicit outcome resolution.
+- [ ] Batch related updates and deletions atomically within the selected backend;
+  define the durability barrier and the receipt returned after it succeeds.
+
+Exit: the shared interface, exercised against Fjall and redb, restores committed
+values and deletions after reopen and reports injected read/write/flush failures.
+Canonical decoding rejects malformed and noncanonical values. Recovery never
+turns an unresolved write into an acknowledged success or a silently lost update.
+
+### D2: tier consistency and recovery
+
+Owner: BBG. Depends on D1.
+
+- [ ] Carry the existing HOT mutation and last-copy eviction repairs through
+  the fallible API, including failure during commit and retry.
+- [ ] Define WARM/COLD population, archival progress and recovery boundaries.
+  Keep the last required copy until the destination's durability is established.
+- [ ] Keep EPHEMERAL local to memory. Specify the selected durable backend,
+  participating tiers and format/version identity for each supported profile.
+
+Exit: interruption during tier movement preserves an authoritative copy;
+recovery returns one logical value for each key. Each supported profile states
+which durable tier acknowledges acceptance and how archive progress is resumed.
+
+### D3: native graph publication
+
+Owners: BBG and Cybergraph. Depends on D1–D2.
+
+- [ ] Expose a BBG-owned atomic boundary for accepted native signal bytes,
+  chain position, derived state/head and stable request receipt. A replay-based
+  design must bind the authoritative history and recoverable state position.
+- [ ] Reuse [application transactions](../specs/application-storage.md) for local
+  application history. Preserve their distinction from neuron SignalChain
+  positions, native authorization and network finality.
+- [ ] Publish the new in-memory head only under the specified commit outcome;
+  block dependent acceptance while an unknown outcome is being resolved.
+
+Exit: a new process restores the accepted history and independently recomputes
+the same state root. Lost replies and repeated requests produce one accepted
+operation. Conflicting requests and competing writers have explicit outcomes.
+
+### D4: node integration and existing homes
+
+Owners: Cybergraph, Cyber and Soft3. Depends on D3.
+
+- [ ] Route the node's live state and receipts through Cybergraph/BBG.
+- [ ] Replace the host's independent journal ownership with this path and
+  provide explicit import/recovery for existing development homes.
+- [ ] Propagate storage failure and recovery status to node readiness and callers.
+
+Exit: the real Cyber binary uses the same durable path exercised by BBG and
+Cybergraph tests. Import preserves valid history and reports truncation or
+corruption explicitly. Node readiness waits for successful recovery.
+
+### D5: failure acceptance evidence
+
+Owners: BBG for backend tests; Cybergraph/Cyber for integration. Test each
+preceding task as it lands; close this gate after D4.
+
+- [ ] Exercise actual backend files in subprocess crash/restart tests at commit
+  and acknowledgement boundaries, including deletes and multi-record writes.
+- [ ] Cover disk-full/write/flush failures, lost replies, identical/conflicting
+  retries, malformed/truncated data and exclusive-writer conflicts.
+- [ ] Record filesystem, operating system and durability-barrier assumptions;
+  distinguish process crashes, injected faults and power-loss validation.
+- [ ] Run the same accepted-operation recovery scenario against the pinned node
+  binary. Store commands, source/artifact identities and results in `audit/`.
+
+Exit: evidence covers every claimed guarantee of each supported storage profile.
+All D1–D5 gates must close before this P0 is complete. Passing backend tests alone
+closes only the corresponding component checks; node reliability requires D4
+and the end-to-end failure evidence.
