@@ -34,20 +34,26 @@ The [persistence audit](../audit/persistence.md) supplies the starting evidence.
 The presence of a backend, successful cache access or a change-set hash alone
 does not establish this invariant.
 
+D1 is implemented and the first D2 item is complete. Executed component tests
+and their limits are recorded in the
+[durable shard storage audit](../audit/durable-shard-storage.md). D2 archival
+recovery, D3 native publication, D4 node integration and the remaining D5
+acceptance evidence keep this P0 active.
+
 ## ordered work
 
 ### D1: fallible durable storage contract
 
-Owner: BBG. First implementation task.
+Owner: BBG. Implemented; see the linked audit for component validation.
 
-- [ ] Specify disk reads, bounded scans, write/delete batches, commit outcomes
+- [x] Specify disk reads, bounded scans, write/delete batches, commit outcomes
   and recovery in [storage](../specs/storage.md), then update implementations
   and supported callers together.
-- [ ] Distinguish absent data, malformed encoding, I/O failure and unknown commit
+- [x] Distinguish absent data, malformed encoding, I/O failure and unknown commit
   outcome. Read and iterate persisted values after reopening with an empty cache.
-- [ ] Propagate write/flush errors. Preserve the pending transaction and its
+- [x] Propagate write/flush errors. Preserve the pending transaction and its
   recovery identity until commit success or explicit outcome resolution.
-- [ ] Batch related updates and deletions atomically within the selected backend;
+- [x] Batch related updates and deletions atomically within the selected backend;
   define the durability barrier and the receipt returned after it succeeds.
 
 Exit: the shared interface, exercised against Fjall and redb, restores committed
@@ -59,7 +65,7 @@ turns an unresolved write into an acknowledged success or a silently lost update
 
 Owner: BBG. Depends on D1.
 
-- [ ] Carry the existing HOT mutation and last-copy eviction repairs through
+- [x] Carry the existing HOT mutation and last-copy eviction repairs through
   the fallible API, including failure during commit and retry.
 - [ ] Define WARM/COLD population, archival progress and recovery boundaries.
   Keep the last required copy until the destination's durability is established.
@@ -105,8 +111,9 @@ corruption explicitly. Node readiness waits for successful recovery.
 Owners: BBG for backend tests; Cybergraph/Cyber for integration. Test each
 preceding task as it lands; close this gate after D4.
 
-- [ ] Exercise actual backend files in subprocess crash/restart tests at commit
-  and acknowledgement boundaries, including deletes and multi-record writes.
+- [x] Exercise actual Fjall and redb files in subprocess kill/restart tests
+  after staging and after commit returns, including deletes and multi-record
+  writes. Native client acknowledgement testing remains part of the node gate.
 - [ ] Cover disk-full/write/flush failures, lost replies, identical/conflicting
   retries, malformed/truncated data and exclusive-writer conflicts.
 - [ ] Record filesystem, operating system and durability-barrier assumptions;
