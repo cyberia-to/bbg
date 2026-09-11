@@ -5,7 +5,7 @@
 // ---
 //! HDD shard store backed by redb (B-tree MVCC).
 //!
-//! Write-through: every put lands in both the in-memory cache and redb.
+//! put() stages cache and dirty entries; commit() writes them to redb.
 //! get() reads from the cache. Entries grouped by dimension at commit time
 //! so each redb table is opened once per transaction.
 

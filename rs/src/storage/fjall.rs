@@ -5,7 +5,7 @@
 // ---
 //! SSD shard store backed by fjall (LSM-tree).
 //!
-//! Write-through: every put lands in both the in-memory cache and fjall.
+//! put() stages cache and dirty entries; commit() writes them to fjall.
 //! get() reads from the cache; disk reads on cache miss are a future
 //! optimization (requires lazy population on open or streaming reads).
 

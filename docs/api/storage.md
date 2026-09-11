@@ -7,6 +7,12 @@ crystal-domain: cyber
 
 Reference for `bbg::storage`. All types are in `bbg::storage::*`.
 
+The BBG facade currently holds its graph state in memory. TieredStore is a
+separate storage API that an adapter must connect to that state lifecycle.
+[ApplicationStore](../../specs/application-storage.md) provides atomic local
+application history and receipts through a separate redb transaction API.
+See the [persistence audit](../../audit/persistence.md) for integration evidence.
+
 ## overview
 
 BBG storage is split across four tiers that run simultaneously. `TieredStore`
@@ -40,13 +46,15 @@ provided by the Lens commitment layer; the store has no opinion on correctness.
 
 | method | description |
 |---|---|
-| `get(dim, key)` | Return the Goldilocks slice for this (dimension, key) pair, or None |
+| `get(dim, key)` | Return a cached Goldilocks slice; disk backends require their owned `load` API for uncached values |
 | `put(dim, key, value)` | Write a field-element slice; marks the entry dirty |
 | `dirty_entries()` | All entries written since last `commit()` |
-| `commit()` | Flush dirty entries; return a 32-byte shard sub-root (hemera hash of dirty key list) |
+| `commit()` | Attempt to flush dirty entries; return a 32-byte change-set hash (hemera hash of dirty key list) |
 
 `commit()` sub-root is for change-set tracking only. The authoritative
 polynomial commitment is computed by `dim::commit_dim` in `bbg::dim`.
+The current infallible ShardStore commit API cannot communicate disk failure;
+its return value supplies change tracking rather than a durable operation receipt.
 
 **dimension constants** — `bbg::storage::dim`:
 
@@ -98,6 +106,9 @@ Composes all tiers into a single `ShardStore`. Routing:
 - **commit** — flushes HOT + WARM per block; COLD via `archive()` at checkpoints
 - **promote / evict** — explicit, driven by soma focus signals
 
+After in-place HOT mutation, `mark_dirty` also stages the current value in WARM.
+Eviction retains HOT if WARM is absent, and keeps EPHEMERAL values in HOT.
+
 ### construction
 
 ```rust
@@ -139,11 +150,11 @@ impl TieredStore {
 | `with_cold(cold)` | Add COLD tier (HDD, archival). Builder pattern, consumes self |
 | `with_network(net)` | Inject L3 content fetcher. Builder pattern, consumes self |
 | `promote(dim, key)` | Pull (dim, key) from WARM or COLD into HOT. Returns true if found. Called by soma prefetch |
-| `evict(dim, key)` | Move HOT entry to WARM. Called by soma when focus drops below threshold |
+| `evict(dim, key)` | Stage in WARM then remove HOT; retain HOT when WARM is absent or the dimension is EPHEMERAL |
 | `fetch_content(particle)` | Delegate to `NetworkStore::fetch`. None if no network tier or unreachable |
 | `archive()` | Commit COLD tier. Returns COLD sub-root, or None if no COLD tier present |
 
-`TieredStore` itself implements `ShardStore`. The per-block flow:
+`TieredStore` itself implements `ShardStore`. The intended integration flow is:
 
 ```
 block arrives →
@@ -152,6 +163,10 @@ block arrives →
   if epoch boundary:
     TieredStore.archive()         // flush COLD (archival checkpoints only)
 ```
+
+The current Bbg facade uses BTreeMap state and does not call this sequence.
+An archive writer must populate COLD explicitly; `archive()` only commits
+the entries already staged there.
 
 ---
 
@@ -195,7 +210,8 @@ no copy at any stage.
 Falls back to heap `Vec<Goldilocks>` if `Block::open` fails (non-Apple-Silicon
 CI environments). Apple Silicon only (`cfg(target_os = "macos")`).
 
-**feature**: `backend-unimem`
+The source is guarded by `backend-unimem`; the feature and its optional
+dependency still need wiring in Cargo.toml before this backend can be selected.
 
 ---
 
@@ -203,7 +219,7 @@ CI environments). Apple Silicon only (`cfg(target_os = "macos")`).
 
 ```rust
 #[cfg(feature = "backend-ssd")]
-pub struct FjallStore { /* fjall Keyspace, 12 partitions, write-through cache */ }
+pub struct FjallStore { /* fjall Keyspace, 14 partitions, staged cache */ }
 
 impl FjallStore {
     pub fn open(path: impl Into<PathBuf>) -> fjall::Result<Self>
@@ -211,13 +227,15 @@ impl FjallStore {
 }
 ```
 
-LSM-tree backed by `fjall` 2.x. One partition per dimension. 20 μs reads.
+LSM-tree backed by `fjall` 2.x. One partition per dimension.
 
-Write-through: every `put` lands in both the in-memory cache and fjall.
+Each `put` stages the value in the cache and pending change list.
 `get` reads from cache. Cold reads after reopen use `load(dim, key)`.
 
-`commit()` calls `keyspace.persist(PersistMode::SyncAll)` — all dirty entries
-are durable after commit returns.
+`commit()` inserts pending values and calls `keyspace.persist(PersistMode::SyncAll)`.
+The adapter currently discards insert/persist errors and clears pending entries.
+Callers therefore cannot infer durability from its returned hash. `load` also
+maps disk errors to None; a fallible interface is required for node acceptance.
 
 **feature**: `backend-ssd`
 
@@ -227,7 +245,7 @@ are durable after commit returns.
 
 ```rust
 #[cfg(feature = "backend-hdd")]
-pub struct RedbStore { /* redb Database, 12 tables, write-through cache */ }
+pub struct RedbStore { /* redb Database, 14 tables, staged cache */ }
 
 impl RedbStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, redb::DatabaseError>
@@ -235,9 +253,9 @@ impl RedbStore {
 }
 ```
 
-B-tree MVCC backed by `redb` 2.x. One table per dimension. Sequential 200 MB/s.
+B-tree MVCC backed by `redb` 2.x. One table per dimension.
 
-Write-through: every `put` lands in both the in-memory cache and redb.
+Each `put` stages the value in the cache and pending change list.
 Dirty entries are grouped by dimension at commit time so each redb table is
 opened exactly once per write transaction. `load(dim, key)` for cold reads.
 
