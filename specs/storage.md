@@ -85,6 +85,12 @@ trait NetworkStore: Send + Sync {
 
 **EPHEMERAL rules**: `put(EPHEMERAL, …)` skips `dirty.push`; `commit()` never includes ephemeral entries; `TieredStore` does not write-through to warm/cold. EPHEMERAL never contributes to BBG_root and never leaves the local node.
 
+Tiered mutation follows the same routing as put: after `get_mut`, the caller's
+`mark_dirty` stages the current HOT value in WARM when configured. The next
+commit includes that value. Eviction stages a persistent value in WARM before
+removing its HOT copy. With WARM absent, eviction retains the HOT copy.
+EPHEMERAL remains in HOT; explicit removal handles deletion of local values.
+
 ### UnimemStore slot pool
 
 for Apple Silicon deployments, `UnimemStore` supports pre-allocated dimension pools:

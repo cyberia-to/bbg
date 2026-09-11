@@ -67,9 +67,14 @@ impl TieredStore {
         }
     }
 
-    /// Evict a (dim, key) from HOT, ensuring it is persisted in WARM.
+    /// Stage a persistent value in WARM before removing its HOT copy.
+    /// Retain HOT when no WARM exists or the dimension is local-only.
+    /// The configured backend's commit boundary controls disk persistence.
     /// Called by soma when focus drops below eviction threshold.
     pub fn evict(&mut self, dimension: u8, key: &[u8; 32]) {
+        if dimension == dim::EPHEMERAL || self.warm.is_none() {
+            return;
+        }
         if let Some(slice) = self.hot.get(dimension, key) {
             let owned = slice.to_vec();
             if let Some(warm) = &mut self.warm {
@@ -139,6 +144,12 @@ impl ShardStore for TieredStore {
 
     fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) {
         self.hot.mark_dirty(dimension, key);
+        if dimension == dim::EPHEMERAL {
+            return;
+        }
+        if let (Some(value), Some(warm)) = (self.hot.get(dimension, &key), &mut self.warm) {
+            warm.put(dimension, key, value.to_vec());
+        }
     }
 
     fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
