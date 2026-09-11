@@ -33,9 +33,14 @@ the polynomial commitment provides authentication. the local data structure prov
 trait ShardStore {
     // ── core ──────────────────────────────────────────────────────────────────
     fn get(&self, dimension: u8, key: &[u8; 32]) -> Option<&[FieldElement]>;
-    fn put(&mut self, dimension: u8, key: &[u8; 32], value: &[FieldElement]);
+    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<FieldElement>) -> StorageResult<()>;
     fn dirty_entries(&self) -> &[(u8, [u8; 32], Vec<FieldElement>)];
-    fn commit(&mut self) -> [u8; 32];  // returns shard sub-commitment
+    fn commit(&mut self) -> StorageResult<[u8; 32]>; // change identity, not BBG_root
+    fn read(&self, dimension: u8, key: &[u8; 32], max_elements: usize)
+        -> StorageResult<Option<Vec<FieldElement>>>;
+    fn scan(&self, dimension: u8, after: Option<[u8; 32]>, limits: ScanLimits)
+        -> StorageResult<Vec<ShardEntry>>;
+    fn last_commit(&self) -> StorageResult<Option<[u8; 32]>>;
 
     // ── mutation ──────────────────────────────────────────────────────────────
     /// In-place mutation. Caller must call mark_dirty() after writing.
@@ -43,10 +48,10 @@ trait ShardStore {
     fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [FieldElement]>;
 
     /// Marks an existing entry dirty for the next commit(). No-op for EPHEMERAL.
-    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]);
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) -> StorageResult<()>;
 
     /// Removes an entry. Returns the previous value.
-    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<FieldElement>>;
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> StorageResult<Option<Vec<FieldElement>>>;
 
     // ── iteration ─────────────────────────────────────────────────────────────
     /// Iterates all entries for a dimension. Disk backends yield cache only.
@@ -63,6 +68,57 @@ trait NetworkStore: Send + Sync {
     fn das_sample(&self, particle: &[u8; 32], offset: u64) -> Option<QueryProof>;
 }
 ```
+
+### durable access and commit
+
+`get`, `get_mut` and `iter` are borrowed cache operations. `read` is the owned,
+fallible point-read interface, including staged writes/deletes. `scan` reads
+committed disk records in ascending key order, exclusively after its cursor;
+disk scans reject pending writes. Continue with the last returned key until
+an empty page. Each page bounds both entry count and total field elements;
+an entry exceeding the page budget returns a limit error. EPHEMERAL reads
+remain local. Invalid dimensions and malformed/noncanonical disk encodings
+return errors, separately from an absent key.
+
+Limits: 131072 elements per value, 2097152 pending elements, 65536 pending
+keys and 4096 entries per scan. Callers supply smaller read/scan budgets where
+needed. Bounds apply before BBG allocates decoded values; the underlying
+database may materialize one encoded value during a read.
+
+MemStore, Fjall and redb coalesce repeated writes to one pending value per key.
+The pending limits apply to these supported backends, including HOT memory.
+Fjall and redb stage writes and deletions until commit. Each disk commit is one
+atomic backend batch/transaction across dimensions, including a metadata marker
+for its change identity. The identity hashes domain-separated, ordered final
+key/value/delete operations, including lengths. It is local change tracking;
+BBG polynomial authentication and native request receipts have separate contracts.
+Fjall uses SyncAll and redb uses Immediate durability. The selected backend's
+filesystem assumptions still govern crash and power-loss behavior.
+
+Errors before commit preserve pending changes. An error during the commit
+boundary returns `CommitUnknown` with the change identity, retains pending
+changes and freezes subsequent mutations/commits on that handle. Reopen the
+exclusively owned database and compare `last_commit` with the unresolved
+identity before admitting dependent work. A successful empty commit preserves
+the disk marker. Legacy stores have no marker until their first new commit.
+Memory commits supply no disk durability; `durability()` distinguishes them.
+
+Disk store parents must already exist. Opening a store synchronizes its parent
+directory and acquires exclusive writer ownership; a competing open returns
+`Busy`. The Fjall lock file remains in place and the OS releases the lock when
+the handle or process exits. Supported writers enter through BBG's adapter.
+
+`with_warm` returns `StorageResult<TieredStore>`. Attaching a disk WARM requires
+a memory HOT tier with an empty persistent cache and no pending operations. Load existing state
+from WARM or import it through the attached store's writes. WARM is attached
+once. This prevents a successful disk commit from acknowledging divergent HOT
+state. If WARM commits but HOT publication fails, return `CommitUnknown` with
+WARM's durable identity and freeze the handle until recovery.
+
+TieredStore commits its authoritative WARM tier before clearing HOT dirty state.
+When WARM is configured, its absence result is authoritative over archival COLD
+data, including deletions. Archives have their own population and checkpoint
+boundary. EPHEMERAL never participates in a disk transaction.
 
 ### dimension constants
 
@@ -87,8 +143,9 @@ trait NetworkStore: Send + Sync {
 
 Tiered mutation follows the same routing as put: after `get_mut`, the caller's
 `mark_dirty` stages the current HOT value in WARM when configured. The next
-commit includes that value. Eviction stages a persistent value in WARM before
-removing its HOT copy. With WARM absent, eviction retains the HOT copy.
+commit includes that value. Eviction removes HOT only when WARM has no pending
+batch and already holds the same value. It leaves unfinished transactions to
+the caller's explicit commit. With WARM absent, eviction retains the HOT copy.
 EPHEMERAL remains in HOT; explicit removal handles deletion of local values.
 
 ### UnimemStore slot pool
@@ -118,11 +175,11 @@ without a pool, each entry gets its own IOSurface Block (~1 μs allocation). wit
 
 `&mut self` exclusive borrow is kept across all backends. evy batches writes per-thread and merges at frame boundary. this preserves BBG's clean ownership model with no interior mutability required.
 
-three implementations, selected by scale:
+backends, selected by scale:
 
 | backend | implementation | optimal for | local structure | latency | when to use |
 |---|---|---|---|---|---|
-| memory | `std::collections::HashMap` + `bitvec` | shard fits in RAM (≤ 64 GB) | flat array + HashMap + BitVec | 50 ns read | bostrom → city scale |
+| memory | `std::collections::BTreeMap` | shard fits in RAM | ordered keys and coalesced pending changes | O(log n) lookup | bounded local scans and HOT cache |
 | unimem | `honeycrisp::unimem` (IOSurface-pinned) | polynomial eval + proof generation, Apple Silicon | IOSurface Blocks (Tape/Grid) | ~1 ns alloc, zero-copy CPU/AMX/GPU/ANE | Apple Silicon nodes (M-series) |
 | ssd | `fjall` (LSM-tree, pure Rust) | shard exceeds RAM | LSM-tree with RAM-cached top levels | 20 μs read | nation → planet scale |
 | hdd | `redb` (B-tree MVCC, pure Rust) | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
@@ -143,8 +200,8 @@ HOT (current state, RAM):
       A(x) (commitment polynomial) — evaluation table
       N(x) (nullifier polynomial) — evaluation table
     BBG_root = H(Lens.commit(BBG_poly) ‖ Lens.commit(A) ‖ Lens.commit(N)), 32 bytes
-    backend: memory (std HashMap, bitvec) or unimem (honeycrisp unimem on Apple Silicon)
-    latency: 50 ns / ~1 ns alloc zero-copy
+    backend: memory (std BTreeMap) or unimem (honeycrisp unimem on Apple Silicon)
+    memory lookup: O(log n); range reads: O(log n + page size)
     unimem backend note: field element slices in IOSurface Blocks are read directly
     by AMX (Brakedown matrix ops), Metal GPU, and ANE — no copies between compute units
 

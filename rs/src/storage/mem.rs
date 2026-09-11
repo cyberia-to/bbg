@@ -1,76 +1,81 @@
-// ---
-// tags: bbg, rust
-// crystal-type: source
-// crystal-domain: cyber
-// ---
-//! In-memory shard store. Optimal for hot state (≤ 64 GB, 50 ns read).
+//! In-memory shards with coalesced pending changes and bounded range reads.
 
-use std::collections::HashMap;
-
+use super::buffer::WriteBuffer;
+use super::{ScanLimits, ShardEntry, ShardStore, StorageResult, dim};
 use nebu::Goldilocks;
 
-use super::{dim, hash_dirty, ShardStore};
-
+#[derive(Default)]
 pub struct MemStore {
-    data:  HashMap<(u8, [u8; 32]), Vec<Goldilocks>>,
-    dirty: Vec<(u8, [u8; 32], Vec<Goldilocks>)>,
+    state: WriteBuffer,
 }
 
 impl MemStore {
     pub fn new() -> Self {
-        Self { data: HashMap::new(), dirty: Vec::new() }
+        Self::default()
     }
-}
-
-impl Default for MemStore {
-    fn default() -> Self { Self::new() }
 }
 
 impl ShardStore for MemStore {
     fn get(&self, dimension: u8, key: &[u8; 32]) -> Option<&[Goldilocks]> {
-        self.data.get(&(dimension, *key)).map(Vec::as_slice)
+        self.state.cache.get(&(dimension, *key)).map(Vec::as_slice)
     }
 
-    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) {
-        if dimension != dim::EPHEMERAL {
-            self.dirty.push((dimension, key, value.clone()));
-        }
-        self.data.insert((dimension, key), value);
+    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) -> StorageResult<()> {
+        self.state.put(dimension, key, value)
     }
 
     fn dirty_entries(&self) -> &[(u8, [u8; 32], Vec<Goldilocks>)] {
-        &self.dirty
+        &self.state.dirty
     }
 
-    fn commit(&mut self) -> [u8; 32] {
-        let out = hash_dirty(&self.dirty);
-        self.dirty.clear();
-        out
+    fn has_pending(&self) -> bool {
+        !self.state.dirty.is_empty() || !self.state.deleted.is_empty()
+    }
+
+    fn commit(&mut self) -> StorageResult<[u8; 32]> {
+        let id = self.state.change_id();
+        self.state.clear_pending();
+        Ok(id)
     }
 
     fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [Goldilocks]> {
-        self.data.get_mut(&(dimension, *key)).map(Vec::as_mut_slice)
+        self.state
+            .cache
+            .get_mut(&(dimension, *key))
+            .map(Vec::as_mut_slice)
     }
 
-    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) {
-        if dimension == dim::EPHEMERAL { return; }
-        let val = self.data.get(&(dimension, key)).map(|v| v.clone());
-        if let Some(v) = val {
-            self.dirty.push((dimension, key, v));
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) -> StorageResult<()> {
+        super::access::check_dimension(dimension)?;
+        if dimension != dim::EPHEMERAL
+            && let Some(value) = self.state.cache.get(&(dimension, key)).cloned()
+        {
+            self.state.put(dimension, key, value)?;
         }
+        Ok(())
     }
 
-    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
-        let val = self.data.remove(&(dimension, *key))?;
-        self.dirty.retain(|(d, k, _)| !(*d == dimension && k == key));
-        Some(val)
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> StorageResult<Option<Vec<Goldilocks>>> {
+        let value = self.state.cache.get(&(dimension, *key)).cloned();
+        self.state.delete(dimension, key)?;
+        Ok(value)
+    }
+
+    fn scan(
+        &self,
+        dimension: u8,
+        after: Option<[u8; 32]>,
+        limits: ScanLimits,
+    ) -> StorageResult<Vec<ShardEntry>> {
+        super::scan_cache(&self.state.cache, dimension, after, limits)
     }
 
     fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_> {
         Box::new(
-            self.data.iter()
-                .filter(move |(k, _)| k.0 == dimension)
-                .map(|(k, v)| (&k.1, v.as_slice()))
+            self.state
+                .cache
+                .range((dimension, [0; 32])..=(dimension, [255; 32]))
+                .map(|(k, v)| (&k.1, v.as_slice())),
         )
     }
 }
