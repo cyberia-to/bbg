@@ -1,18 +1,12 @@
-//! Atomic local graph application history and content. See application-storage.md.
-use std::fmt;
-use std::fs::{File, OpenOptions};
-use std::path::Path;
+//! Application history and retry semantics over the selected BBG owner.
+use super::StorageError;
+use super::database::{Backend, ByteLimits, Database, MAX_BYTES_VALUE, Table, Transaction};
+use std::{fmt, path::Path};
 
-use ::redb::{Database, Durability, ReadableTable, TableDefinition};
+#[cfg(all(feature = "backend-ssd", feature = "backend-hdd"))]
+mod migration;
 
 pub type Particle = [u8; 32];
-type BytesTable = TableDefinition<'static, &'static [u8], &'static [u8]>;
-const CONTENT: BytesTable = TableDefinition::new("application_content");
-const HEADS: BytesTable = TableDefinition::new("application_heads");
-const HISTORY: BytesTable = TableDefinition::new("application_history");
-const REQUESTS: BytesTable = TableDefinition::new("application_requests");
-const CLAIMS: BytesTable = TableDefinition::new("application_unique_claims");
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Head {
     pub index: u64,
@@ -29,82 +23,77 @@ pub enum Error {
     Limit,
     Corrupt,
 }
-
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "application storage: {self:?}")
     }
 }
 impl std::error::Error for Error {}
-fn storage(e: impl fmt::Display) -> Error {
-    Error::Storage(e.to_string())
+impl From<StorageError> for Error {
+    fn from(error: StorageError) -> Self {
+        match error {
+            StorageError::CommitUnknown { message, .. } => Self::CommitUnknown(message),
+            StorageError::Limit(_) => Self::Limit,
+            StorageError::Corrupt(_) => Self::Corrupt,
+            error => Self::Storage(error.to_string()),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Write<'a> {
     pub namespace: Particle,
     pub request: Particle,
+    /// Must bind all inputs to the application and optional shard transition.
     pub fingerprint: Particle,
     pub expected: Option<Head>,
     pub head: Head,
     pub content: &'a [(Particle, Vec<u8>)],
-    /// Store-wide immutable key/value assignments, checked in the same transaction.
     pub claims: &'a [(Particle, Particle)],
 }
 
 pub struct ApplicationStore {
     db: Database,
 }
-
 impl ApplicationStore {
+    /// Default working profile: Fjall on SSD, stored in a directory.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let path = path.as_ref();
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let file = options.open(path).map_err(storage)?;
-        let db = Database::builder().create_file(file).map_err(storage)?;
-        let mut tx = db.begin_write().map_err(storage)?;
-        tx.set_durability(Durability::Immediate);
-        for definition in [CONTENT, HEADS, HISTORY, REQUESTS, CLAIMS] {
-            tx.open_table(definition).map_err(storage)?;
-        }
-        tx.commit()
-            .map_err(|e| Error::CommitUnknown(e.to_string()))?;
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        File::open(parent)
-            .and_then(|f| f.sync_all())
-            .map_err(storage)?;
-        Ok(Self { db })
+        Ok(Self::from_database(Database::open(path, Backend::Ssd)?))
+    }
+    pub fn from_database(db: Database) -> Self {
+        Self { db }
+    }
+    pub fn database(&self) -> Database {
+        self.db.clone()
+    }
+
+    #[cfg(all(feature = "backend-ssd", feature = "backend-hdd"))]
+    pub fn migrate_redb(
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<(), Error> {
+        migration::migrate(source.as_ref(), destination.as_ref())
     }
 
     pub fn head(&self, namespace: &Particle) -> Result<Option<Head>, Error> {
-        self.read(HEADS, namespace, 40)?
+        self.db
+            .read(Table::Heads, namespace, 40)?
             .map(|b| decode_head(&b))
             .transpose()
     }
-
     pub fn content(&self, id: &Particle, max_bytes: usize) -> Result<Option<Vec<u8>>, Error> {
-        self.read(CONTENT, id, max_bytes)
+        Ok(self.db.read(Table::Content, id, max_bytes)?)
     }
-
     pub fn resolve(
         &self,
         namespace: &Particle,
         request: &Particle,
     ) -> Result<Option<(Particle, Head)>, Error> {
-        self.read(REQUESTS, &request_key(namespace, request), 72)?
+        self.db
+            .read(Table::Requests, &request_key(namespace, request), 72)?
             .map(|b| decode_request(&b))
             .transpose()
     }
-
     pub fn history(
         &self,
         namespace: &Particle,
@@ -114,157 +103,127 @@ impl ApplicationStore {
         if limit == 0 || limit > 4096 {
             return Err(Error::Limit);
         }
-        let start = match after {
-            Some(u64::MAX) => return Ok(Vec::new()),
-            Some(n) => n + 1,
-            None => 0,
-        };
-        let tx = self.db.begin_read().map_err(storage)?;
-        let table = tx.open_table(HISTORY).map_err(storage)?;
-        let lower = history_key(namespace, start);
-        let upper = history_key(namespace, u64::MAX);
-        let mut result = Vec::new();
-        for row in table
-            .range(lower.as_slice()..=upper.as_slice())
-            .map_err(storage)?
-            .take(limit)
-        {
-            let (key, value) = row.map_err(storage)?;
-            let index = u64::from_be_bytes(
-                key.value()
-                    .get(32..40)
-                    .ok_or(Error::Corrupt)?
-                    .try_into()
-                    .map_err(|_| Error::Corrupt)?,
-            );
-            let commit = value.value().try_into().map_err(|_| Error::Corrupt)?;
-            result.push(Head { index, commit });
+        if after == Some(u64::MAX) {
+            return Ok(Vec::new());
         }
-        Ok(result)
+        let after = after.map(|n| history_key(namespace, n));
+        self.db
+            .scan(
+                Table::History,
+                after.as_ref().map(|k| k.as_slice()),
+                namespace,
+                ByteLimits {
+                    max_entries: limit,
+                    max_bytes: limit * 72,
+                },
+            )?
+            .into_iter()
+            .map(|(key, value)| {
+                if key.len() != 40 || &key[..32] != namespace {
+                    return Err(Error::Corrupt);
+                }
+                Ok(Head {
+                    index: u64::from_be_bytes(key[32..].try_into().map_err(|_| Error::Corrupt)?),
+                    commit: value.as_slice().try_into().map_err(|_| Error::Corrupt)?,
+                })
+            })
+            .collect()
     }
 
     pub fn apply(&self, write: &Write<'_>) -> Result<Head, Error> {
-        if write.content.len() > 131_072 || write.claims.len() > 4096 {
-            return Err(Error::Limit);
-        }
-        let total = write.content.iter().try_fold(0usize, |n, (_, bytes)| {
-            n.checked_add(bytes.len()).ok_or(Error::Limit)
-        })?;
-        if total > 16 * 1024 * 1024 {
-            return Err(Error::Limit);
-        }
-        let mut tx = self.db.begin_write().map_err(storage)?;
-        tx.set_durability(Durability::Immediate);
-        {
-            let mut requests = tx.open_table(REQUESTS).map_err(storage)?;
-            let request_key = request_key(&write.namespace, &write.request);
-            if let Some(prior) = requests.get(request_key.as_slice()).map_err(storage)? {
-                let (fingerprint, head) = decode_request(prior.value())?;
-                return if fingerprint == write.fingerprint {
-                    Ok(head)
-                } else {
-                    Err(Error::Conflict)
-                };
-            }
-            let mut heads = tx.open_table(HEADS).map_err(storage)?;
-            let current = heads
-                .get(write.namespace.as_slice())
-                .map_err(storage)?
-                .map(|v| decode_head(v.value()))
-                .transpose()?;
-            if current != write.expected {
-                return Err(Error::HeadMismatch);
-            }
-            let index = match current {
-                Some(h) => h.index.checked_add(1).ok_or(Error::InvalidSequence)?,
-                None => 0,
-            };
-            if write.head.index != index {
-                return Err(Error::InvalidSequence);
-            }
-            let mut claims = tx.open_table(CLAIMS).map_err(storage)?;
-            for (key, value) in write.claims {
-                let prior = claims.get(key.as_slice()).map_err(storage)?;
-                if prior
-                    .as_ref()
-                    .is_some_and(|p| p.value() != value.as_slice())
-                {
-                    return Err(Error::Conflict);
-                }
-                drop(prior);
-                claims
-                    .insert(key.as_slice(), value.as_slice())
-                    .map_err(storage)?;
-            }
-            let mut content = tx.open_table(CONTENT).map_err(storage)?;
-            for (id, bytes) in write.content {
-                let present = {
-                    let previous = content.get(id.as_slice()).map_err(storage)?;
-                    if let Some(previous) = previous {
-                        if previous.value() != bytes.as_slice() {
-                            return Err(Error::Conflict);
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                };
-                if !present {
-                    content
-                        .insert(id.as_slice(), bytes.as_slice())
-                        .map_err(storage)?;
-                }
-            }
-            if content
-                .get(write.head.commit.as_slice())
-                .map_err(storage)?
-                .is_none()
-            {
-                return Err(Error::Corrupt);
-            }
-            let mut history = tx.open_table(HISTORY).map_err(storage)?;
-            history
-                .insert(
-                    history_key(&write.namespace, index).as_slice(),
-                    write.head.commit.as_slice(),
-                )
-                .map_err(storage)?;
-            let head_bytes = encode_head(write.head);
-            heads
-                .insert(write.namespace.as_slice(), head_bytes.as_slice())
-                .map_err(storage)?;
-            let mut receipt = [0; 72];
-            receipt[..32].copy_from_slice(&write.fingerprint);
-            receipt[32..].copy_from_slice(&head_bytes);
-            requests
-                .insert(request_key.as_slice(), receipt.as_slice())
-                .map_err(storage)?;
-        }
-        tx.commit()
-            .map_err(|e| Error::CommitUnknown(e.to_string()))?;
-        Ok(write.head)
+        self.apply_with(write, |_| Ok(()))
     }
 
-    fn read(
+    /// The closure executes once for a new request, inside the application's
+    /// transaction. It must use only tx for this owner's reads and mutations.
+    pub fn apply_with(
         &self,
-        definition: BytesTable,
-        key: &[u8],
-        max_bytes: usize,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        let tx = self.db.begin_read().map_err(storage)?;
-        let table = tx.open_table(definition).map_err(storage)?;
-        table
-            .get(key)
-            .map_err(storage)?
-            .map(|v| {
-                if v.value().len() > max_bytes {
-                    Err(Error::Limit)
-                } else {
-                    Ok(v.value().to_vec())
+        write: &Write<'_>,
+        transition: impl FnOnce(&mut Transaction<'_>) -> Result<(), Error>,
+    ) -> Result<Head, Error> {
+        validate_write(write)?;
+        self.db
+            .transaction::<_, Error>(|tx| {
+                let receipt_key = request_key(&write.namespace, &write.request);
+                if let Some(prior) = tx.get(Table::Requests, &receipt_key, 72)? {
+                    let (fingerprint, head) = decode_request(&prior)?;
+                    return if fingerprint == write.fingerprint {
+                        Ok(head)
+                    } else {
+                        Err(Error::Conflict)
+                    };
                 }
+                let current = tx
+                    .get(Table::Heads, &write.namespace, 40)?
+                    .map(|bytes| decode_head(&bytes))
+                    .transpose()?;
+                if current != write.expected {
+                    return Err(Error::HeadMismatch);
+                }
+                let next = match current {
+                    Some(head) => head.index.checked_add(1).ok_or(Error::InvalidSequence)?,
+                    None => 0,
+                };
+                if write.head.index != next {
+                    return Err(Error::InvalidSequence);
+                }
+
+                for (key, value) in write.claims {
+                    immutable_put(tx, Table::Claims, key, value, 32)?;
+                }
+                for (id, bytes) in write.content {
+                    immutable_put(tx, Table::Content, id, bytes, MAX_BYTES_VALUE)?;
+                }
+                if tx
+                    .get(Table::Content, &write.head.commit, MAX_BYTES_VALUE)?
+                    .is_none()
+                {
+                    return Err(Error::Corrupt);
+                }
+                transition(tx)?;
+                tx.put(
+                    Table::History,
+                    &history_key(&write.namespace, next),
+                    &write.head.commit,
+                )?;
+                tx.put(Table::Heads, &write.namespace, &encode_head(write.head))?;
+                let mut receipt = [0; 72];
+                receipt[..32].copy_from_slice(&write.fingerprint);
+                receipt[32..].copy_from_slice(&encode_head(write.head));
+                tx.put(Table::Requests, &receipt_key, &receipt)?;
+                Ok(write.head)
             })
-            .transpose()
+            .map(|commit| commit.value)
     }
+}
+
+fn validate_write(write: &Write<'_>) -> Result<(), Error> {
+    if write.content.len() > 131_072 || write.claims.len() > 4096 {
+        return Err(Error::Limit);
+    }
+    let total = write.content.iter().try_fold(0usize, |n, (_, bytes)| {
+        n.checked_add(bytes.len()).ok_or(Error::Limit)
+    })?;
+    if total > 16 * 1024 * 1024 {
+        return Err(Error::Limit);
+    }
+    Ok(())
+}
+fn immutable_put(
+    tx: &mut Transaction<'_>,
+    table: Table,
+    key: &[u8],
+    value: &[u8],
+    max: usize,
+) -> Result<(), Error> {
+    if let Some(previous) = tx.get(table, key, max)? {
+        if previous != value {
+            return Err(Error::Conflict);
+        }
+    } else {
+        tx.put(table, key, value)?;
+    }
+    Ok(())
 }
 
 fn request_key(namespace: &Particle, request: &Particle) -> [u8; 64] {

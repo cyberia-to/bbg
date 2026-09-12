@@ -89,6 +89,13 @@ Owners: BBG and Cybergraph. Depends on D1–D2.
 - [ ] Publish the new in-memory head only under the specified commit outcome;
   block dependent acceptance while an unknown outcome is being resolved.
 
+The shared [Database owner](../specs/database.md) provides one atomic boundary
+for application receipts/history and explicit shard changes. Working application
+storage selects Fjall, and legacy redb application stores have explicit import.
+This removes the separate application engine path. Native signal encoding,
+chain/economic publication and real node acknowledgement still require the
+integration above; the component API alone does not close D3.
+
 Exit: a new process restores the accepted history and independently recomputes
 the same state root. Lost replies and repeated requests produce one accepted
 operation. Conflicting requests and competing writers have explicit outcomes.

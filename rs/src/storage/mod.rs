@@ -28,8 +28,16 @@ pub use access::{
     Durability, MAX_VALUE_ELEMENTS, ScanLimits, ShardEntry, StorageError, StorageResult,
 };
 
-#[cfg(feature = "backend-hdd")]
+#[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
 pub mod application;
+
+#[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
+pub mod database;
+
+#[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
+mod disk;
+#[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
+pub use disk::DiskStore;
 
 #[cfg(feature = "backend-ssd")]
 pub mod fjall;

@@ -13,7 +13,50 @@ in the [durable shard storage audit](../../audit/durable-shard-storage.md).
 with optional WARM, COLD and network tiers. The `Bbg` facade still holds its graph
 state in memory; connecting its state lifecycle to this interface remains an
 integration task. [ApplicationStore](../../specs/application-storage.md) provides
-a separate atomic API for local application history and receipts.
+the typed application-history API over the same [Database owner](../../specs/database.md).
+Its default working profile uses Fjall. The `backend-hdd` feature supplies the
+explicit HDD backend and, alongside `backend-ssd`, legacy redb import.
+
+## Shared Database
+
+Open a physical store once and attach views to its owner:
+
+```rust
+use bbg::storage::{ShardStore, application::ApplicationStore, database::{Backend, Database}};
+
+let database = Database::open("data/bbg", Backend::Ssd)?;
+let shards = database.shards();
+let applications = ApplicationStore::from_database(database.clone());
+```
+
+`Backend::Ssd` requires `backend-ssd`; `Backend::Hdd` requires `backend-hdd`.
+Missing backend support returns `Unsupported`. Selection is explicit and
+independent of the filesystem path's spelling; BBG does not detect drive type.
+`FjallStore::open` and `RedbStore::open` remain profile-specific constructors;
+their `database()` method returns the existing shared owner.
+
+`applications.apply_with(&write, |tx| { ... })` executes explicit typed shard
+reads, puts and deletes in the same commit as content, history, claims, head
+and request receipt. `tx.read_shard`, `tx.put_shard` and `tx.remove_shard` enforce
+the shard encoding and value bounds. A rejected closure writes neither domain;
+an identical recorded retry returns its earlier head without running the closure.
+The request fingerprint must bind the transition inputs. A separate pending
+ShardStore batch is not implicitly included. External HOT cache publication
+and invalidation remain the owning coordinator's responsibility.
+
+`database.transaction` returns `Commit { value, change_id }`; a closure which
+stages no changes has `change_id: None`. Use only the supplied Transaction for
+that owner's access inside a closure; reentering another view would deadlock.
+All clones share serialization and unknown-outcome state. The filesystem lock
+is released after the final owner drops.
+
+`ApplicationStore::open(directory)` selects Fjall. Passing an old redb file
+returns an explicit migration error. With both backends compiled, use
+`ApplicationStore::migrate_redb(source_file, fresh_directory)`. Source data is
+retained and exclusively locked during export; all application tables and
+historical receipts are copied and verified in bounded pages. A durable import
+guard rejects ordinary opens of an incomplete destination. Existing destinations
+are rejected; a failed import is retried into a fresh directory.
 
 ## ShardStore
 
@@ -97,13 +140,14 @@ puts. Use `has_pending` to include deletions.
 Fjall and redb commit all persistent updates, deletions and the `last_commit`
 marker in one backend transaction. Pending data is retained on failure and
 cleared only after successful commit. The returned 32-byte change identity
-binds dimensions, keys, operation kinds and values in canonical order under
-the `bbg/shard-batch/v1` domain. Authenticated graph roots are computed by BBG's
+binds table names, keys, operation kinds and values in canonical order under
+the `bbg/database-batch/v1` domain. Memory-only identities retain
+`bbg/shard-batch/v1`; existing on-disk markers remain readable. Authenticated graph roots are computed by BBG's
 commitment layer; request receipts belong to the application or native history
 transaction above this API.
 
-`CommitUnknown { change_id, message }` freezes the handle. Keep that identity,
-stop dependent publication, drop the handle and reopen the same store.
+`CommitUnknown { change_id, message }` freezes the shared owner. Keep that identity,
+stop dependent publication, drop every view and reopen the same store.
 Compare `last_commit()` with the unresolved identity before proceeding. The
 marker resolves the latest unresolved batch under the exclusive-writer
 contract; it does not retain a history of request receipts. Reopened marker
@@ -220,7 +264,9 @@ Both disk constructors return `StorageResult<Self>`. Fjall accepts
 `impl Into<PathBuf>`; redb accepts `impl AsRef<Path>`. Their parent directory must
 already exist. Fjall creates its store directory and holds an exclusive
 `bbg.lock` file lock; redb holds the database's exclusive writer lock. A second
-writer receives `Busy`. Both sync the parent directory on opening.
+writer receives `Busy`. Both sync the parent directory on opening. Newly created
+Fjall directories are 0700 and redb files are 0600 on Unix; existing permissions
+are preserved.
 
 Both disk stores provide
 `load(dimension, key) -> StorageResult<Option<Vec<Goldilocks>>>` for committed
@@ -241,7 +287,8 @@ Disk keys are exactly 32 bytes. Each field element is encoded as an 8-byte
 little-endian canonical Goldilocks integer. Decode rejects invalid byte lengths,
 limbs greater than or equal to the field modulus, oversized values and malformed
 scan keys. The private `bbg_storage_v1` metadata partition/table contains the
-32-byte `last_commit` marker. Existing shard names and value encoding are
+32-byte `last_commit` shard marker and `last_transaction` shared transaction
+marker. Application-only transactions preserve `last_commit`. Existing shard names and value encoding are
 retained; databases without this metadata can be opened.
 
 ## NetworkStore

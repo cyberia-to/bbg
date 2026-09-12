@@ -17,3 +17,5 @@ The storage contract lives in [specs/storage.md](../specs/storage.md).
 - [Durable shard storage](durable-shard-storage.md) — implemented fallible
   contract, atomic backend commits, recovery and tier failure tests; remaining
   archive and node integration work.
+- [Shared application and shard database](shared-database.md) — one transaction
+  owner, Fjall working storage, combined commits and explicit legacy redb import.

@@ -107,20 +107,6 @@ impl WriteBuffer {
         self.elements = 0;
     }
 
-    #[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
-    pub fn fail_commit(
-        &mut self,
-        change_id: [u8; 32],
-        error: impl std::fmt::Display,
-    ) -> StorageError {
-        let error = StorageError::CommitUnknown {
-            change_id,
-            message: error.to_string(),
-        };
-        self.unknown = Some(error.clone());
-        error
-    }
-
     pub fn change_id(&self) -> [u8; 32] {
         let mut changes: BTreeMap<EntryKey, Option<&[Goldilocks]>> = BTreeMap::new();
         for (d, k, v) in &self.dirty {

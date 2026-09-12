@@ -5,7 +5,7 @@ crystal-domain: cyber
 ---
 # storage
 
-physical storage architecture for [[bbg]]. the signal log is the primary data — all state is derived from deterministic replay. one storage engine ([[fjall]]) backs everything: particle data, directional indexes, polynomial evaluation tables, [[mutator set]] polynomials, and [[CozoDB]] query relations. validators and light clients use the same format — the difference is quantity of data, not how it is stored.
+physical storage architecture for [[bbg]]. the signal log is the primary data — all state is derived from deterministic replay. a [shared Database owner](database.md) backs durable shard and application views. the working profile uses [[fjall]] on SSD; optional archival storage uses redb on HDD. validators and light clients use the same logical encoding — the difference is quantity of data, not how it is stored.
 
 ## signal-first model
 
@@ -92,12 +92,16 @@ atomic backend batch/transaction across dimensions, including a metadata marker
 for its change identity. The identity hashes domain-separated, ordered final
 key/value/delete operations, including lengths. It is local change tracking;
 BBG polynomial authentication and native request receipts have separate contracts.
+Disk views use the [Database transaction identity](database.md) under
+`bbg/database-batch/v1`; memory-only change identities retain
+`bbg/shard-batch/v1`. Existing markers remain readable. New disk commits use
+the new domain so a combined application/shard commit binds every affected table.
 Fjall uses SyncAll and redb uses Immediate durability. The selected backend's
 filesystem assumptions still govern crash and power-loss behavior.
 
 Errors before commit preserve pending changes. An error during the commit
 boundary returns `CommitUnknown` with the change identity, retains pending
-changes and freezes subsequent mutations/commits on that handle. Reopen the
+changes and freezes all views sharing that owner. Drop every view and reopen the
 exclusively owned database and compare `last_commit` with the unresolved
 identity before admitting dependent work. A successful empty commit preserves
 the disk marker. Legacy stores have no marker until their first new commit.
@@ -106,7 +110,14 @@ Memory commits supply no disk durability; `durability()` distinguishes them.
 Disk store parents must already exist. Opening a store synchronizes its parent
 directory and acquires exclusive writer ownership; a competing open returns
 `Busy`. The Fjall lock file remains in place and the OS releases the lock when
-the handle or process exits. Supported writers enter through BBG's adapter.
+last shared owner or process exits. Supported writers enter through BBG's adapter.
+
+`Database::shards()` constructs a disk ShardStore view without opening another
+database. `ApplicationStore::from_database` attaches to the same owner.
+`ApplicationStore::apply_with` combines an application transition and explicit
+shard changes in one transaction, with receipt deduplication before execution.
+Application-only commits preserve the latest shard marker. Separate staged
+ShardStore batches remain private to their views until their own commit.
 
 `with_warm` returns `StorageResult<TieredStore>`. Attaching a disk WARM requires
 a memory HOT tier with an empty persistent cache and no pending operations. Load existing state

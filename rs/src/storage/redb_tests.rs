@@ -1,5 +1,11 @@
 use super::*;
-use redb::{StorageBackend, backends::FileBackend};
+use crate::storage::{
+    ShardStore, StorageError,
+    database::{Changes, Table, change_id},
+    serialize_goldilocks,
+};
+use ::redb::{Database as RedbDatabase, StorageBackend, backends::FileBackend};
+use nebu::Goldilocks;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, AtomicU64, Ordering},
@@ -79,17 +85,11 @@ fn fault_store(path: &Path) -> (RedbStore, Arc<AtomicU8>) {
         file: FileBackend::new(file).unwrap(),
         fault: fault.clone(),
     };
-    let db = Database::builder()
+    let db = RedbDatabase::builder()
         .set_cache_size(0)
         .create_with_backend(backend)
         .unwrap();
-    (
-        RedbStore {
-            db,
-            pending: WriteBuffer::default(),
-        },
-        fault,
-    )
+    (RedbStore::from_database(Database::from_redb(db)), fault)
 }
 
 #[test]
@@ -125,7 +125,17 @@ fn commit_fault(mode: u8) {
     store
         .put(1, [2; 32], vec![Goldilocks::new(99); 8192])
         .unwrap();
-    let attempted = store.pending.change_id();
+    let mut changes = Changes::new();
+    for (d, key, value) in &store.inner.pending.dirty {
+        changes.insert(
+            (Table::Shard(*d), key.to_vec()),
+            Some(serialize_goldilocks(value)),
+        );
+    }
+    for (d, key) in &store.inner.pending.deleted {
+        changes.insert((Table::Shard(*d), key.to_vec()), None);
+    }
+    let attempted = change_id(&changes);
     fault.store(mode, Ordering::SeqCst);
     let error = store
         .commit()
@@ -137,7 +147,7 @@ fn commit_fault(mode: u8) {
     );
     assert!(store.has_pending());
     assert_eq!(store.dirty_entries().len(), 1);
-    assert!(store.pending.deleted.contains(&(0, [1; 32])));
+    assert!(store.inner.pending.deleted.contains(&(0, [1; 32])));
     if let StorageError::CommitUnknown { change_id, .. } = &error {
         assert_eq!(*change_id, attempted);
         assert_eq!(store.commit(), Err(error.clone()));
@@ -199,4 +209,111 @@ fn failed_warm_commit_retains_hot_pending_state_and_blocks_publication() {
     assert_eq!(store.commit(), Err(error.clone()));
     assert_eq!(store.read(0, &[1; 32], 1), Err(error));
     assert!(store.get_mut(0, &[1; 32]).is_none());
+}
+
+fn combined_application_fault(mode: u8) {
+    use crate::storage::application::{ApplicationStore, Error, Head, Write};
+    let temp = Temp::new();
+    let path = temp.0.join("combined.redb");
+    let (mut shards, fault) = fault_store(&path);
+    shards.put(0, [1; 32], vec![Goldilocks::ONE]).unwrap();
+    let old = shards.commit().unwrap();
+    let db = shards.database();
+    let app = ApplicationStore::from_database(db.clone());
+    let another = ApplicationStore::from_database(db.clone());
+    let head = Head {
+        index: 0,
+        commit: [2; 32],
+    };
+    let content = [([2; 32], b"birth".to_vec())];
+    let claims = [([8; 32], [9; 32])];
+    let request = Write {
+        namespace: [1; 32],
+        request: [3; 32],
+        fingerprint: [4; 32],
+        expected: None,
+        head,
+        content: &content,
+        claims: &claims,
+    };
+    fault.store(mode, Ordering::SeqCst);
+    let result = app.apply_with(&request, |tx| {
+        tx.remove_shard(0, &[1; 32])?;
+        tx.put_shard(1, [2; 32], &[Goldilocks::new(99)])?;
+        Ok(())
+    });
+    assert_eq!(fault.load(Ordering::SeqCst), 0);
+    assert!(matches!(result, Err(Error::CommitUnknown(_))));
+    assert!(db.is_poisoned());
+    assert!(shards.is_poisoned());
+    assert!(matches!(
+        another.apply(&request),
+        Err(Error::CommitUnknown(_))
+    ));
+    assert!(matches!(
+        another.head(&[1; 32]),
+        Err(Error::CommitUnknown(_))
+    ));
+    assert!(matches!(
+        shards.put(2, [3; 32], vec![Goldilocks::ONE]),
+        Err(StorageError::CommitUnknown { .. })
+    ));
+    assert!(matches!(
+        shards.read(0, &[1; 32], 1),
+        Err(StorageError::CommitUnknown { .. })
+    ));
+    assert!(matches!(
+        db.last_transaction(),
+        Err(StorageError::CommitUnknown { .. })
+    ));
+    drop(another);
+    drop(app);
+    drop(shards);
+    drop(db);
+    let recovered = Database::open(&path, Backend::Hdd).unwrap();
+    let app = ApplicationStore::from_database(recovered.clone());
+    let shards = recovered.shards();
+    let accepted = app.resolve(&[1; 32], &[3; 32]).unwrap().is_some();
+    assert_eq!(app.head(&[1; 32]).unwrap().is_some(), accepted);
+    assert_eq!(app.content(&[2; 32], 100).unwrap().is_some(), accepted);
+    assert_eq!(
+        app.history(&[1; 32], None, 10).unwrap().len(),
+        usize::from(accepted)
+    );
+    assert_eq!(shards.read(0, &[1; 32], 1).unwrap().is_none(), accepted);
+    assert_eq!(shards.read(1, &[2; 32], 1).unwrap().is_some(), accepted);
+    assert_eq!(shards.last_commit().unwrap() != Some(old), accepted);
+    let marker = recovered.last_transaction().unwrap();
+    if accepted {
+        assert_eq!(
+            app.apply_with(&request, |_| panic!("recorded retry ran transition"))
+                .unwrap(),
+            head
+        );
+        assert_eq!(recovered.last_transaction().unwrap(), marker);
+    } else {
+        app.apply_with(&request, |tx| {
+            tx.remove_shard(0, &[1; 32])?;
+            tx.put_shard(1, [2; 32], &[Goldilocks::new(99)])?;
+            Ok(())
+        })
+        .unwrap();
+    }
+    let changed = [([8; 32], [10; 32])];
+    let competitor = Write {
+        namespace: [5; 32],
+        claims: &changed,
+        ..request
+    };
+    assert!(matches!(app.apply(&competitor), Err(Error::Conflict)));
+}
+
+#[test]
+fn shared_application_barrier_failure_freezes_every_view_and_resolves_both_domains() {
+    combined_application_fault(3);
+}
+
+#[test]
+fn shared_application_lost_barrier_reply_never_replays_an_accepted_transition() {
+    combined_application_fault(4);
 }
