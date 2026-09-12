@@ -23,6 +23,11 @@ Typed shard access validates dimensions, canonical field encoding and the
 existing shard value bound. EPHEMERAL is excluded from disk transactions.
 Application values remain opaque bytes with 32-byte content keys, 40-byte
 history keys and 64-byte receipt keys. Raw table access is crate-private.
+The native coordinator accesses a closed `RecordDomain` set for exact native
+state, history, receipts, metadata, balances, blocks and compatibility export.
+These bounded byte records share the same transaction and failure latch as
+polynomial shards and applications. They preserve complete integer encodings;
+the coordinator supplies and validates each record's versioned schema.
 Transactions coalesce updates by table/key, with at most 150000 keys and
 32 MiB of combined key/value bytes. Staging reserves two keys and 91 bytes for
 the automatic recovery markers within those limits. Each raw key is at most 64 bytes; one value

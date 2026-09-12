@@ -45,15 +45,22 @@ impl FjallEngine {
             std::fs::TryLockError::Error(error) => io(error),
         })?;
         let keyspace = Config::new(path).open().map_err(io)?;
-        let names = (0..14).map(Table::Shard).chain([
-            Table::Metadata,
-            Table::Content,
-            Table::Heads,
-            Table::History,
-            Table::Requests,
-            Table::Claims,
-            Table::Migration,
-        ]);
+        let names = (0..14)
+            .map(Table::Shard)
+            .chain([
+                Table::Metadata,
+                Table::Content,
+                Table::Heads,
+                Table::History,
+                Table::Requests,
+                Table::Claims,
+                Table::Migration,
+            ])
+            .chain(
+                super::super::RecordDomain::ALL
+                    .into_iter()
+                    .map(Table::Native),
+            );
         let mut tables = BTreeMap::new();
         for table in names {
             let partition = keyspace

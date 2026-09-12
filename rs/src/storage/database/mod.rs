@@ -2,6 +2,10 @@
 mod backend;
 mod transaction;
 pub use transaction::Transaction;
+mod records;
+pub use records::{RecordDomain, RecordLimits};
+#[cfg(all(test, feature = "backend-hdd"))]
+mod native_tests;
 
 use super::{StorageError, StorageResult, decode_marker};
 use backend::Engine;
@@ -220,6 +224,7 @@ pub(crate) enum Table {
     Requests,
     Claims,
     Migration,
+    Native(RecordDomain),
 }
 impl Table {
     pub(crate) fn name(self) -> &'static str {
@@ -232,6 +237,7 @@ impl Table {
             Self::Requests => "application_requests",
             Self::Claims => "application_unique_claims",
             Self::Migration => "bbg_import_v1",
+            Self::Native(domain) => domain.name(),
         }
     }
 }
