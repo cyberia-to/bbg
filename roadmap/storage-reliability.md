@@ -34,11 +34,13 @@ The [persistence audit](../audit/persistence.md) supplies the starting evidence.
 The presence of a backend, successful cache access or a change-set hash alone
 does not establish this invariant.
 
-D1 is implemented and the first D2 item is complete. Executed component tests
+D1 is implemented, and the local RAM/Fjall profile completes D3 and D4.
+Executed component tests
 and their limits are recorded in the
 [durable shard storage audit](../audit/durable-shard-storage.md). D2 archival
-recovery, D3 native publication, D4 node integration and the remaining D5
-acceptance evidence keep this P0 active.
+recovery and the remaining D5 disk/power-loss evidence keep this P0 active.
+The [native acceptance audit](../../cyber/audit/native-acceptance.md) records
+the real-binary integration and its supported local scope.
 
 ## ordered work
 
@@ -69,7 +71,7 @@ Owner: BBG. Depends on D1.
   the fallible API, including failure during commit and retry.
 - [ ] Define WARM/COLD population, archival progress and recovery boundaries.
   Keep the last required copy until the destination's durability is established.
-- [ ] Keep EPHEMERAL local to memory. Specify the selected durable backend,
+- [x] Keep EPHEMERAL local to memory. Specify the selected durable backend,
   participating tiers and format/version identity for each supported profile.
 
 Exit: interruption during tier movement preserves an authoritative copy;
@@ -78,23 +80,26 @@ which durable tier acknowledges acceptance and how archive progress is resumed.
 
 ### D3: native graph publication
 
-Owners: BBG and Cybergraph. Depends on D1–D2.
+Owners: BBG and Cybergraph. The local SSD profile depends on D1 and the
+single-authority D2 profile; multi-tier archive qualification remains in D2.
 
-- [ ] Expose a BBG-owned atomic boundary for accepted native signal bytes,
+- [x] Expose a BBG-owned atomic boundary for accepted native signal bytes,
   chain position, derived state/head and stable request receipt. A replay-based
   design must bind the authoritative history and recoverable state position.
-- [ ] Reuse [application transactions](../specs/application-storage.md) for local
+- [x] Reuse [application transactions](../specs/application-storage.md) for local
   application history. Preserve their distinction from neuron SignalChain
   positions, native authorization and network finality.
-- [ ] Publish the new in-memory head only under the specified commit outcome;
+- [x] Publish the new in-memory head only under the specified commit outcome;
   block dependent acceptance while an unknown outcome is being resolved.
 
 The shared [Database owner](../specs/database.md) provides one atomic boundary
 for application receipts/history and explicit shard changes. Working application
 storage selects Fjall, and legacy redb application stores have explicit import.
-This removes the separate application engine path. Native signal encoding,
-chain/economic publication and real node acknowledgement still require the
-integration above; the component API alone does not close D3.
+The [native state preparation](../specs/native-state.md) and
+[Cybergraph coordinator](../../cybergraph/specs/native-storage.md) extend this
+boundary to complete native operations, exact state, economics, globally
+indexed signal history and original request receipts. Preparation restores
+its touched records on failure and publishes only after the common commit.
 
 Exit: a new process restores the accepted history and independently recomputes
 the same state root. Lost replies and repeated requests produce one accepted
@@ -104,10 +109,10 @@ operation. Conflicting requests and competing writers have explicit outcomes.
 
 Owners: Cybergraph, Cyber and Soft3. Depends on D3.
 
-- [ ] Route the node's live state and receipts through Cybergraph/BBG.
-- [ ] Replace the host's independent journal ownership with this path and
+- [x] Route the node's live state and receipts through Cybergraph/BBG.
+- [x] Replace the host's independent journal ownership with this path and
   provide explicit import/recovery for existing development homes.
-- [ ] Propagate storage failure and recovery status to node readiness and callers.
+- [x] Propagate storage failure and recovery status to node readiness and callers.
 
 Exit: the real Cyber binary uses the same durable path exercised by BBG and
 Cybergraph tests. Import preserves valid history and reports truncation or
