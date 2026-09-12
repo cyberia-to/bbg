@@ -128,9 +128,9 @@ preceding task as it lands; close this gate after D4.
   writes. Native client acknowledgement testing remains part of the node gate.
 - [ ] Cover disk-full/write/flush failures, lost replies, identical/conflicting
   retries, malformed/truncated data and exclusive-writer conflicts.
-- [ ] Record filesystem, operating system and durability-barrier assumptions;
+- [x] Record filesystem, operating system and durability-barrier assumptions;
   distinguish process crashes, injected faults and power-loss validation.
-- [ ] Run the same accepted-operation recovery scenario against the pinned node
+- [x] Run the same accepted-operation recovery scenario against the pinned node
   binary. Store commands, source/artifact identities and results in `audit/`.
 
 Exit: evidence covers every claimed guarantee of each supported storage profile.
