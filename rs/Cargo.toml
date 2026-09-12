@@ -15,7 +15,7 @@ lens   = { package = "cyber-lens", version = "0.1.3", path = "../../lens/src" }
 nox    = { package = "cyber-nox", version = "0.2", path = "../../nox/rs" }
 zheng  = { version = "0.3", path = "../../zheng/rs" }
 
-fjall  = { version = "2", optional = true }
+fjall  = { version = "2", path = "vendor/fjall", optional = true }
 redb   = { version = "2", optional = true }
 serde  = { version = "1", features = ["derive"], optional = true }
 

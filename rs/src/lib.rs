@@ -19,6 +19,7 @@ pub mod signal;
 pub mod state;
 pub mod stats;
 pub mod storage;
+pub mod transition;
 pub mod types;
 
 pub use checkpoint::Checkpoint;

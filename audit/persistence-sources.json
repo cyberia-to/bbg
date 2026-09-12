@@ -1,0 +1,103 @@
+{
+  "schema": "bbg/persistence-source-audit/v1",
+  "captured_at": "Fri Sep 11 14:30:12 2026",
+  "repositories": [
+    {
+      "name": "bbg",
+      "revision": "3c8eb3d6663a59f548b9b04dfc52996d24d230fd",
+      "changes": [
+        " M docs/api/storage.md",
+        " M rs/src/dim.rs",
+        " M rs/src/lib.rs",
+        " M rs/src/proof.rs",
+        " M rs/src/query.rs",
+        " M rs/src/state.rs",
+        " M rs/src/state/commits.rs",
+        " M rs/src/storage/fjall.rs",
+        " M rs/src/storage/redb.rs",
+        " M rs/tests/look_e2e.rs",
+        " M rs/tests/serde_wire.rs",
+        " M specs/query.md",
+        " M specs/state.md",
+        "?? audit/",
+        "?? rs/src/certificate.rs",
+        "?? rs/tests/state_certificate.rs",
+        "?? specs/state-certificate.md"
+      ]
+    },
+    {
+      "name": "cybergraph",
+      "revision": "89eb69c6a870cecd3fff18f6e8d806bd3a2340ce",
+      "changes": []
+    },
+    {
+      "name": "soft3",
+      "revision": "9d1b75b8ab51156793d26a58fbf9c1cb78b1fb87",
+      "changes": [
+        " M crate/Cargo.lock"
+      ]
+    },
+    {
+      "name": "cyber",
+      "revision": "ff8ff7a88847278d0166b0f865216b56c05d643e",
+      "changes": [
+        " M README.md",
+        "?? roadmap/"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "bbg/rs/Cargo.toml",
+      "sha256": "7d4bf3d1b8d2b2795e3ba47f189d97d49d7debcdd0fd7d2d3879a5271c0cc591"
+    },
+    {
+      "path": "bbg/rs/src/lib.rs",
+      "sha256": "a01fdcf8c17141065a80f5ea4eef19340cfa1f9948ad9cb483428a5aeabbb62c"
+    },
+    {
+      "path": "bbg/rs/src/state.rs",
+      "sha256": "9c84895ca036aafd8b8b62d1b68590b315a16cf36384b15d8d02f084a70fceb8"
+    },
+    {
+      "path": "bbg/rs/src/storage/mod.rs",
+      "sha256": "4bb6792e749ec61a06ab62682456d3ccecb432f58dd321d4b379632315fd1e19"
+    },
+    {
+      "path": "bbg/rs/src/storage/tiered.rs",
+      "sha256": "7d571bccd8d71f8b543c172883f13a0b82dd8b5baa346dc81e3628956a0c975c"
+    },
+    {
+      "path": "bbg/rs/src/storage/fjall.rs",
+      "sha256": "4838fe784da0c8ff011047177efc40fe1edf2fb4627679f71151e874e0049267"
+    },
+    {
+      "path": "bbg/rs/src/storage/redb.rs",
+      "sha256": "28166fa935b3d44fa9689820aa02f542ba746c59ba131a0642900b0a5d504254"
+    },
+    {
+      "path": "bbg/rs/src/storage/application.rs",
+      "sha256": "0770ba8ef194ff98aa725fa33dffb0201a18f8b1a0bdb1959aa84a68e6881556"
+    },
+    {
+      "path": "bbg/rs/tests/storage_persistence.rs",
+      "sha256": "82edf9db15f3d68544ef69339fd47f0ca1187b4b2c2765f5fd246978cb8dac12"
+    },
+    {
+      "path": "cybergraph/src/api.rs",
+      "sha256": "1bc4585c3d7a0dbcc84158e306f471a459a1e1ce12b971541da5bf189aaad76d"
+    },
+    {
+      "path": "cybergraph/src/application.rs",
+      "sha256": "05d8bfe5ca474fe753d584264d5e7743ad8172e549c6db4e9ef12e360113eb65"
+    },
+    {
+      "path": "soft3/crate/src/node.rs",
+      "sha256": "d28301902dff987ef4ec199c2c1db6f26529ec2ba36c80e10442d3118f7bff7a"
+    },
+    {
+      "path": "cyber/src/main.rs",
+      "sha256": "a1e2a51e74de2f40d4dabaa3f252eb1fb5838bb04d8eca23e82a3bb5d311abb0"
+    }
+  ]
+}

@@ -1,165 +1,284 @@
-// ---
-// tags: bbg, rust
-// crystal-type: source
-// crystal-domain: cyber
-// ---
-//! Tiered storage: all backends active simultaneously.
-//!
-//! Routing:
-//!   write  → HOT always; write-through to WARM for durability (not EPHEMERAL)
-//!   read   → HOT → WARM → COLD → NETWORK (cascade, no promotion on read)
-//!   commit → HOT + WARM flushed per block; COLD at archival checkpoints
-//!   evict  → called by soma when focus drops; moves HOT entry to WARM
-//!
-//! Promotion (WARM/COLD → HOT) is explicit, driven by soma prefetch,
-//! not lazy on read — keeping get(&self) borrow-checker clean.
-
+//! HOT cache with an authoritative WARM store and optional archival COLD data.
+use super::{
+    Durability, MAX_VALUE_ELEMENTS, NetworkStore, ScanLimits, ShardEntry, ShardStore, StorageError,
+    StorageResult, dim,
+};
+use crate::types::Particle;
 use nebu::Goldilocks;
 
-use super::{dim, NetworkStore, ShardStore};
-use crate::types::Particle;
-
 pub struct TieredStore {
-    /// L1: current polynomial evaluation tables (memory or unimem)
-    hot:     Box<dyn ShardStore>,
-    /// L2: recent state, durability copy (fjall/ssd)
-    warm:    Option<Box<dyn ShardStore>>,
-    /// L4: archival history (redb/hdd)
-    cold:    Option<Box<dyn ShardStore>>,
-    /// L3: content retrieval on miss (injected by cybergraph)
+    hot: Box<dyn ShardStore>,
+    warm: Option<Box<dyn ShardStore>>,
+    cold: Option<Box<dyn ShardStore>>,
     network: Option<Box<dyn NetworkStore>>,
+    failure: Option<StorageError>,
 }
 
 impl TieredStore {
     pub fn new(hot: Box<dyn ShardStore>) -> Self {
-        Self { hot, warm: None, cold: None, network: None }
+        Self {
+            hot,
+            warm: None,
+            cold: None,
+            network: None,
+            failure: None,
+        }
     }
-
-    pub fn with_warm(mut self, warm: Box<dyn ShardStore>) -> Self {
+    pub fn with_warm(mut self, warm: Box<dyn ShardStore>) -> StorageResult<Self> {
+        if self.warm.is_some() {
+            return Err(StorageError::Unsupported("WARM is already attached"));
+        }
+        if warm.durability() == Durability::Disk && self.hot.durability() != Durability::Memory {
+            return Err(StorageError::Unsupported(
+                "durable WARM requires a memory HOT tier",
+            ));
+        }
+        if warm.durability() == Durability::Disk
+            && (self.hot.has_pending()
+                || (0..dim::EPHEMERAL).any(|d| self.hot.iter(d).next().is_some()))
+        {
+            return Err(StorageError::Unsupported(
+                "attach durable WARM to an empty persistent HOT cache",
+            ));
+        }
         self.warm = Some(warm);
-        self
+        Ok(self)
     }
-
     pub fn with_cold(mut self, cold: Box<dyn ShardStore>) -> Self {
         self.cold = Some(cold);
         self
     }
-
     pub fn with_network(mut self, net: Box<dyn NetworkStore>) -> Self {
         self.network = Some(net);
         self
     }
 
-    /// Promote a (dim, key) from WARM or COLD into HOT.
-    /// Called by soma prefetch or focus-driven caching.
-    pub fn promote(&mut self, dimension: u8, key: &[u8; 32]) -> bool {
-        // Try warm first, then cold.
-        let found = self.warm.as_ref()
-            .and_then(|w| w.get(dimension, key))
-            .or_else(|| self.cold.as_ref().and_then(|c| c.get(dimension, key)));
+    fn ready(&self) -> StorageResult<()> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        Ok(())
+    }
 
-        if let Some(slice) = found {
-            let owned = slice.to_vec();
-            self.hot.put(dimension, *key, owned);
-            true
+    fn retain_failure<T>(&mut self, result: StorageResult<T>) -> StorageResult<T> {
+        if let Err(error) = &result {
+            self.failure = Some(error.clone());
+        }
+        result
+    }
+
+    pub fn promote(&mut self, dimension: u8, key: &[u8; 32]) -> StorageResult<bool> {
+        self.ready()?;
+        if let Some(value) = self.read(dimension, key, MAX_VALUE_ELEMENTS)? {
+            self.hot.put(dimension, *key, value)?;
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
 
-    /// Evict a (dim, key) from HOT, ensuring it is persisted in WARM.
-    /// Called by soma when focus drops below eviction threshold.
-    pub fn evict(&mut self, dimension: u8, key: &[u8; 32]) {
-        if let Some(slice) = self.hot.get(dimension, key) {
-            let owned = slice.to_vec();
-            if let Some(warm) = &mut self.warm {
-                warm.put(dimension, *key, owned);
+    /// Evict only an unchanged value whose WARM batch is already committed.
+    /// An eviction never commits the caller's unfinished transaction.
+    pub fn evict(&mut self, dimension: u8, key: &[u8; 32]) -> StorageResult<()> {
+        self.ready()?;
+        super::access::check_dimension(dimension)?;
+        if dimension == dim::EPHEMERAL {
+            return Ok(());
+        }
+        if let Some(warm) = &self.warm
+            && !warm.has_pending()
+        {
+            let hot = self.hot.get(dimension, key);
+            if let Some(value) = warm.read(dimension, key, MAX_VALUE_ELEMENTS)?
+                && hot == Some(value.as_slice())
+            {
+                self.hot.remove(dimension, key)?;
             }
         }
-        self.hot.remove(dimension, key);
+        Ok(())
     }
 
-    /// Fetch raw content bytes for a particle from the network tier.
     pub fn fetch_content(&self, particle: &Particle) -> Option<Vec<u8>> {
         self.network.as_ref()?.fetch(particle)
     }
 
-    /// Flush COLD tier explicitly (called at archival checkpoints, not per block).
-    pub fn archive(&mut self) -> Option<[u8; 32]> {
-        self.cold.as_mut().map(|c| c.commit())
+    pub fn archive(&mut self) -> StorageResult<Option<[u8; 32]>> {
+        self.ready()?;
+        self.cold.as_mut().map(|c| c.commit()).transpose()
     }
 }
 
 impl ShardStore for TieredStore {
-    /// Cascade: HOT → WARM → COLD. No lazy promotion; use promote() explicitly.
     fn get(&self, dimension: u8, key: &[u8; 32]) -> Option<&[Goldilocks]> {
-        if let Some(v) = self.hot.get(dimension, key) {
-            return Some(v);
+        if self.is_poisoned() {
+            return None;
+        }
+        if let Some(value) = self.hot.get(dimension, key) {
+            return Some(value);
+        }
+        if dimension == dim::EPHEMERAL {
+            return None;
         }
         if let Some(warm) = &self.warm {
-            if let Some(v) = warm.get(dimension, key) {
-                return Some(v);
-            }
+            return warm.get(dimension, key);
         }
-        if let Some(cold) = &self.cold {
-            if let Some(v) = cold.get(dimension, key) {
-                return Some(v);
-            }
-        }
-        None
+        self.cold.as_ref().and_then(|cold| cold.get(dimension, key))
     }
 
-    /// Write-through: HOT always, WARM for durability. EPHEMERAL stays in HOT only.
-    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) {
-        if dimension != dim::EPHEMERAL {
-            if let Some(warm) = &mut self.warm {
-                warm.put(dimension, key, value.clone());
-            }
+    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) -> StorageResult<()> {
+        self.ready()?;
+        if dimension != dim::EPHEMERAL
+            && let Some(warm) = &mut self.warm
+        {
+            warm.put(dimension, key, value.clone())?;
         }
-        self.hot.put(dimension, key, value);
+        let result = self.hot.put(dimension, key, value);
+        if dimension != dim::EPHEMERAL && self.warm.is_some() {
+            self.retain_failure(result)
+        } else {
+            result
+        }
     }
 
-    /// Dirty entries are tracked by HOT.
     fn dirty_entries(&self) -> &[(u8, [u8; 32], Vec<Goldilocks>)] {
         self.hot.dirty_entries()
     }
+    fn has_pending(&self) -> bool {
+        self.hot.has_pending() || self.warm.as_ref().is_some_and(|w| w.has_pending())
+    }
+    fn durability(&self) -> Durability {
+        self.warm
+            .as_ref()
+            .map_or_else(|| self.hot.durability(), |w| w.durability())
+    }
+    fn is_poisoned(&self) -> bool {
+        self.failure.is_some()
+            || self.hot.is_poisoned()
+            || self.warm.as_ref().is_some_and(|w| w.is_poisoned())
+    }
 
-    /// Per-block commit: flush HOT + WARM. COLD is archival-only (see archive()).
-    fn commit(&mut self) -> [u8; 32] {
-        let sub_root = self.hot.commit();
-        if let Some(warm) = &mut self.warm {
-            let _ = warm.commit();
+    fn commit(&mut self) -> StorageResult<[u8; 32]> {
+        self.ready()?;
+        let result = (|| {
+            let durable_id = self.warm.as_mut().map(|warm| warm.commit()).transpose()?;
+            let hot_id = self.hot.commit().map_err(|error| match durable_id {
+                Some(change_id) if self.durability() == Durability::Disk => {
+                    StorageError::CommitUnknown {
+                        change_id,
+                        message: format!("WARM committed; HOT publication failed: {error}"),
+                    }
+                }
+                _ => error,
+            })?;
+            Ok(durable_id.unwrap_or(hot_id))
+        })();
+        self.retain_failure(result)
+    }
+
+    fn last_commit(&self) -> StorageResult<Option<[u8; 32]>> {
+        self.ready()?;
+        self.warm
+            .as_ref()
+            .map_or_else(|| self.hot.last_commit(), |w| w.last_commit())
+    }
+
+    fn read(
+        &self,
+        dimension: u8,
+        key: &[u8; 32],
+        max_elements: usize,
+    ) -> StorageResult<Option<Vec<Goldilocks>>> {
+        self.ready()?;
+        // A poisoned owner must surface its unresolved outcome even on a HOT hit.
+        if dimension != dim::EPHEMERAL
+            && let Some(warm) = &self.warm
+        {
+            if !warm.is_poisoned()
+                && let Some(hot) = self.hot.get(dimension, key)
+            {
+                return Ok(Some(super::access::copy_value(hot, max_elements)?));
+            }
+            return warm.read(dimension, key, max_elements);
         }
-        sub_root
+        let value = self.hot.read(dimension, key, max_elements)?;
+        if value.is_some() || dimension == dim::EPHEMERAL {
+            return Ok(value);
+        }
+        self.cold
+            .as_ref()
+            .map_or(Ok(None), |c| c.read(dimension, key, max_elements))
+    }
+
+    fn scan(
+        &self,
+        dimension: u8,
+        after: Option<[u8; 32]>,
+        limits: ScanLimits,
+    ) -> StorageResult<Vec<ShardEntry>> {
+        self.ready()?;
+        if dimension != dim::EPHEMERAL {
+            if let Some(warm) = &self.warm {
+                return warm.scan(dimension, after, limits);
+            }
+            if self.cold.is_some() {
+                return Err(StorageError::Unsupported(
+                    "scan mixed HOT/archive without WARM",
+                ));
+            }
+        }
+        self.hot.scan(dimension, after, limits)
     }
 
     fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [Goldilocks]> {
+        if self.is_poisoned() {
+            return None;
+        }
         self.hot.get_mut(dimension, key)
     }
 
-    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) {
-        self.hot.mark_dirty(dimension, key);
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) -> StorageResult<()> {
+        self.ready()?;
+        super::access::check_dimension(dimension)?;
+        let result = (|| {
+            if dimension != dim::EPHEMERAL
+                && let (Some(value), Some(warm)) = (self.hot.get(dimension, &key), &mut self.warm)
+            {
+                warm.put(dimension, key, value.to_vec())?;
+            }
+            self.hot.mark_dirty(dimension, key)
+        })();
+        self.retain_failure(result)
     }
 
-    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
-        // Materialize from cascade before mutating any tier.
-        let val = self.get(dimension, key).map(|s| s.to_vec())?;
-        self.hot.remove(dimension, key);
-        if let Some(warm) = &mut self.warm {
-            warm.remove(dimension, key);
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> StorageResult<Option<Vec<Goldilocks>>> {
+        self.ready()?;
+        if dimension != dim::EPHEMERAL && self.warm.is_none() && self.cold.is_some() {
+            return Err(StorageError::Unsupported(
+                "archive deletion requires authoritative WARM",
+            ));
         }
-        if let Some(cold) = &mut self.cold {
-            cold.remove(dimension, key);
+        let value = self.read(dimension, key, MAX_VALUE_ELEMENTS)?;
+        if dimension != dim::EPHEMERAL
+            && let Some(warm) = &mut self.warm
+        {
+            warm.remove(dimension, key)?;
         }
-        Some(val)
+        let result = self.hot.remove(dimension, key).map(|_| value);
+        if dimension != dim::EPHEMERAL && self.warm.is_some() {
+            self.retain_failure(result)
+        } else {
+            result
+        }
     }
 
     fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_> {
+        if self.is_poisoned() {
+            return Box::new(std::iter::empty());
+        }
         self.hot.iter(dimension)
     }
 }
 
-/// For tests and validators that don't need persistence: memory-only store.
 impl Default for TieredStore {
     fn default() -> Self {
         Self::new(Box::new(super::mem::MemStore::new()))
@@ -167,129 +286,5 @@ impl Default for TieredStore {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::storage::mem::MemStore;
-    use nebu::Goldilocks;
-
-    fn g(v: u64) -> Goldilocks { Goldilocks::new(v) }
-    fn key(b: u8) -> [u8; 32] { [b; 32] }
-
-    #[test]
-    fn write_through_to_warm() {
-        let hot  = Box::new(MemStore::new());
-        let warm = Box::new(MemStore::new());
-        let warm_ptr = &*warm as *const MemStore as usize;
-        let mut store = TieredStore::new(hot).with_warm(warm);
-
-        store.put(0, key(1), vec![g(42)]);
-
-        // Value readable from hot
-        assert_eq!(store.hot.get(0, &key(1)), Some([g(42)].as_slice()));
-        // Value also in warm (write-through)
-        assert_eq!(store.warm.as_ref().unwrap().get(0, &key(1)), Some([g(42)].as_slice()));
-        let _ = warm_ptr; // suppress warning
-    }
-
-    #[test]
-    fn read_cascades_hot_then_warm() {
-        let hot  = Box::new(MemStore::new());
-        let mut warm = Box::new(MemStore::new());
-        warm.put(0, key(2), vec![g(99)]);
-        // hot does NOT have key(2)
-        let _ = hot.get(0, &key(2));
-
-        let store = TieredStore::new(hot).with_warm(warm);
-        assert_eq!(store.get(0, &key(2)), Some([g(99)].as_slice()));
-    }
-
-    #[test]
-    fn hot_hit_shadows_warm() {
-        let mut hot  = Box::new(MemStore::new());
-        let mut warm = Box::new(MemStore::new());
-        hot.put(0, key(3), vec![g(1)]);
-        warm.put(0, key(3), vec![g(2)]);  // different value in warm
-
-        let store = TieredStore::new(hot).with_warm(warm);
-        // HOT wins
-        assert_eq!(store.get(0, &key(3)), Some([g(1)].as_slice()));
-    }
-
-    #[test]
-    fn promote_moves_warm_to_hot() {
-        let hot  = Box::new(MemStore::new());
-        let mut warm = Box::new(MemStore::new());
-        warm.put(0, key(4), vec![g(77)]);
-
-        let mut store = TieredStore::new(hot).with_warm(warm);
-        assert!(store.hot.get(0, &key(4)).is_none());
-
-        let promoted = store.promote(0, &key(4));
-        assert!(promoted);
-        assert_eq!(store.hot.get(0, &key(4)), Some([g(77)].as_slice()));
-    }
-
-    #[test]
-    fn ephemeral_not_written_to_warm() {
-        let hot  = Box::new(MemStore::new());
-        let warm = Box::new(MemStore::new());
-        let mut store = TieredStore::new(hot).with_warm(warm);
-
-        store.put(dim::EPHEMERAL, key(5), vec![g(123)]);
-
-        assert_eq!(store.hot.get(dim::EPHEMERAL, &key(5)), Some([g(123)].as_slice()));
-        assert!(store.warm.as_ref().unwrap().get(dim::EPHEMERAL, &key(5)).is_none(),
-            "EPHEMERAL must not be written to warm tier");
-    }
-
-    #[test]
-    fn ephemeral_not_in_dirty_after_commit() {
-        let mut store = TieredStore::default();
-        store.put(dim::EPHEMERAL, key(6), vec![g(7)]);
-        assert!(store.dirty_entries().is_empty(), "EPHEMERAL must not appear in dirty");
-    }
-
-    #[test]
-    fn remove_clears_from_all_tiers() {
-        let hot  = Box::new(MemStore::new());
-        let warm = Box::new(MemStore::new());
-        let mut store = TieredStore::new(hot).with_warm(warm);
-
-        store.put(0, key(7), vec![g(55)]);
-        let removed = store.remove(0, &key(7));
-
-        assert_eq!(removed, Some(vec![g(55)]));
-        assert!(store.hot.get(0, &key(7)).is_none());
-        assert!(store.warm.as_ref().unwrap().get(0, &key(7)).is_none());
-    }
-
-    #[test]
-    fn get_mut_and_mark_dirty_roundtrip() {
-        let mut store = TieredStore::default();
-        store.put(0, key(8), vec![g(10), g(20)]);
-        store.commit(); // clear dirty
-
-        {
-            let slice = store.get_mut(0, &key(8)).unwrap();
-            slice[0] = g(99);
-        }
-        store.mark_dirty(0, key(8));
-
-        let dirty = store.dirty_entries();
-        assert_eq!(dirty.len(), 1);
-        assert_eq!(dirty[0].2[0], g(99));
-    }
-
-    #[test]
-    fn iter_returns_dimension_entries() {
-        let mut store = TieredStore::default();
-        store.put(0, key(1), vec![g(1)]);
-        store.put(0, key(2), vec![g(2)]);
-        store.put(1, key(3), vec![g(3)]);
-
-        let dim0: Vec<_> = store.iter(0).collect();
-        assert_eq!(dim0.len(), 2);
-        let dim1: Vec<_> = store.iter(1).collect();
-        assert_eq!(dim1.len(), 1);
-    }
-}
+#[path = "tiered_tests.rs"]
+mod tests;

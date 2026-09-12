@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use nebu::Goldilocks;
 use unimem::{Block, MemError};
 
-use super::{dim, hash_dirty, ShardStore};
+use super::{dim, hash_dirty, ShardStore, StorageResult};
 
 // Verify layout assumptions at compile time.
 // Goldilocks is repr(transparent) over u64 — size 8, align 8.
@@ -111,7 +111,9 @@ impl ShardStore for UnimemStore {
         }
     }
 
-    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) {
+    fn put(&mut self, dimension: u8, key: [u8; 32], value: Vec<Goldilocks>) -> StorageResult<()> {
+        super::access::check_dimension(dimension)?;
+        if value.len() > super::MAX_VALUE_ELEMENTS { return Err(super::StorageError::Limit("value element count")); }
         if dimension != dim::EPHEMERAL {
             self.dirty.push((dimension, key, value.clone()));
         }
@@ -127,7 +129,7 @@ impl ShardStore for UnimemStore {
                 dst[i * 8..(i + 1) * 8].copy_from_slice(&g.as_u64().to_le_bytes());
             }
             pool.slots.insert(key, (slot_idx, value.len()));
-            return;
+            return Ok(());
         }
 
         // Per-entry Block path.
@@ -144,16 +146,17 @@ impl ShardStore for UnimemStore {
             Err(_) => Entry::Heap(value.clone()),
         };
         self.entries.insert((dimension, key), entry);
+        Ok(())
     }
 
     fn dirty_entries(&self) -> &[(u8, [u8; 32], Vec<Goldilocks>)] {
         &self.dirty
     }
 
-    fn commit(&mut self) -> [u8; 32] {
+    fn commit(&mut self) -> StorageResult<[u8; 32]> {
         let out = hash_dirty(&self.dirty);
         self.dirty.clear();
-        out
+        Ok(out)
     }
 
     fn get_mut(&mut self, dimension: u8, key: &[u8; 32]) -> Option<&mut [Goldilocks]> {
@@ -186,19 +189,22 @@ impl ShardStore for UnimemStore {
         }
     }
 
-    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) {
-        if dimension == dim::EPHEMERAL { return; }
+    fn mark_dirty(&mut self, dimension: u8, key: [u8; 32]) -> StorageResult<()> {
+        super::access::check_dimension(dimension)?;
+        if dimension == dim::EPHEMERAL { return Ok(()); }
         // Materialize the current value to release the shared borrow before
         // pushing to dirty.
         let val = self.get(dimension, &key).map(|s| s.to_vec());
         if let Some(v) = val {
             self.dirty.push((dimension, key, v));
         }
+        Ok(())
     }
 
-    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> Option<Vec<Goldilocks>> {
+    fn remove(&mut self, dimension: u8, key: &[u8; 32]) -> StorageResult<Option<Vec<Goldilocks>>> {
+        super::access::check_dimension(dimension)?;
         // Materialize value before removing.
-        let val = self.get(dimension, key).map(|s| s.to_vec())?;
+        let Some(val) = self.get(dimension, key).map(|s| s.to_vec()) else { return Ok(None); };
 
         if let Some(pool) = self.pools.get_mut(&dimension) {
             if let Some((slot_idx, _)) = pool.slots.remove(key) {
@@ -209,7 +215,7 @@ impl ShardStore for UnimemStore {
         }
 
         self.dirty.retain(|(d, k, _)| !(*d == dimension && k == key));
-        Some(val)
+        Ok(Some(val))
     }
 
     fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[Goldilocks])> + '_> {
@@ -305,8 +311,8 @@ mod tests {
         let mut store = UnimemStore::new();
         store.reserve_pool(0, 16, BPE).expect("reserve_pool");
 
-        store.put(0, key(1), vec![g(10), g(20)]);
-        store.put(0, key(2), vec![g(30)]);
+        store.put(0, key(1), vec![g(10), g(20)]).unwrap();
+        store.put(0, key(2), vec![g(30)]).unwrap();
 
         assert_eq!(store.get(0, &key(1)), Some([g(10), g(20)].as_slice()));
         assert_eq!(store.get(0, &key(2)), Some([g(30)].as_slice()));
@@ -317,7 +323,7 @@ mod tests {
         assert_ne!(slot1, slot2, "different keys must occupy different slots");
 
         // Overwrite key(1) — slot index must be stable.
-        store.put(0, key(1), vec![g(99)]);
+        store.put(0, key(1), vec![g(99)]).unwrap();
         let slot1b = store.cell(0, &key(1)).expect("cell still exists").1;
         assert_eq!(slot1, slot1b, "slot index stable on overwrite");
 
@@ -336,15 +342,15 @@ mod tests {
         let mut store = UnimemStore::new();
         store.reserve_pool(0, 4, BPE).expect("reserve_pool");
 
-        store.put(0, key(1), vec![g(1)]);
-        store.put(0, key(2), vec![g(2)]);
+        store.put(0, key(1), vec![g(1)]).unwrap();
+        store.put(0, key(2), vec![g(2)]).unwrap();
         let (_, slot1) = store.cell(0, &key(1)).unwrap();
 
-        assert_eq!(store.remove(0, &key(1)), Some(vec![g(1)]));
+        assert_eq!(store.remove(0, &key(1)).unwrap(), Some(vec![g(1)])).unwrap();
         assert!(store.get(0, &key(1)).is_none());
         assert!(store.cell(0, &key(1)).is_none());
 
-        store.put(0, key(3), vec![g(3)]);
+        store.put(0, key(3), vec![g(3)]).unwrap();
         let (_, slot3) = store.cell(0, &key(3)).unwrap();
         assert_eq!(slot1, slot3, "freed slot reused by next put");
     }
@@ -353,7 +359,7 @@ mod tests {
     fn pool_ephemeral_not_in_dirty() {
         let mut store = UnimemStore::new();
         store.reserve_pool(dim::EPHEMERAL, 8, BPE).expect("reserve_pool");
-        store.put(dim::EPHEMERAL, key(1), vec![g(42)]);
+        store.put(dim::EPHEMERAL, key(1), vec![g(42)]).unwrap();
         assert!(store.dirty_entries().is_empty(), "EPHEMERAL must not appear in dirty");
         assert_eq!(store.get(dim::EPHEMERAL, &key(1)), Some([g(42)].as_slice()));
     }
