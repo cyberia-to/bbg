@@ -9,7 +9,7 @@
 pub type Particle = [u8; 32];
 
 /// Neuron identifier: 32-byte hemera hash.
-pub type NeuronId = [u8; 32];
+pub use neuron_id::NeuronId;
 
 /// A particle in the cybergraph.
 ///

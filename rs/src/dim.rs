@@ -1,67 +1,79 @@
-// ---
-// tags: bbg, rust
-// crystal-type: source
-// crystal-domain: cyber
-// ---
-//! Dimension commitment helpers for BBG authenticated state.
-//!
-//! A dimension is a sorted map of `(key: Particle, value: &[u8])` entries
-//! committed via Brakedown over a MultilinearPoly.
-
-use lens::{brakedown::Brakedown, Commitment, Lens, MultilinearPoly};
+//! Versioned, injective dimension serialization shared by roots and reads.
+use crate::types::Particle;
+use lens::{Commitment, Lens, MultilinearPoly, brakedown::Brakedown};
 use nebu::Goldilocks;
 
-use crate::types::Particle;
+pub const DIMENSION_VERSION: u64 = 2;
+pub const HEADER_FIELDS: usize = 3;
+pub const KEY_FIELDS: usize = 8;
 
-/// Serialize a `u64` value to one Goldilocks element.
+/// Legacy field conversion (modulo p). Commit arbitrary u64 values with u64_limbs.
 #[inline]
 pub fn goldilocks_from_u64(v: u64) -> Goldilocks {
     Goldilocks::new(v)
 }
 
-/// Serialize a 32-byte array to 4 Goldilocks elements (8 bytes each, LE).
-pub fn goldilocks_from_bytes32(b: &[u8; 32]) -> [Goldilocks; 4] {
-    let mut out = [Goldilocks::ZERO; 4];
-    for (i, chunk) in b.chunks_exact(8).enumerate() {
-        let mut buf = [0u8; 8];
-        buf.copy_from_slice(chunk);
-        out[i] = Goldilocks::new(u64::from_le_bytes(buf));
-    }
-    out
+/// Injective encoding of an arbitrary u64 as two little-endian u32 limbs.
+pub fn u64_limbs(v: u64) -> [Goldilocks; 2] {
+    [Goldilocks::new(v & 0xffff_ffff), Goldilocks::new(v >> 32)]
 }
 
-/// Commit a sorted list of `(key, raw_field_elements)` pairs.
-///
-/// - Each key is serialized as 4 Goldilocks elements.
-/// - Each value element is one Goldilocks per u64.
-/// - The concatenated list is padded to the next power of 2.
-/// - Empty dimension → `Brakedown::commit_raw(b"bbg-empty-dim" encoded)`.
-pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
-    if entries.is_empty() {
-        // Use commit_raw on a canonical empty sentinel so the type is the
-        // same `Commitment` that lens/0.2 exports.
-        let sentinel: Vec<Goldilocks> = b"bbg-empty-dim"
+pub(crate) fn scalar_fields(values: &[u64]) -> Vec<Goldilocks> {
+    values.iter().flat_map(|&v| u64_limbs(v)).collect()
+}
+
+/// Injective encoding of arbitrary keys and IDs, including non-field bytes.
+pub fn bytes32_limbs(bytes: &[u8; 32]) -> [Goldilocks; 8] {
+    std::array::from_fn(|i| {
+        Goldilocks::new(u32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap()) as u64)
+    })
+}
+
+/// Legacy four-field conversion (modulo p). Use bytes32_limbs for arbitrary bytes.
+/// Canonical Hemera digests already fit these four fields.
+pub fn goldilocks_from_bytes32(bytes: &[u8; 32]) -> [Goldilocks; 4] {
+    std::array::from_fn(|i| {
+        let value = u64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap());
+        Goldilocks::new(value)
+    })
+}
+
+pub(crate) fn dim_serialize(entries: &[(Particle, Vec<Goldilocks>)]) -> Vec<Goldilocks> {
+    let count = HEADER_FIELDS
+        + entries
             .iter()
-            .map(|&b| Goldilocks::new(b as u64))
-            .collect();
-        let target = sentinel.len().next_power_of_two();
-        let mut padded = sentinel;
-        padded.resize(target, Goldilocks::ZERO);
-        return Brakedown::commit_raw(&padded);
+            .map(|(_, values)| KEY_FIELDS + values.len())
+            .sum::<usize>();
+    let mut fields = Vec::with_capacity(count);
+    fields.extend([
+        Goldilocks::new(DIMENSION_VERSION),
+        Goldilocks::new(count as u64),
+        Goldilocks::new(entries.len() as u64),
+    ]);
+    for (key, values) in entries {
+        fields.extend(bytes32_limbs(key));
+        fields.extend_from_slice(values);
     }
-
-    let mut elems: Vec<Goldilocks> = Vec::new();
-    for (key, vals) in entries {
-        let key_elems = goldilocks_from_bytes32(key);
-        elems.extend_from_slice(&key_elems);
-        elems.extend_from_slice(vals);
-    }
-
-    // Pad to next power of 2.
-    let target = elems.len().next_power_of_two();
-    elems.resize(target, Goldilocks::ZERO);
-
-    let poly = MultilinearPoly::new(elems);
-    Brakedown::commit(&poly)
+    fields
 }
 
+pub(crate) fn commit_fields(fields: &[Goldilocks]) -> Commitment {
+    let mut padded = fields.to_vec();
+    padded.resize(padded.len().next_power_of_two(), Goldilocks::ZERO);
+    Brakedown::commit(&MultilinearPoly::new(padded))
+}
+
+pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
+    commit_fields(&dim_serialize(entries))
+}
+
+/// Internal commitment digests are canonical by the Hemera hash contract.
+pub(crate) fn digest_limbs(bytes: &[u8; 32]) -> [Goldilocks; 4] {
+    for chunk in bytes.chunks_exact(8) {
+        assert!(
+            u64::from_le_bytes(chunk.try_into().unwrap()) < nebu::field::P,
+            "noncanonical Hemera digest"
+        );
+    }
+    goldilocks_from_bytes32(bytes)
+}

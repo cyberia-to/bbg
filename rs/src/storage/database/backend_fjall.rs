@@ -82,6 +82,15 @@ impl FjallEngine {
             .ok_or(StorageError::Corrupt("unknown database table"))
     }
 
+    pub(super) fn check_known_tables(&self) -> StorageResult<()> {
+        for name in self.keyspace.list_partitions() {
+            if !self.tables.keys().any(|table| table.name() == &name[..]) {
+                return Err(StorageError::Unsupported("unrecognized source partition"));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn get(
         &self,
         table: Table,

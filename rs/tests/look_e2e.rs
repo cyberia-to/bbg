@@ -12,12 +12,12 @@
 //! argument exists to enforce: a prover cannot read state the root does not
 //! commit to.
 
+use bbg::BbgState;
 use bbg::query::ProofLookProvider;
 use bbg::types::ParticleRecord;
-use bbg::BbgState;
 use nebu::Goldilocks;
-use nox::{reduce, Outcome, Order, Reduction, VecTrace};
-use zheng::{commit, verify, ProofParams, Statement};
+use nox::{Order, Outcome, Reduction, VecTrace, reduce};
+use zheng::{ProofParams, Statement, commit};
 
 fn g(v: u64) -> Goldilocks {
     Goldilocks::new(v)
@@ -28,11 +28,25 @@ fn sample_state() -> BbgState {
     let mut state = BbgState::new();
     state.particles.insert(
         [1u8; 32],
-        ParticleRecord { energy: 77, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
+        ParticleRecord {
+            energy: 77,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        },
     );
     state.particles.insert(
         [2u8; 32],
-        ParticleRecord { energy: 88, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
+        ParticleRecord {
+            energy: 88,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        },
     );
     state
 }
@@ -74,15 +88,15 @@ fn open_statement(bbg_root: [u8; 32]) -> Statement {
 }
 
 #[test]
-fn look_proof_verifies_against_state_root() {
+fn legacy_recursive_opening_fails_closed() {
     let state = sample_state();
     let root = state.root();
 
-    // Particles dimension layout: [key(4) | energy, pi_star, weight, s_yes,
-    // s_no, meta_score] per entry — cell 4 is the first entry's energy.
+    // Particles dimension layout: [header(3)|key(8) | energy_lo,energy_hi, pi_star, weight, s_yes,
+    // s_no, meta_score] per entry — cell 11 is the first entry's energy.
     let mut ar = Reduction::<4096>::new();
     let obj = make_obj(&mut ar, &root);
-    let formula = make_look(&mut ar, 0, 4);
+    let formula = make_look(&mut ar, 0, 11);
 
     let provider = ProofLookProvider::new(&state);
     let mut trace = VecTrace::default();
@@ -96,12 +110,16 @@ fn look_proof_verifies_against_state_root() {
     assert_eq!(openings.len(), 1);
 
     let statement = open_statement(root);
-    let proof = commit(&trace, &[], &[], &openings, &statement, &ProofParams::default())
-        .expect("zheng commit with a real look opening");
-    assert!(
-        verify(&proof, &statement, &ProofParams::default()).is_ok(),
-        "the look proof verifies against the state root"
-    );
+    let error = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &statement,
+        &ProofParams::default(),
+    )
+    .unwrap_err();
+    assert!(format!("{error:?}").contains("UnsupportedRecursiveOpening"));
 }
 
 #[test]
@@ -113,13 +131,20 @@ fn look_against_stale_root_is_rejected() {
     let mut state = state;
     state.particles.insert(
         [3u8; 32],
-        ParticleRecord { energy: 99, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
+        ParticleRecord {
+            energy: 99,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        },
     );
     state.refresh_root();
 
     let mut ar = Reduction::<4096>::new();
     let obj = make_obj(&mut ar, &stale_root);
-    let formula = make_look(&mut ar, 0, 4);
+    let formula = make_look(&mut ar, 0, 11);
 
     let provider = ProofLookProvider::new(&state);
     let mut trace = VecTrace::default();
@@ -130,9 +155,69 @@ fn look_against_stale_root_is_rejected() {
     // The openings carry the CURRENT leaves; the trace carries the STALE root.
     // The root-binding steps disagree — commit must fail, not produce a proof.
     let statement = open_statement(state.root());
-    let result = commit(&trace, &[], &[], &openings, &statement, &ProofParams::default());
+    let result = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &statement,
+        &ProofParams::default(),
+    );
     assert!(
         result.is_err(),
         "a look against a root the leaves do not hash to must not prove"
     );
+}
+
+#[test]
+fn certified_state_reads_bind_actual_execution_and_reject_missing_proof_data() {
+    use bbg::certificate::StateCertificate;
+    use zheng::execution::{ExecutionNoun as N, state::prove_state_execution};
+    let pair = |a, b| N::Pair(Box::new(a), Box::new(b));
+    let program = pair(
+        N::Atom(17),
+        pair(pair(N::Atom(1), N::Atom(0)), pair(N::Atom(1), N::Atom(11))),
+    );
+    let state = sample_state();
+    let cert = StateCertificate::from_state(&state, &[0]).unwrap();
+    let root = cert.root().unwrap();
+    cert.verify(root).unwrap();
+    let (statement, proof) =
+        prove_state_execution(&program, &[], 1000, root, true, [0; 32], &mut |ns, key| {
+            cert.cell(ns, key)
+        })
+        .unwrap();
+    assert_eq!(statement.execution.public_output, vec![77]);
+    statement
+        .verify(&proof, &mut |ns, key| cert.cell(ns, key))
+        .unwrap();
+    for change in 0..5 {
+        let mut altered = statement.clone();
+        match change {
+            0 => altered.execution.public_output[0] += 1,
+            1 => altered.reads[0].key += 1,
+            2 => altered.reads[0].value += 1,
+            3 => altered.state_root[0] = (altered.state_root[0] + 1) % nebu::field::P,
+            _ => altered.reads.clear(),
+        }
+        assert!(
+            altered
+                .verify(&proof, &mut |ns, key| cert.cell(ns, key))
+                .is_err(),
+            "change={change}"
+        );
+    }
+    let mut missing = proof.clone();
+    let lens::Opening::TensorMerkle { columns, .. } = &mut missing.spartan.pcs_opening else {
+        panic!("expected authenticated public table")
+    };
+    columns.clear();
+    assert!(
+        statement
+            .verify(&missing, &mut |ns, key| cert.cell(ns, key))
+            .is_err()
+    );
+    let mut altered = cert.clone();
+    altered.dimensions[0].fields[11] += 1;
+    assert!(altered.verify(root).is_err());
 }
