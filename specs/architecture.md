@@ -17,7 +17,7 @@ five irreducible primitives. everything in the system is composed from these.
 
 | primitive | role | identity |
 |-----------|------|----------|
-| [[particle]] | content-addressed node, atom of knowledge | hash of content (32 bytes) |
+| [[particle]] | content-addressed node, atom of knowledge — the name of a [[file]] a cyberlink connects | hash of content (32 bytes) |
 | [[cyberlink]] | private authenticated edge, unit of meaning | hash of (neuron, from, to, token, amount, valence, time) |
 | [[neuron]] | agent with stake, identity, and focus | hash of public key |
 | [[token]] | protocol-native value: [[coin]], [[card]], [[score]], [[badge]] | denomination hash / content hash |
