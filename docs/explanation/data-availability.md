@@ -9,9 +9,9 @@ DAS (Data Availability Sampling) proves data physically exists across the neuron
 
 ## polynomial nouns make DAS native
 
-when particles ARE polynomials, DAS is no longer a separate encoding step. the particle's content is already a polynomial with a Lens commitment. extending that polynomial beyond its evaluation domain produces the erasure code automatically. the particle IS a polynomial. the extension IS the erasure code. no separate encoding pipeline.
+when files ARE polynomials, DAS is no longer a separate encoding step. the file's data is already a polynomial with a Lens commitment. extending that polynomial beyond its evaluation domain produces the erasure code automatically. the file IS a polynomial. the extension IS the erasure code. no separate encoding pipeline.
 
-sampling = Lens opening at random positions on the extended polynomial. reconstruction = polynomial interpolation from enough evaluations. the Lens commitment that identifies the particle is simultaneously the DAS commitment. one object serves both purposes.
+sampling = Lens opening at random positions on the extended polynomial. reconstruction = polynomial interpolation from enough evaluations. the Lens commitment that identifies the file — its particle — is simultaneously the DAS commitment. one object serves both purposes.
 
 this collapses the traditional DAS pipeline (data → encode → commit → sample → verify) to (polynomial noun → sample → verify). the encoding step vanishes because polynomial nouns are born erasure-coded.
 

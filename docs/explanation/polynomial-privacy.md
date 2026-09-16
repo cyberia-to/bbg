@@ -9,7 +9,7 @@ crystal-domain: cyber
 
 the cybergraph has a hard boundary: individual cyberlinks are private, aggregates are public.
 
-a neuron links particle P to particle Q with weight w. nobody learns that this specific neuron made this specific link. the public graph sees: particle P gained energy, axon (P, Q) has aggregate weight W, neuron N spent focus. the individual contribution is hidden. the aggregate is committed and queryable.
+a neuron links file P to file Q with weight w. nobody learns that this specific neuron made this specific link. the public graph sees: particle P gained energy, axon (P, Q) has aggregate weight W, neuron N spent focus. the individual contribution is hidden. the aggregate is committed and queryable.
 
 this boundary exists because knowledge graph edges are intimate data — they encode what a mind considers related. publishing individual edges is surveillance. publishing aggregates is collective intelligence. the mutator set enforces the boundary cryptographically.
 

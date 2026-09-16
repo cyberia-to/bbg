@@ -36,7 +36,7 @@ a CRDT merges everything. a G-Set union includes all elements from all replicas.
 this works at global scale because:
 
 - **stake makes conflicts expensive.** manipulating $\phi^*$ requires controlling cybergraph topology, which costs real tokens. a CRDT merge costs nothing — any replica can inject data
-- **exclusive support splits mass.** when a neuron detects conflicting particles, it links to exactly one. the unsupported member receives zero $\phi^*$ from that neuron. conflicting particles cannot both accumulate majority mass
+- **exclusive support splits mass.** when a neuron detects conflicting files, it links to exactly one. the unsupported member receives zero $\phi^*$ from that neuron. conflicting particles cannot both accumulate majority mass
 - **convergence is deterministic.** every neuron computes the same $\phi^*$ from the same graph. no coordination needed. the ordering emerges from the topology of attention — not from voting, not from timestamps, not from algebraic merge rules
 
 ## the unification
