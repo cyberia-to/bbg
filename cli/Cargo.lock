@@ -54,11 +54,12 @@ dependencies = [
 
 [[package]]
 name = "bbg"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
+ "neuron-id",
  "strata-nebu",
  "zheng",
 ]
@@ -69,7 +70,7 @@ version = "0.1.0"
 dependencies = [
  "bbg",
  "clap",
- "cyber-tape",
+ "tade",
 ]
 
 [[package]]
@@ -126,11 +127,11 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "cyber-hemera"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "cyber-lens"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "cyber-lens-assayer",
  "cyber-lens-binius",
@@ -142,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-assayer"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -161,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-brakedown"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -170,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-hemera",
  "strata-core",
@@ -180,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-ikat"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -190,7 +191,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-porphyry"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -199,19 +200,12 @@ dependencies = [
 
 [[package]]
 name = "cyber-nox"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-brakedown",
  "cyber-lens-core",
  "strata-nebu",
-]
-
-[[package]]
-name = "cyber-tape"
-version = "0.1.0"
-dependencies = [
- "bytes",
 ]
 
 [[package]]
@@ -225,6 +219,10 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "neuron-id"
+version = "0.1.0"
 
 [[package]]
 name = "once_cell_polyfill"
@@ -252,25 +250,25 @@ dependencies = [
 
 [[package]]
 name = "strata-compute"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-core"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "strata-ext"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-genies"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-ext",
@@ -279,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "strata-jali"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-nebu",
@@ -287,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "strata-kuro"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-ext",
@@ -296,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "strata-nebu"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-compute",
  "strata-core",
@@ -306,14 +304,14 @@ dependencies = [
 
 [[package]]
 name = "strata-proof"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-trop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
@@ -333,6 +331,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tade"
+version = "0.1.0"
+dependencies = [
+ "bytes",
 ]
 
 [[package]]
@@ -364,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "zheng"
-version = "0.1.2"
+version = "0.4.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",

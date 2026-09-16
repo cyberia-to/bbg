@@ -8,7 +8,7 @@
 //! A low-level console for bbg's state: apply signals, advance blocks, read a
 //! dimension, prove a key, check the root. It is not the signal lifecycle —
 //! that is cybergraph; `apply` is the raw `insert` cybergraph calls after its
-//! gate. The store is a tape-frame signal log, replayed on open (bbg is
+//! gate. The store is a tade-frame signal log, replayed on open (bbg is
 //! signal-first: state = fold(genesis, log)). See specs/cli.md.
 
 mod frame;
@@ -23,7 +23,7 @@ use frame::Event;
 #[derive(Parser)]
 #[command(name = "bbg", about = "the authenticated state store, on the command line")]
 struct Cli {
-    /// store directory (a tape-frame signal log). absent → ephemeral, in-memory.
+    /// store directory (a tade-frame signal log). absent → ephemeral, in-memory.
     #[arg(long, global = true)]
     store: Option<PathBuf>,
     /// machine-readable output.
@@ -135,7 +135,7 @@ fn run(cli: Cli) -> i32 {
     0
 }
 
-// ── store: a tape-frame log, replayed on open ────────────────────────────────
+// ── store: a tade-frame log, replayed on open ────────────────────────────────
 
 fn open_store(store: Option<&PathBuf>) -> std::io::Result<Bbg> {
     let mut bbg = Bbg::new();

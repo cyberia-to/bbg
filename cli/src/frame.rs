@@ -3,10 +3,10 @@
 // crystal-type: source
 // crystal-domain: cyber
 // ---
-//! Cyber-dialect tape frames for the bbg store log.
+//! Cyber-dialect tade frames for the bbg store log.
 //!
-//! The store log is a concatenation of tape frames — the stack's one wire
-//! format (see [[tape]]). bbg operates on the state-application signal
+//! The store log is a concatenation of tade frames — the stack's one wire
+//! format (see [[tade]]). bbg operates on the state-application signal
 //! (`bbg::Signal`), so these frames carry that shape, distinct from sync's
 //! envelope frame (which also carries prev/step/network for the chain).
 //!
@@ -19,10 +19,10 @@
 //! | finalize | DOT `.` | (empty) — a block boundary marker              |
 
 use bbg::{BoxMove, Cyberlink, IntentRecord, Signal};
-use tape::{sigil, Chunk, ReadResult, Reader};
+use tade::{sigil, Chunk, ReadResult, Reader};
 
 const RENDER_BIN: u8 = b'b';
-const SIG_FINALIZE: u8 = b'.'; // tape DOT — a block-boundary marker
+const SIG_FINALIZE: u8 = b'.'; // tade DOT — a block-boundary marker
 
 /// One replayable event in the log, in wire order.
 pub enum Event {
@@ -47,7 +47,7 @@ pub fn encode_finalize() -> Vec<u8> {
 
 // ── decode ───────────────────────────────────────────────────────────────────
 
-/// Walk a concatenated tape stream and return every event in order.
+/// Walk a concatenated tade stream and return every event in order.
 /// Frames with unknown sigils are skipped (forward-compatible).
 pub fn decode_events(bytes: &[u8]) -> Vec<Event> {
     let mut reader = Reader::new();
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn signal_frame_roundtrips() {
         let frame = encode_signal(&sig());
-        assert_eq!(frame[0], 0x1F, "tape marker");
+        assert_eq!(frame[0], 0x1F, "tade marker");
         assert_eq!(frame[1], sigil::ZAP);
         let events = decode_events(&frame);
         assert_eq!(events.len(), 1);
