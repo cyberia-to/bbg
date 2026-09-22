@@ -280,6 +280,28 @@ mod tests {
         assert!(verify_particle(&proof, &bbg.state.root(), &particle(3)));
     }
 
+    /// `verify_particle` takes `root` and `particle` but never reads them: it
+    /// only re-checks the Brakedown opening's own internal consistency. A proof
+    /// generated for one particle under one root verifies successfully against
+    /// any other root and any other claimed particle. See
+    /// bbg/audit/verify-particle-unbound.md.
+    #[test]
+    fn verify_particle_accepts_wrong_root_and_wrong_particle() {
+        let mut bbg = Bbg::new();
+        seed_neuron(&mut bbg, neuron_id(1), 100);
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
+
+        let proof = bbg
+            .prove_particle(&particle(3))
+            .expect("particle proof must exist");
+        let wrong_root = particle(255);
+        let wrong_particle = particle(254);
+        assert_ne!(wrong_root, bbg.state.root());
+        assert_ne!(wrong_particle, particle(3));
+        assert!(verify_particle(&proof, &wrong_root, &wrong_particle));
+    }
+
     #[test]
     fn prove_particle_returns_none_for_unknown_cid() {
         assert!(Bbg::new().prove_particle(&particle(255)).is_none());
