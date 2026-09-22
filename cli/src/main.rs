@@ -289,3 +289,73 @@ fn height_key(s: &str) -> Option<[u8; 32]> {
     out[..8].copy_from_slice(&n.to_le_bytes());
     Some(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{dim_from, h32, height_key};
+    use bbg::Dim;
+
+    #[test]
+    fn dim_from_recognizes_every_named_dimension() {
+        assert_eq!(dim_from("particles"), Some(Dim::Particles));
+        assert_eq!(dim_from("axons-out"), Some(Dim::AxonsOut));
+        assert_eq!(dim_from("axons-in"), Some(Dim::AxonsIn));
+        assert_eq!(dim_from("neurons"), Some(Dim::Neurons));
+        assert_eq!(dim_from("locations"), Some(Dim::Locations));
+        assert_eq!(dim_from("coins"), Some(Dim::Coins));
+        assert_eq!(dim_from("cards"), Some(Dim::Cards));
+        assert_eq!(dim_from("files"), Some(Dim::Files));
+        assert_eq!(dim_from("time"), Some(Dim::Time));
+        assert_eq!(dim_from("signals"), Some(Dim::Signals));
+    }
+
+    #[test]
+    fn dim_from_rejects_unknown_and_empty_names() {
+        assert_eq!(dim_from("balances"), None);
+        assert_eq!(dim_from("Particles"), None);
+        assert_eq!(dim_from(""), None);
+    }
+
+    #[test]
+    fn h32_accepts_full_length_and_0x_prefixed_hex() {
+        let full = "ab".repeat(32);
+        assert_eq!(h32(&full), Some([0xab; 32]));
+        assert_eq!(h32(&format!("0x{full}")), Some([0xab; 32]));
+    }
+
+    #[test]
+    fn h32_left_pads_short_hex_with_zeros() {
+        let mut expected = [0u8; 32];
+        expected[31] = 0xff;
+        assert_eq!(h32("ff"), Some(expected));
+    }
+
+    #[test]
+    fn h32_rejects_empty_overlong_and_non_hex() {
+        assert_eq!(h32(""), None);
+        assert_eq!(h32(&"a".repeat(65)), None);
+        assert_eq!(h32("zz"), None);
+    }
+
+    /// A multi-byte UTF-8 character keeps `.chars().all(is_ascii_hexdigit)`
+    /// honest (it fails on the very first non-ASCII scalar), so `h32` never
+    /// reaches the byte-index slice with one in the input.
+    #[test]
+    fn h32_rejects_non_ascii_without_panicking() {
+        assert_eq!(h32(&format!("{}{}", "a".repeat(61), '\u{a2}')), None);
+    }
+
+    #[test]
+    fn height_key_encodes_little_endian_in_the_first_8_bytes() {
+        let mut expected = [0u8; 32];
+        expected[..8].copy_from_slice(&42u64.to_le_bytes());
+        assert_eq!(height_key("42"), Some(expected));
+    }
+
+    #[test]
+    fn height_key_rejects_non_numeric_and_negative_input() {
+        assert_eq!(height_key(""), None);
+        assert_eq!(height_key("abc"), None);
+        assert_eq!(height_key("-1"), None);
+    }
+}
