@@ -189,13 +189,16 @@ when a `look(namespace, key)` executes, bbg resolves the tier transparently — 
 
 ## archival population and checkpoint boundary
 
-`TieredStore::archive()` commits COLD's own pending batch and returns its
-commit identity, decoupled from the per-block `commit()` that flushes HOT and
-WARM. population — moving a (dimension, key) value from WARM into COLD's
+this is the open half of gate D2 in `roadmap/storage-reliability.md` (the
+roadmap lands with bbg#9; on master today the gate exists only as this
+clause). `TieredStore::archive()` commits COLD's own pending batch and returns
+its commit identity (fallibly, once bbg#9's `StorageResult` contract lands),
+decoupled from the per-block `commit()` that flushes HOT and WARM. population — moving a (dimension, key) value from WARM into COLD's
 pending batch — is not automatic: nothing in the per-block commit path calls
 `cold.put`. a caller (the archival task, driven by soma's `demote` or a
-periodic sweep) selects keys eligible for archival by the same focus/energy
-threshold `demote()` already uses, writes them into COLD via `put`, and calls
+periodic sweep) selects keys eligible for archival by the focus threshold of
+the `demote(focus_threshold)` verb listed under lifecycle above — a spec verb
+today, no code implements it — writes them into COLD via `put`, and calls
 `archive()` to seal that batch under one commit identity, its checkpoint.
 
 the checkpoint boundary is this: WARM remains the sole durable copy of a key
@@ -206,7 +209,9 @@ of a key from WARM must wait for the checkpoint that archived it, never race
 ahead of it. a crash between staging a key into COLD's pending batch and
 `archive()` returning leaves WARM's copy as the sole record; the archival task
 resumes population from COLD's last successful checkpoint (its own
-`last_commit`, independent of WARM/HOT's) and retries the same keys — retrying
+`last_commit`, the per-store marker bbg#9's `ShardStore` contract introduces;
+on master COLD has no readable marker beyond `archive()`'s return value, so a
+resumable checkpoint needs that marker first) and retries the same keys — retrying
 an already-archived key is a no-op commit, not a correctness hazard, because
 COLD is addressed by the same (dimension, key) space as every other tier.
 
