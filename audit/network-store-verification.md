@@ -19,10 +19,12 @@ verifying a fix.
 
 ## finding 1 — fetched content is never checked against the particle
 
-[`storage/mod.rs`](../rs/src/storage/mod.rs) states the L3 content store
-is "self-authenticating: `H(content) = particle`"
-([specs/storage.md](../specs/storage.md) line 229 makes the same claim).
-[`storage/tiered.rs`](../rs/src/storage/tiered.rs) does not enforce it:
+[specs/storage.md](../specs/storage.md) line 155 states the L3 content
+store is "self-authenticating: `H(content) = particle`";
+[`storage/mod.rs`](../rs/src/storage/mod.rs) lines 16–19 place
+`NetworkStore` at L3 as the transport injected by cybergraph.
+[`storage/tiered.rs`](../rs/src/storage/tiered.rs) line 83 does not enforce
+the claim:
 
 ```rust
 pub fn fetch_content(&self, particle: &Particle) -> Option<Vec<u8>> {
@@ -36,8 +38,9 @@ peer returns for a requested particle is handed back unchecked. A buggy
 or adversarial peer can answer any fetch with arbitrary bytes and BBG
 will treat them as the content of the requested particle. There is no
 test exercising `fetch_content` or `NetworkStore` at all — `grep -rn
-"NetworkStore" rs/src` outside `network.rs` and `tiered.rs` returns
-nothing.
+"NetworkStore" rs/src rs/tests` outside `network.rs` and `tiered.rs` hits
+only the module table and re-export in `storage/mod.rs` (lines 16–19, 36);
+`rs/tests` has no mention.
 
 Separately, the module header for `tiered.rs` documents the read path as
 "HOT → WARM → COLD → NETWORK (cascade...)", but `ShardStore::get`/`read`
@@ -48,8 +51,8 @@ codec that does not exist yet. The comment describes a cascade that
 isn't implemented; `fetch_content` is a second, disconnected leg.
 
 The fix is small and does not touch the `NetworkStore` trait signature:
-hash the fetched bytes with `hemera::hash` (already used this way at
-[`storage/mod.rs:123`](../rs/src/storage/mod.rs) and
+hash the fetched bytes with `hemera::hash` (imported at
+[`storage/mod.rs:123`](../rs/src/storage/mod.rs), called at
 [`state.rs:31`](../rs/src/state.rs)) and reject a mismatch as if the
 peer were unreachable — `fetch_content` already returns `Option`, so no
 caller-visible error type changes. The module comment should stop
@@ -91,6 +94,24 @@ lands on `origin/master` for `lens` and its dependents (or the local
 fixed and tested in one slice: a `MockNetworkStore` returning content
 that hashes to the requested particle (accepted) and content that
 does not (rejected as `None`).
+
+## update 2026-09-22
+
+- the owner's local `~/cyber/bbg` now also carries the uncommitted
+  `lens = "0.2.0"` bump (`rs/Cargo.toml` dirty), so the drift is between
+  the owner's working trees and what is pushed, not inside `bbg`.
+- `origin/master` `bbg` builds and tests clean in a mirror whose `lens` and
+  `nox` are worktrees at their own `origin/master` (0.1.3 and 0.2.0, the
+  versions `rs/Cargo.lock` pins): `cargo check --tests` ok, `cargo test`
+  51 + 2 passed. The `fetch_content` fix and its tests can land against
+  `origin/master` today; finding 2 is a mirror-layout problem, not a
+  repository one.
+- the owner's open bbg#9 (`feat/atomic-application-storage`) rewrites
+  `tiered.rs`: it drops the `HOT → WARM → COLD → NETWORK` header (the
+  module-doc mismatch below is resolved by it) and leaves `fetch_content`
+  exactly as quoted above (finding 1 stands after bbg#9). The code fix
+  should be written against bbg#9's `tiered.rs`, not master's, to avoid a
+  conflict.
 
 ## remains
 
