@@ -102,12 +102,22 @@ fn serialize_signal(s: &Signal) -> Vec<u8> {
     b
 }
 
+/// Minimum wire bytes one `Cyberlink` entry can occupy: 3 particles + amount + valence.
+const MIN_LINK_BYTES: usize = 32 * 3 + 8 + 1;
+/// Minimum wire bytes one `BoxMove` entry can occupy: nullifier + no-commitment tag.
+const MIN_MOVE_BYTES: usize = 32 + 1;
+
 fn deserialize_signal(buf: &[u8]) -> Option<Signal> {
     let mut p = 0;
     let neuron = take32(buf, &mut p)?;
     let height = take_u64(buf, &mut p)?;
     let n_links = take_u32(buf, &mut p)? as usize;
-    let mut links = Vec::with_capacity(n_links);
+    // n_links comes straight off the wire; cap the preallocation at what the
+    // remaining bytes could actually hold instead of trusting it outright —
+    // an attacker-supplied count near u32::MAX would otherwise abort the
+    // process on an allocation the buffer can never back.
+    let max_links = buf.len().saturating_sub(p) / MIN_LINK_BYTES;
+    let mut links = Vec::with_capacity(n_links.min(max_links));
     for _ in 0..n_links {
         links.push(Cyberlink {
             from: take32(buf, &mut p)?,
@@ -118,7 +128,8 @@ fn deserialize_signal(buf: &[u8]) -> Option<Signal> {
         });
     }
     let n_moves = take_u32(buf, &mut p)? as usize;
-    let mut box_moves = Vec::with_capacity(n_moves);
+    let max_moves = buf.len().saturating_sub(p) / MIN_MOVE_BYTES;
+    let mut box_moves = Vec::with_capacity(n_moves.min(max_moves));
     for _ in 0..n_moves {
         let nullifier = take32(buf, &mut p)?;
         let commitment = match take_u8(buf, &mut p)? {
@@ -213,6 +224,26 @@ mod tests {
         let i = IntentRecord { neuron: [9u8; 32], h0: 3, scope_hash: [5u8; 32], signature: [0u8; 64] };
         let events = decode_events(&encode_intent(&i));
         assert!(matches!(&events[0], Event::Intent(r) if r.h0 == 3 && r.neuron == [9u8;32]));
+    }
+
+    #[test]
+    fn deserialize_signal_rejects_oversized_link_count_without_aborting() {
+        // neuron (32) + height (8) + n_links = u32::MAX, then nothing else.
+        let mut buf = vec![0u8; 32 + 8];
+        buf.extend((u32::MAX).to_le_bytes());
+        // Pre-fix this called `Vec::with_capacity(u32::MAX as usize)` against a
+        // 105-byte-per-entry element, an allocation request no real buffer
+        // could ever back; it must now fail the first `take32` on an empty
+        // remainder instead of aborting the process.
+        assert!(deserialize_signal(&buf).is_none());
+    }
+
+    #[test]
+    fn deserialize_signal_rejects_oversized_move_count_without_aborting() {
+        let mut buf = vec![0u8; 32 + 8]; // neuron + height
+        buf.extend(0u32.to_le_bytes()); // n_links = 0
+        buf.extend((u32::MAX).to_le_bytes()); // n_moves = u32::MAX, nothing follows
+        assert!(deserialize_signal(&buf).is_none());
     }
 
     #[test]
