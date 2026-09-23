@@ -97,6 +97,35 @@ impl TieredStore {
     pub fn archive(&mut self) -> Option<[u8; 32]> {
         self.cold.as_mut().map(|c| c.commit())
     }
+
+    /// Stage (dimension, key) values from WARM into COLD's pending batch —
+    /// the population half of the archival task (soma's `demote(focus_threshold)`,
+    /// specs/storage.md §archival population and checkpoint boundary). The
+    /// caller supplies the keys it has already judged eligible; selecting
+    /// them by focus threshold is soma's policy, not bbg's mechanism.
+    ///
+    /// Staging alone does not seal the batch: call `archive()` afterward to
+    /// checkpoint it. Until `archive()` returns, WARM stays the sole durable
+    /// copy of every staged key — `demote` never removes from WARM, so a
+    /// crash between this call and `archive()` leaves WARM's copy intact and
+    /// the caller can retry the same keys; re-staging an already-archived
+    /// key is a no-op commit, not a correctness hazard.
+    ///
+    /// Returns the keys actually staged: a key absent from WARM, or with no
+    /// COLD tier attached, is skipped rather than treated as an error.
+    pub fn demote(&mut self, dimension: u8, keys: &[[u8; 32]]) -> Vec<[u8; 32]> {
+        let (Some(warm), Some(cold)) = (self.warm.as_ref(), self.cold.as_mut()) else {
+            return Vec::new();
+        };
+        let mut staged = Vec::new();
+        for key in keys {
+            if let Some(value) = warm.get(dimension, key) {
+                cold.put(dimension, *key, value.to_vec());
+                staged.push(*key);
+            }
+        }
+        staged
+    }
 }
 
 impl ShardStore for TieredStore {
@@ -341,5 +370,92 @@ mod tests {
         assert_eq!(dim0.len(), 2);
         let dim1: Vec<_> = store.iter(1).collect();
         assert_eq!(dim1.len(), 1);
+    }
+
+    #[test]
+    fn demote_stages_warm_values_into_cold() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+
+        let staged = store.demote(0, &[key(9)]);
+
+        assert_eq!(staged, vec![key(9)]);
+        assert_eq!(store.cold.as_ref().unwrap().get(0, &key(9)), Some(&[g(42)][..]));
+    }
+
+    #[test]
+    fn demote_leaves_warm_as_the_sole_durable_copy_until_archive() {
+        // the checkpoint boundary (specs/storage.md): staging never evicts
+        // WARM, so a crash between demote() and archive() still has WARM's
+        // copy — the invariant this test exercises.
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+
+        store.demote(0, &[key(9)]);
+
+        assert_eq!(store.warm.as_ref().unwrap().get(0, &key(9)), Some(&[g(42)][..]));
+    }
+
+    #[test]
+    fn demote_retry_after_crash_is_a_no_op_not_a_hazard() {
+        // simulate a crash between staging and archive(): call demote()
+        // twice for the same key before archive() ever runs. re-staging an
+        // already-pending key must not error or duplicate the pending batch
+        // outcome — the second put simply overwrites the first with the
+        // same value.
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+
+        let first = store.demote(0, &[key(9)]);
+        let retry = store.demote(0, &[key(9)]);
+
+        assert_eq!(first, retry);
+        assert_eq!(store.cold.as_ref().unwrap().get(0, &key(9)), Some(&[g(42)][..]));
+    }
+
+    #[test]
+    fn demote_skips_a_key_absent_from_warm() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+
+        let staged = store.demote(0, &[key(9)]);
+
+        assert!(staged.is_empty());
+        assert!(store.cold.as_ref().unwrap().get(0, &key(9)).is_none());
+    }
+
+    #[test]
+    fn demote_without_cold_attached_stages_nothing() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+
+        assert!(store.demote(0, &[key(9)]).is_empty());
+    }
+
+    #[test]
+    fn demote_seals_under_one_checkpoint_identity_via_archive() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+        store.put(0, key(10), vec![g(43)]);
+
+        store.demote(0, &[key(9), key(10)]);
+        let checkpoint = store.archive();
+
+        assert!(checkpoint.is_some());
+        // archived keys remain readable through the cascade after the
+        // checkpoint — archive() seals COLD's dirty batch, it does not
+        // clear COLD's data.
+        assert_eq!(store.get(0, &key(9)), Some(&[g(42)][..]));
+        assert_eq!(store.get(0, &key(10)), Some(&[g(43)][..]));
     }
 }
