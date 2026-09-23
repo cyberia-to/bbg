@@ -98,8 +98,14 @@ impl TieredStore {
         Ok(())
     }
 
+    /// Fetch self-authenticating content; reject a peer's substituted bytes.
     pub fn fetch_content(&self, particle: &Particle) -> Option<Vec<u8>> {
-        self.network.as_ref()?.fetch(particle)
+        let bytes = self.network.as_ref()?.fetch(particle)?;
+        if hemera::hash(&bytes).as_bytes() == particle {
+            Some(bytes)
+        } else {
+            None
+        }
     }
 
     pub fn archive(&mut self) -> StorageResult<Option<[u8; 32]>> {
