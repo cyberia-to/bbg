@@ -6,10 +6,15 @@
 //! Tiered storage: all backends active simultaneously.
 //!
 //! Routing:
-//!   write  → HOT always; write-through to WARM for durability (not EPHEMERAL)
-//!   read   → HOT → WARM → COLD → NETWORK (cascade, no promotion on read)
-//!   commit → HOT + WARM flushed per block; COLD at archival checkpoints
-//!   evict  → called by soma when focus drops; moves HOT entry to WARM
+//!   write         → HOT always; write-through to WARM for durability (not EPHEMERAL)
+//!   get (field)   → HOT → WARM → COLD (cascade, no promotion on read; ShardStore::get
+//!                   never reaches NETWORK — field values have no byte↔field codec to
+//!                   carry a network peer's raw bytes)
+//!   fetch_content → NETWORK only, for raw content bytes keyed by particle, checked
+//!                   self-authenticating (`H(content) = particle`) before being returned;
+//!                   a separate path from get, not a further cascade step after COLD
+//!   commit        → HOT + WARM flushed per block; COLD at archival checkpoints
+//!   evict         → called by soma when focus drops; moves HOT entry to WARM
 //!
 //! Promotion (WARM/COLD → HOT) is explicit, driven by soma prefetch,
 //! not lazy on read — keeping get(&self) borrow-checker clean.
