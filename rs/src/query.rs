@@ -405,6 +405,55 @@ mod tests {
         assert!(crate::query::verify_opening(&openings[0]));
     }
 
+    /// `verify_opening` takes a `LookOpening` carrying `leaves` (the 14-leaf
+    /// BBG root preimage) and `namespace` (which of the 11 dimensions this
+    /// opening claims to belong to), but only re-checks that `commitment`,
+    /// `point`, `value` and `opening` are mutually consistent — it never
+    /// checks that `leaves.dims[namespace]` actually corresponds to
+    /// `commitment`, nor recomputes `root_from_leaves(&leaves)` against any
+    /// expected root. A real proof still verifies after `leaves` and
+    /// `namespace` are replaced with fabricated values unrelated to the
+    /// proof, so a caller cannot use the returned `bool` to conclude which
+    /// state root or which dimension this opening is actually for. Same
+    /// shape as row 75/bbg#14's `verify_particle` gap, but here the struct
+    /// already carries the fields a fix would bind — see
+    /// bbg/audit/verify-opening-unbound.md.
+    #[test]
+    fn verify_opening_ignores_leaves_and_namespace() {
+        let state = seeded_state();
+        let prov = ProofLookProvider::new(&state);
+        let ns = Goldilocks::new(Dim::Time as u64);
+        let key = Goldilocks::new(0); // height 0 is present
+
+        prov.look(ct(), ns, key);
+        let mut openings = prov.take_look_openings();
+        assert_eq!(openings.len(), 1);
+        let real = openings.pop().unwrap();
+        assert!(crate::query::verify_opening(&real), "the real opening must verify");
+
+        let fabricated_leaves = zheng::RootLeaves {
+            dims: [[Goldilocks::ZERO; 4]; 11],
+            a: [Goldilocks::ZERO; 4],
+            n: [Goldilocks::ZERO; 4],
+            stats: [Goldilocks::ZERO; 4],
+        };
+        assert_ne!(real.leaves, fabricated_leaves, "fixture must actually differ");
+
+        let franken = LookOpening {
+            commitment: real.commitment,
+            point: real.point,
+            value: real.value,
+            opening: real.opening,
+            transcript_seed: real.transcript_seed,
+            leaves: fabricated_leaves,
+            namespace: Goldilocks::new(999), // not even a valid Dim index
+        };
+        assert!(
+            crate::query::verify_opening(&franken),
+            "verify_opening should reject a proof bound to unrelated leaves/namespace, but it does not"
+        );
+    }
+
     #[test]
     fn proof_look_provider_missing_key_returns_none_no_opening() {
         let state = seeded_state();
