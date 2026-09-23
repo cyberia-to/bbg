@@ -40,7 +40,7 @@ fixed-width byte arrays. No key or u64 value is reduced into a field element.
 
 | Domain | Record |
 |---|---|
-| 0 | version u32=1, height u64, state root 32, checkpoint height u64, checkpoint root 32, diameter option u8 + optional u64, pruning max bytes u64, rank floor u8, half-life u64 |
+| 0 | version u32=2, height u64, state root 32, checkpoint height u64, checkpoint root 32, diameter option u8 + optional u64, pruning max bytes u64, rank floor u8, half-life u64 |
 | 1 | particle: energy, pi_star, weight, s_yes, s_no, meta_score (six u64) |
 | 2, 3 | outgoing/incoming adjacency: count u64 followed by ordered 32-byte entries |
 | 4 | neuron: focus, karma, stake (three u64) |
@@ -63,6 +63,16 @@ pruning policy because it changes future transitions. The current authenticated
 root commits its existing dimensions and excludes intents and pruning metadata;
 durable exact-record validation checks those records independently. Persistence
 does not upgrade the existing root or claim new cryptographic guarantees.
+
+Version 2 binds the current root contract: dimension encoding version 2,
+Brakedown commitment version 2 and the large-table Hemera branch in
+[state-certificate](state-certificate.md). A change to root semantics requires
+a new native record version and an explicit compatibility policy. The remaining
+metadata layout is unchanged. Earlier version-1 stores did not identify their
+commitment generation; an owning adapter may accept them only after full replay
+and exact comparison under the current root contract, allowing solely the
+version word to differ. Old roots, receipts and history must never be rewritten
+as an implicit format conversion.
 # Local public-credit transition
 
 `NativeChange::LocalCredit` updates the opt-in public balance H(neuron||token)
