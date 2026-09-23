@@ -21,6 +21,7 @@
 
 pub mod mem;
 pub mod network;
+pub mod schedule;
 pub mod tiered;
 
 #[cfg(feature = "backend-ssd")]
@@ -34,6 +35,7 @@ pub mod unimem;
 
 pub use mem::MemStore;
 pub use network::NetworkStore;
+pub use schedule::ArchivalSchedule;
 pub use tiered::TieredStore;
 
 #[cfg(feature = "backend-ssd")]

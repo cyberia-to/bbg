@@ -396,6 +396,34 @@ when an axon's aggregate weight decays below threshold ε (see [[temporal]]):
 8. historical state preserved in time dimension — past queries still work
 ```
 
+## archival checkpoint schedule
+
+the archival task moves a WARM value into COLD and, once sealed, drops
+the WARM copy: stage eligible keys (`TieredStore::demote`, launch#18/bbg#24,
+open), seal the batch under one checkpoint identity (`archive`), then
+free WARM's copy of every key the sealed batch covers (`evict_archived`,
+launch#18/bbg#25, open). soma judges which keys are eligible by focus;
+bbg's own open question is when the sweep runs at all.
+
+`storage::ArchivalSchedule` answers that question alone, as a block
+counter with no reference to a `TieredStore` and no call into `demote`,
+`archive` or `evict_archived` — it composes with the sweep however the
+caller wires it, independent of the sweep's own implementation:
+
+```
+1. record_block() once per per-block commit()
+2. due() is true once `interval` blocks have passed since the last checkpoint
+3. run the sweep — demote the eligible keys, archive, evict_archived
+4. checkpoint_ran() resets the counter, whether the sweep ran because
+   due() was true or was triggered early out of band
+```
+
+a zero interval clamps to one rather than making every block due — no
+cadence anyone asked for is "checkpoint constantly". resuming the
+schedule itself from a durable marker after a restart is out of scope:
+that needs a readable last-checkpoint marker on COLD, open on bbg#9's
+`ShardStore`/`StorageResult` contract.
+
 ## owner store (personal BBG)
 
 the chain always holds encrypted values. a personal BBG node holds plaintext for its own boxes.
