@@ -336,6 +336,56 @@ mod tests {
         assert!(verify_query(&proof));
     }
 
+    /// `verify_query` takes only a `QueryProof` — no expected root and no
+    /// claimed dimension. It can only re-check that `proof.opening` is a
+    /// valid Brakedown opening of `proof.commitment`; it has nothing to bind
+    /// that commitment to a particular BBG state or dimension. Same failure
+    /// shape as row 75/bbg#14 (`verify_particle`) and row 142/bbg#19
+    /// (`verify_opening`), documented in `audit/verify-query-unbound.md`.
+    #[test]
+    fn verify_query_ignores_which_dimension_and_root_it_answers() {
+        let axon = crate::state::axon_id(&particle(2), &particle(3));
+
+        // Same key, same dimension, two states with different roots and a
+        // different linked amount — the proofs differ, but neither carries
+        // its origin.
+        let state_a = seeded_state();
+        let proof_a = bbg_query(&state_a, Dim::Particles, &axon).unwrap();
+
+        let mut state_b = BbgState::new();
+        state_b.neurons.insert(particle(9), NeuronRecord { focus: 1, karma: 0, stake: 0 });
+        state_b
+            .insert(&Signal {
+                neuron: particle(9),
+                links: vec![Cyberlink {
+                    from: particle(2),
+                    to: particle(3),
+                    token: particle(0),
+                    amount: 999,
+                    valence: -1,
+                }],
+                box_moves: vec![],
+                height: 0,
+            })
+            .unwrap();
+        let proof_b = bbg_query(&state_b, Dim::Particles, &axon).unwrap();
+
+        assert_ne!(state_a.root(), state_b.root());
+        assert_ne!(proof_a.commitment, proof_b.commitment);
+        assert!(verify_query(&proof_a));
+        assert!(verify_query(&proof_b));
+
+        // A caller who fetched `proof_b` from a stale, forked or malicious
+        // peer, but believes it answers a query against `state_a`'s root,
+        // has nothing in `verify_query`'s bool to catch the mismatch.
+
+        // Same state, two dimensions — the returned bool doesn't say which
+        // dimension was checked either.
+        let neurons_proof = bbg_query(&state_a, Dim::Neurons, &particle(1)).unwrap();
+        assert_ne!(proof_a.commitment, neurons_proof.commitment);
+        assert!(verify_query(&neurons_proof));
+    }
+
     // ── look_provider: Time and Signals are the primary natural use cases ─────
 
     fn ct() -> Goldilocks { Goldilocks::ZERO } // commitment arg not checked by BbgLookProvider
