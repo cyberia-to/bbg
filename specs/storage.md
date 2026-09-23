@@ -187,6 +187,14 @@ rationale for the split: bbg knows storage internals (capacity, IOPS, polynomial
 
 when a `look(namespace, key)` executes, bbg resolves the tier transparently — the caller says what it wants, bbg finds it. pricing per tier determined by local energy cost: [[cyb/hal]] exposes hardware reality (RAM capacity, SSD IOPS, HDD bandwidth, power cost) as field-denominated prices.
 
+## archival population
+
+`demote(focus_threshold)` above is soma's policy verb; `TieredStore::demote(dimension, keys)` is the mechanism it drives. bbg does not read focus itself — the caller judges eligibility and passes the key list; `demote` stages each key's WARM value into COLD's pending batch via `put`, and returns the keys it actually staged (a key absent from WARM, or a store with no COLD tier attached, is skipped rather than an error).
+
+staging alone does not seal a batch: `archive()` commits COLD's pending batch under one checkpoint identity, separate from the per-block `commit()` that flushes HOT and WARM. the checkpoint boundary: WARM remains the sole durable copy of a staged key until `archive()` for the batch containing it returns. `demote` never removes a key from WARM, so a crash between staging and `archive()` leaves WARM's copy intact — the archival task retries the same keys, and re-staging an already-archived key is a no-op commit, not a correctness hazard, because COLD is addressed by the same (dimension, key) space as every other tier.
+
+open: resuming population from COLD's last successful checkpoint after a restart needs a readable progress marker on COLD, which does not exist on this tier yet; today the archival task tracks its own progress. eviction of a key from WARM once its checkpoint succeeds — closing the loop so archived data does not sit durable in two tiers forever — is unimplemented.
+
 ## storage proofs
 
 six proof types ensure data retention across tiers:
