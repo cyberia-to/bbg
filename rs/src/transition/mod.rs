@@ -6,9 +6,7 @@ use crate::{Bbg, IntentRecord, Particle, Signal, SignalRecord, prune, state};
 
 mod records;
 mod undo;
-pub use records::{
-    MetadataError, NATIVE_RECORD_VERSION, Record, RecordChange, native_metadata_version, records,
-};
+pub use records::{Record, RecordChange, records};
 
 pub const MAX_KEYS: usize = 65_536;
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;

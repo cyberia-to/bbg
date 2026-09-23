@@ -2,69 +2,6 @@ use crate::{Bbg, types::*};
 
 use super::Error;
 
-/// Identifies the typed record layout and its commitment semantics together.
-/// Root-changing updates must allocate a new version (specs/native-state.md).
-pub const NATIVE_RECORD_VERSION: u32 = 2;
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum MetadataError {
-    Malformed,
-    Unsupported(u32),
-}
-
-/// Validate the metadata framing before an owning adapter begins replay.
-/// Version 1 additionally requires exact replay under the current root contract.
-pub fn native_metadata_version(bytes: &[u8]) -> Result<u32, MetadataError> {
-    let word = bytes.get(..4).ok_or(MetadataError::Malformed)?;
-    let version = u32::from_le_bytes(word.try_into().unwrap());
-    if version != 1 && version != NATIVE_RECORD_VERSION {
-        return Err(MetadataError::Unsupported(version));
-    }
-    // The optional diameter is the only variable-width part of this record.
-    if !matches!(
-        (bytes.get(84), bytes.len()),
-        (Some(0), 102) | (Some(1), 110)
-    ) {
-        return Err(MetadataError::Malformed);
-    }
-    Ok(version)
-}
-
-#[cfg(test)]
-mod format_tests {
-    use super::*;
-
-    #[test]
-    fn metadata_version_checks_exact_framing_and_distinguishes_unsupported_readers() {
-        let graph = Bbg::new();
-        let mut bytes = metadata(&graph);
-        assert_eq!(native_metadata_version(&bytes), Ok(2));
-        bytes[..4].copy_from_slice(&1u32.to_le_bytes());
-        assert_eq!(native_metadata_version(&bytes), Ok(1));
-        for length in 0..bytes.len() {
-            assert!(native_metadata_version(&bytes[..length]).is_err());
-        }
-        bytes.push(0);
-        assert_eq!(
-            native_metadata_version(&bytes),
-            Err(MetadataError::Malformed)
-        );
-        assert_eq!(
-            native_metadata_version(&9u32.to_le_bytes()),
-            Err(MetadataError::Unsupported(9))
-        );
-        bytes.pop();
-        bytes[84] = 2;
-        assert_eq!(
-            native_metadata_version(&bytes),
-            Err(MetadataError::Malformed)
-        );
-        bytes[84] = 1;
-        bytes.splice(85..85, 7u64.to_le_bytes());
-        assert_eq!(native_metadata_version(&bytes), Ok(1));
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record {
     pub key: Vec<u8>,
@@ -122,7 +59,7 @@ pub(crate) fn intent(i: &IntentRecord) -> Vec<u8> {
 }
 
 pub(crate) fn metadata(bbg: &Bbg) -> Vec<u8> {
-    let mut bytes = NATIVE_RECORD_VERSION.to_le_bytes().to_vec();
+    let mut bytes = 1u32.to_le_bytes().to_vec();
     bytes.extend(bbg.state.height.to_le_bytes());
     bytes.extend(bbg.state.root());
     bytes.extend(bbg.checkpoint.height.to_le_bytes());

@@ -2,8 +2,15 @@
 title: Native record format boundary
 tags: bbg, audit, storage
 date: 2026-09-23
+status: withdrawn
 ---
 # Native record format boundary
+
+Withdrawn on 2026-09-23 following the owner's correction: the project is
+pre-production and these unchanged root semantics do not justify a migration
+framework or a new reader exclusion. The version bump, new metadata API and
+associated contract were reverted. The existing record layout is retained.
+The following text preserves the experiment's original evidence, not policy.
 
 Native metadata now emits version 2, identifying its typed layout and the
 current dimension/commitment semantics. The old version 1 was reused across
