@@ -10,7 +10,7 @@
 //!   2. `bbg_query` — dispatch to the appropriate `prove_*` function
 //!   3. `BbgLookProvider` — implements `nox::LookProvider` for VM look pattern (fast, no proofs)
 //!   4. `ProofLookProvider` — like BbgLookProvider but also accumulates `LookOpening`s
-//!      for passing to `zheng::commit()` after execution
+//!      for explicit context-backed inspection (recursive commit remains unsupported)
 //!
 //! Key encoding for look providers:
 //!   namespace = Dim index (0–9; the look pattern rejects > 9 before calling).
@@ -71,11 +71,12 @@ impl Dim {
 /// Generate a `QueryProof` for dimension `dim` at key `key`.
 ///
 /// `key` is a 32-byte particle/hash. For `Time` and `Signals` the u64 height
-/// or step is read from the first 8 bytes (little-endian).
+/// or step is read from the first 8 bytes (little-endian); remaining bytes must be zero.
 ///
 /// `Balances` returns `None` — use `prove_balances(state, owner, token)` directly
 /// because the key is derived from two inputs.
 pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProof> {
+    if matches!(dim, Dim::Time | Dim::Signals) && key[8..].iter().any(|&v| v != 0) { return None; }
     match dim {
         Dim::Particles => prove_particle(state, key),
         Dim::AxonsOut  => prove_axons_out(state, key),
@@ -99,16 +100,7 @@ pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProo
     }
 }
 
-/// Verify a `QueryProof` produced by `bbg_query`.
-///
-/// Returns `true` iff the Brakedown opening is valid. Does not re-check
-/// which dimension the proof came from — the caller binds that context.
-pub fn verify_query(proof: &QueryProof) -> bool {
-    use lens::{brakedown::Brakedown, Lens, Transcript as LensTx};
-    let value = query_value(proof);
-    let mut tx = LensTx::new(b"bbg-dim-open");
-    Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
-}
+pub use crate::query_auth::{verify_query, verify_query_at, verify_entity, verify_opening_with_context};
 
 // ── BbgLookProvider ──────────────────────────────────────────────────────────
 
@@ -138,16 +130,17 @@ impl<'a> LookProvider for BbgLookProvider<'a> {
 
 /// nox `LookProvider` that generates `LookOpening` proofs alongside the value.
 ///
-/// During `look()`, calls `bbg_query()` to produce a full Brakedown opening
-/// and appends a `LookOpening` to the internal accumulator. After execution,
-/// call `take_look_openings()` to retrieve the ordered list for `zheng::commit()`.
+/// During `look()`, opens the selected cell and appends a legacy `LookOpening`.
+/// Retrieve these for context-backed inspection with `verify_opening_with_context`.
+/// Current `zheng::commit()` rejects recursive openings; execution proofs use
+/// authenticated state certificates instead.
 ///
 /// Uses `Mutex` (not `RefCell`) so the provider is `Sync` — satisfying the
 /// `CallProvider<N>` bound when wrapped in a `ProofCallProvider`.
 pub struct ProofLookProvider<'a> {
     pub state: &'a BbgState,
     /// The root-preimage leaves, computed once — every opening carries a clone
-    /// so zheng can recompute and bind the root in-circuit.
+    /// for comparison with a separately authenticated complete public query.
     leaves: zheng::RootLeaves,
     openings: Mutex<Vec<LookOpening>>,
 }
@@ -159,7 +152,7 @@ impl<'a> ProofLookProvider<'a> {
 
     /// Drain and return all accumulated `LookOpening`s in insertion order.
     ///
-    /// Pass the result directly to `zheng::commit()` as `look_openings`.
+    /// These values alone do not authenticate a state query.
     /// The internal buffer is emptied; subsequent calls return an empty vec.
     pub fn take_look_openings(&self) -> Vec<LookOpening> {
         self.openings.lock().unwrap().drain(..).collect()
@@ -211,7 +204,7 @@ impl<'a, const N: usize> CallProvider<N> for ProofLookProvider<'a> {
 /// of range or whose dimension is ≥ 10 are skipped.
 ///
 /// Post-execution alternative to `ProofLookProvider`: execute with any provider,
-/// then derive all openings for `zheng::commit()` from the trace.
+/// then derive legacy openings for context-backed inspection from the trace.
 pub fn collect_look_openings(state: &BbgState, trace: &[nox::TraceRow]) -> Vec<LookOpening> {
     let mut result = Vec::new();
     let leaves = state.root_leaves();
@@ -249,12 +242,9 @@ fn query_value(proof: &QueryProof) -> Goldilocks {
     Goldilocks::new(u64::from_le_bytes(buf))
 }
 
-/// Verify a `LookOpening` produced by `ProofLookProvider` or `collect_look_openings`.
-pub fn verify_opening(lo: &LookOpening) -> bool {
-    use lens::{brakedown::Brakedown, Lens, Transcript as LensTx};
-    let mut tx = LensTx::new(b"bbg-dim-open");
-    Brakedown::verify(&lo.commitment, &lo.point, lo.value, &lo.opening, &mut tx)
-}
+/// Legacy sampled openings lack complete-table context and cannot authenticate
+/// a BBG cell. Use `verify_opening_with_context` with a trusted state root.
+pub fn verify_opening(_lo: &LookOpening) -> bool { false }
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
@@ -285,6 +275,7 @@ mod tests {
         s.insert(&sig).unwrap();
         // add a time snapshot
         s.time.insert(0, particle(99));
+        s.refresh_root();
         s
     }
 
@@ -342,12 +333,12 @@ mod tests {
 
     #[test]
     fn look_provider_reads_cell_by_index() {
-        let state = seeded_state(); // time[0] = particle(99); entry = [key(4) | root(4)]
+        let state = seeded_state(); // time[0] = particle(99); entry = [header(3) | key(8) | root(8)]
         let prov  = BbgLookProvider { state: &state };
         let ns  = Goldilocks::new(Dim::Time as u64);
-        // cell 4 is the first value field = root[0]
-        let expect = crate::dim::goldilocks_from_bytes32(&[99u8; 32])[0];
-        assert_eq!(prov.look(ct(), ns, Goldilocks::new(4)), Some(expect));
+        // cell 11 is the first value field = root[0]
+        let expect = crate::dim::bytes32_limbs(&[99u8; 32])[0];
+        assert_eq!(prov.look(ct(), ns, Goldilocks::new(11)), Some(expect));
     }
 
     #[test]
@@ -373,18 +364,19 @@ mod tests {
         assert!(prov.look(ct(), Goldilocks::new(Dim::Balances as u64), Goldilocks::ZERO).is_none());
     }
 
-    // Cells are addressed by flat index; a neuron's focus is value field 0 = cell 4
-    // (after its 4 key cells). Entity → index navigation is composed above, in inf.
+    // Cells are addressed by flat index; a neuron's focus is value field 0 = cell 11
+    // (after the header and 8 key cells). Entity → index navigation is composed above, in inf.
     #[test]
     fn look_provider_neuron_focus_cell_by_index() {
         let mut state = BbgState::new();
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
         state.neurons.insert(key, crate::types::NeuronRecord { focus: 777, karma: 0, stake: 0 });
+        state.refresh_root();
 
         let prov = BbgLookProvider { state: &state };
         let ns   = Goldilocks::new(Dim::Neurons as u64);
-        assert_eq!(prov.look(ct(), ns, Goldilocks::new(4)), Some(Goldilocks::new(777)));
+        assert_eq!(prov.look(ct(), ns, Goldilocks::new(11)), Some(Goldilocks::new(777)));
     }
 
     // ── ProofLookProvider ─────────────────────────────────────────────────────
@@ -402,7 +394,9 @@ mod tests {
         let openings = prov.take_look_openings();
         assert_eq!(openings.len(), 1);
         // verify the opening is sound
-        assert!(crate::query::verify_opening(&openings[0]));
+        assert!(!verify_opening(&openings[0]));
+        let context = crate::proof::open_cell(&state, Dim::Time, key.as_u64() as usize).unwrap();
+        assert!(verify_opening_with_context(&openings[0], &context, &state.root(), key.as_u64()));
     }
 
     #[test]
@@ -456,12 +450,13 @@ mod tests {
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
         state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0 });
+        state.refresh_root();
 
         let fast  = BbgLookProvider { state: &state };
         let proof = ProofLookProvider::new(&state);
         let ns = Goldilocks::new(Dim::Neurons as u64);
-        // focus is value field 0 = cell 4 (after the 4 key cells)
-        let k  = Goldilocks::new(4);
+        // focus is value field 0 = cell 11 (after the header and 8 key cells)
+        let k  = Goldilocks::new(11);
 
         // both return the REAL focus (777), not a fingerprint
         assert_eq!(fast.look(ct(), ns, k), Some(Goldilocks::new(777)));
@@ -475,16 +470,18 @@ mod tests {
         let openings = proof.take_look_openings();
         assert_eq!(openings.len(), 1);
         assert_eq!(openings[0].value, Goldilocks::new(777));
-        assert!(verify_opening(&openings[0]), "corner opening must verify");
+        assert!(!verify_opening(&openings[0]));
+        let context = crate::proof::open_cell(&state, Dim::Neurons, 11).unwrap();
+        assert!(verify_opening_with_context(&openings[0], &context, &state.root(), 11));
     }
 
     #[test]
     fn proof_provider_value_matches_fast_provider_time() {
-        let state = seeded_state(); // time[0] = particle(99); root cell at index 4
+        let state = seeded_state(); // time[0] = particle(99); root cell at index 11
         let fast  = BbgLookProvider { state: &state };
         let proof = ProofLookProvider::new(&state);
         let ns  = Goldilocks::new(Dim::Time as u64);
-        let key = Goldilocks::new(4);
+        let key = Goldilocks::new(11);
         let fast_v = fast.look(ct(), ns, key);
         assert!(fast_v.is_some());
         assert_eq!(proof.look(ct(), ns, key), fast_v, "proof and fast providers must agree");
@@ -556,8 +553,11 @@ mod tests {
         assert_eq!(col_openings.len(), 1, "collect_look_openings should find 1 look row");
 
         // Both openings must be valid.
-        assert!(verify_opening(&prov_openings[0]));
-        assert!(verify_opening(&col_openings[0]));
+        let context = crate::proof::open_cell(&state, Dim::Time, 0).unwrap();
+        assert!(!verify_opening(&prov_openings[0]));
+        assert!(!verify_opening(&col_openings[0]));
+        assert!(verify_opening_with_context(&prov_openings[0], &context, &state.root(), 0));
+        assert!(verify_opening_with_context(&col_openings[0], &context, &state.root(), 0));
     }
 
     // Confirm EPOCH_BLOCKS is used in signal fixture only
