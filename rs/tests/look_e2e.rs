@@ -74,6 +74,11 @@ fn open_statement(bbg_root: [u8; 32]) -> Statement {
 }
 
 #[test]
+#[ignore = "zheng 0.4 retired the recursive opening gadgets this test drives \
+            (commit() now unconditionally rejects non-empty look_openings, \
+            src/lib.rs UnsupportedRecursiveOpening) — the TensorMerkle-native \
+            look-opening binding that replaces it is unimplemented; tracked \
+            in launch.md's component table as lens's 'recursive form blocked'"]
 fn look_proof_verifies_against_state_root() {
     let state = sample_state();
     let root = state.root();
