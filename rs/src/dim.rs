@@ -50,6 +50,11 @@ pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
         return Brakedown::commit_raw(&padded);
     }
 
+    assert!(
+        entries.windows(2).all(|w| w[0].0 < w[1].0),
+        "commit_dim: entries must be strictly sorted by key with no duplicates"
+    );
+
     let mut elems: Vec<Goldilocks> = Vec::new();
     for (key, vals) in entries {
         let key_elems = goldilocks_from_bytes32(key);
@@ -63,5 +68,49 @@ pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
 
     let poly = MultilinearPoly::new(elems);
     Brakedown::commit(&poly)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(byte: u8) -> Particle {
+        let mut k = [0u8; 32];
+        k[31] = byte;
+        k
+    }
+
+    fn entry(byte: u8) -> (Particle, Vec<Goldilocks>) {
+        (key(byte), vec![goldilocks_from_u64(byte as u64)])
+    }
+
+    #[test]
+    fn sorted_unique_keys_commit() {
+        let entries = vec![entry(1), entry(2), entry(3)];
+        // Should not panic, and should be deterministic.
+        let a = commit_dim(&entries);
+        let b = commit_dim(&entries);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn single_entry_commits() {
+        let entries = vec![entry(5)];
+        commit_dim(&entries);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be strictly sorted")]
+    fn out_of_order_keys_panic() {
+        let entries = vec![entry(2), entry(1)];
+        commit_dim(&entries);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be strictly sorted")]
+    fn duplicate_keys_panic() {
+        let entries = vec![entry(1), entry(1)];
+        commit_dim(&entries);
+    }
 }
 
