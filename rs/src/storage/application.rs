@@ -5,6 +5,11 @@ use std::{fmt, path::Path};
 
 #[cfg(all(feature = "backend-ssd", feature = "backend-hdd"))]
 mod migration;
+mod validation;
+mod transfer;
+mod archive;
+pub use archive::{ApplicationArchive, ArchiveSeal, ArchiveSummary, MAX_INSPECTION_ROWS, MAX_INSPECTION_BYTES};
+pub use transfer::{TransferSource, TransferProgress};
 
 pub type Particle = [u8; 32];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +24,7 @@ pub enum Error {
     CommitUnknown(String),
     Conflict,
     HeadMismatch,
+    Fenced,
     InvalidSequence,
     Limit,
     Corrupt,
@@ -55,6 +61,10 @@ pub struct Write<'a> {
 pub struct ApplicationStore {
     db: Database,
 }
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+pub struct MigrationTarget {pub namespace:Particle,pub manifest:Particle}
+#[derive(Debug)]
+pub struct NamespaceMigration<'a> {pub manifest:Particle,pub sources:&'a [(Particle,Head)]}
 impl ApplicationStore {
     /// Default working profile: Fjall on SSD, stored in a directory.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -134,6 +144,31 @@ impl ApplicationStore {
         self.apply_with(write, |_| Ok(()))
     }
 
+    pub fn migration_target(&self,namespace:&Particle)->Result<Option<MigrationTarget>,Error>{
+        self.db.read(Table::Migration,&fence_key(namespace),64)?.map(|bytes|{
+            if bytes.len()!=64{return Err(Error::Corrupt);}
+            Ok(MigrationTarget{namespace:bytes[..32].try_into().map_err(|_|Error::Corrupt)?,
+                manifest:bytes[32..].try_into().map_err(|_|Error::Corrupt)?})
+        }).transpose()
+    }
+    /// Source-head validation, target publication and old-writer fences are atomic.
+    pub fn apply_migration(&self,write:&Write<'_>,migration:&NamespaceMigration<'_>)->Result<Head,Error>{
+        if migration.sources.is_empty() || migration.sources.len()>256
+            || migration.sources.windows(2).any(|w|w[0].0>=w[1].0)
+            || migration.sources.iter().any(|(id,_)|*id==write.namespace){return Err(Error::Limit);}
+        self.apply_with(write,|tx|{
+            for (origin,expected) in migration.sources {
+                transfer::require_complete(tx, origin, &write.namespace)?;
+                let current=tx.get(Table::Heads,origin,40)?.map(|bytes|decode_head(&bytes)).transpose()?;
+                if current!=Some(*expected){return Err(Error::HeadMismatch);}
+                let mut target=Vec::with_capacity(64);target.extend(write.namespace);target.extend(migration.manifest);
+                immutable_put(tx,Table::Migration,&fence_key(origin),&target,64)?;
+            }
+            super::database::promote_generation(tx,super::database::ReaderGeneration::NeuronV1)?;
+            Ok(())
+        })
+    }
+
     /// The closure executes once for a new request, inside the application's
     /// transaction. It must use only tx for this owner's reads and mutations.
     pub fn apply_with(
@@ -141,17 +176,32 @@ impl ApplicationStore {
         write: &Write<'_>,
         transition: impl FnOnce(&mut Transaction<'_>) -> Result<(), Error>,
     ) -> Result<Head, Error> {
+        self.apply_checked(write, true, transition)
+    }
+    pub fn apply_once(&self, write: &Write<'_>) -> Result<Head, Error> {
+        self.apply_checked(write, false, |_| Ok(()))
+    }
+    fn apply_checked(&self, write: &Write<'_>, allow_retry: bool,
+        transition: impl FnOnce(&mut Transaction<'_>) -> Result<(), Error>) -> Result<Head, Error> {
         validate_write(write)?;
         self.db
             .transaction::<_, Error>(|tx| {
                 let receipt_key = request_key(&write.namespace, &write.request);
                 if let Some(prior) = tx.get(Table::Requests, &receipt_key, 72)? {
+                    if !allow_retry { return Err(Error::Conflict); }
                     let (fingerprint, head) = decode_request(&prior)?;
                     return if fingerprint == write.fingerprint {
                         Ok(head)
                     } else {
                         Err(Error::Conflict)
                     };
+                }
+                if tx.get(Table::Migration,&fence_key(&write.namespace),64)?.is_some(){
+                    return Err(Error::Fenced);
+                }
+                if tx.get(Table::Migration, b"status", 16)?.as_deref() == Some(b"export-v1")
+                    || tx.get(Table::Migration, &transfer::stage_key(&write.namespace), 32)?.is_some() {
+                    return Err(Error::Fenced);
                 }
                 let current = tx
                     .get(Table::Heads, &write.namespace, 40)?
@@ -208,6 +258,9 @@ fn validate_write(write: &Write<'_>) -> Result<(), Error> {
         return Err(Error::Limit);
     }
     Ok(())
+}
+fn fence_key(namespace:&Particle)->Vec<u8>{
+    let mut key=b"neuron-fence\0".to_vec();key.extend(namespace);key
 }
 fn immutable_put(
     tx: &mut Transaction<'_>,
