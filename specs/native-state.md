@@ -63,3 +63,10 @@ pruning policy because it changes future transitions. The current authenticated
 root commits its existing dimensions and excludes intents and pruning metadata;
 durable exact-record validation checks those records independently. Persistence
 does not upgrade the existing root or claim new cryptographic guarantees.
+# Local public-credit transition
+
+`NativeChange::LocalCredit` updates the opt-in public balance H(neuron||token)
+and neuron focus with checked u64 increments. It captures the same bounded undo
+and exact records as signal transitions, refreshes the root/checkpoint, and
+keeps height unchanged. It supplies no network authorization: the trusted native
+coordinator records the caller's credit reason in history before publishing.

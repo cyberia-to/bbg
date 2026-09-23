@@ -5,6 +5,8 @@ crystal-domain: cyber
 ---
 # state
 
+Current dimension encoding and public state authentication use [version 2](state-certificate.md). This changes roots and flat cell offsets; old roots and proofs must be recomputed.
+
 all authenticated state committed under a single polynomial commitment. individual [[cyberlinks]] are private (polynomial mutator set). the public state contains only aggregates.
 
 ## BBG root
