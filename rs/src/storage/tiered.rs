@@ -17,6 +17,7 @@
 use nebu::Goldilocks;
 
 use super::{dim, NetworkStore, ShardStore};
+use crate::proof::QueryProof;
 use crate::types::Particle;
 
 pub struct TieredStore {
@@ -91,6 +92,22 @@ impl TieredStore {
         } else {
             None
         }
+    }
+
+    /// DAS challenge/response: request a Lens opening for `length` bytes at
+    /// `offset` within `particle` from the network tier.
+    ///
+    /// Delegates to `NetworkStore::das_sample`; returns `None` without a
+    /// network tier or if the peer has no answer. The returned proof is not
+    /// verified here — the caller (foculus DAS sampling, `decide_availability`)
+    /// checks it against the commitment it already trusts.
+    pub fn das_sample_content(
+        &self,
+        particle: &Particle,
+        offset: u64,
+        length: u64,
+    ) -> Option<QueryProof> {
+        self.network.as_ref()?.das_sample(particle, offset, length)
     }
 
     /// Flush COLD tier explicitly (called at archival checkpoints, not per block).
@@ -187,16 +204,29 @@ mod tests {
 
     /// A network tier that always answers `fetch` with a fixed byte string,
     /// regardless of which particle was asked for — stands in for a buggy or
-    /// adversarial peer.
-    struct MockNetworkStore(Vec<u8>);
+    /// adversarial peer. `das_sample` answers with a fixed proof, or `None`
+    /// if none was given.
+    struct MockNetworkStore(Vec<u8>, Option<QueryProof>);
 
     impl NetworkStore for MockNetworkStore {
         fn fetch(&self, _particle: &Particle) -> Option<Vec<u8>> {
             Some(self.0.clone())
         }
         fn das_sample(&self, _particle: &Particle, _offset: u64, _length: u64) -> Option<QueryProof> {
-            None
+            self.1.clone()
         }
+    }
+
+    /// A real, verifiable `QueryProof` for use as network-tier test fixtures,
+    /// built the same way `bbg_query` builds one for a live client.
+    fn sample_proof() -> QueryProof {
+        use crate::query::Dim;
+        use crate::state::BbgState;
+        use crate::types::NeuronRecord;
+
+        let mut state = BbgState::new();
+        state.neurons.insert(key(1), NeuronRecord { focus: 1, karma: 0, stake: 0 });
+        crate::proof::open_cell(&state, Dim::Neurons, 0).unwrap()
     }
 
     #[test]
@@ -204,7 +234,7 @@ mod tests {
         let content = b"hello world".to_vec();
         let particle: Particle = *hemera::hash(&content).as_bytes();
         let store = TieredStore::new(Box::new(MemStore::new()))
-            .with_network(Box::new(MockNetworkStore(content.clone())));
+            .with_network(Box::new(MockNetworkStore(content.clone(), None)));
 
         assert_eq!(store.fetch_content(&particle), Some(content));
     }
@@ -214,7 +244,7 @@ mod tests {
         let requested_particle: Particle = *hemera::hash(b"hello world").as_bytes();
         let tampered_content = b"hello world!".to_vec(); // hashes to a different particle
         let store = TieredStore::new(Box::new(MemStore::new()))
-            .with_network(Box::new(MockNetworkStore(tampered_content)));
+            .with_network(Box::new(MockNetworkStore(tampered_content, None)));
 
         assert_eq!(store.fetch_content(&requested_particle), None);
     }
@@ -223,6 +253,29 @@ mod tests {
     fn fetch_content_none_without_a_network_tier() {
         let store = TieredStore::new(Box::new(MemStore::new()));
         assert_eq!(store.fetch_content(&[0u8; 32]), None);
+    }
+
+    #[test]
+    fn das_sample_content_returns_the_network_tiers_proof() {
+        let proof = sample_proof();
+        let store = TieredStore::new(Box::new(MemStore::new()))
+            .with_network(Box::new(MockNetworkStore(vec![], Some(proof.clone()))));
+
+        assert_eq!(store.das_sample_content(&key(1), 0, 32), Some(proof));
+    }
+
+    #[test]
+    fn das_sample_content_none_without_a_network_tier() {
+        let store = TieredStore::new(Box::new(MemStore::new()));
+        assert_eq!(store.das_sample_content(&key(1), 0, 32), None);
+    }
+
+    #[test]
+    fn das_sample_content_none_when_the_peer_has_no_answer() {
+        let store = TieredStore::new(Box::new(MemStore::new()))
+            .with_network(Box::new(MockNetworkStore(vec![], None)));
+
+        assert_eq!(store.das_sample_content(&key(1), 0, 32), None);
     }
 
     #[test]
