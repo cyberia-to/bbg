@@ -294,7 +294,8 @@ impl BbgState {
 
             // balances[H(to || token)] += a  (public output)
             let to_key = balance_key(&link.to, &link.token);
-            *self.balances.entry(to_key).or_insert(0) += link.amount;
+            let to_bal = self.balances.entry(to_key).or_insert(0);
+            *to_bal = to_bal.saturating_add(link.amount);
 
             // balances[H(from || token)] -= a  (public input)
             let from_key = balance_key(&link.from, &link.token);
