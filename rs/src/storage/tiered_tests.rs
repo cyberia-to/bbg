@@ -1,4 +1,5 @@
 use super::*;
+use crate::proof::QueryProof;
 use crate::storage::mem::MemStore;
 use nebu::Goldilocks;
 
@@ -7,6 +8,40 @@ fn g(v: u64) -> Goldilocks {
 }
 fn key(b: u8) -> [u8; 32] {
     [b; 32]
+}
+
+struct MockNetworkStore(Vec<u8>);
+
+impl NetworkStore for MockNetworkStore {
+    fn fetch(&self, _particle: &Particle) -> Option<Vec<u8>> {
+        Some(self.0.clone())
+    }
+    fn das_sample(&self, _particle: &Particle, _offset: u64, _length: u64) -> Option<QueryProof> {
+        None
+    }
+}
+
+#[test]
+fn fetch_content_accepts_matching_content() {
+    let content = b"hello world".to_vec();
+    let particle = *hemera::hash(&content).as_bytes();
+    let store = TieredStore::new(Box::new(MemStore::new()))
+        .with_network(Box::new(MockNetworkStore(content.clone())));
+    assert_eq!(store.fetch_content(&particle), Some(content));
+}
+
+#[test]
+fn fetch_content_rejects_content_that_does_not_hash_to_the_particle() {
+    let particle = *hemera::hash(b"hello world").as_bytes();
+    let store = TieredStore::new(Box::new(MemStore::new()))
+        .with_network(Box::new(MockNetworkStore(b"hello world!".to_vec())));
+    assert_eq!(store.fetch_content(&particle), None);
+}
+
+#[test]
+fn fetch_content_none_without_a_network_tier() {
+    let store = TieredStore::new(Box::new(MemStore::new()));
+    assert_eq!(store.fetch_content(&[0; 32]), None);
 }
 
 #[test]
