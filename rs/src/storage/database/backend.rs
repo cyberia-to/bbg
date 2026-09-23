@@ -20,6 +20,14 @@ pub(super) enum Engine {
 }
 
 impl Engine {
+    pub(super) fn check_known_tables(&self) -> StorageResult<()> {
+        match self {
+            #[cfg(feature = "backend-ssd")]
+            Self::Fjall(engine) => engine.check_known_tables(),
+            #[cfg(feature = "backend-hdd")]
+            Self::Redb(_) => Err(StorageError::Unsupported("use explicit redb conversion")),
+        }
+    }
     pub(super) fn open(path: &Path, backend: Backend) -> StorageResult<Self> {
         match backend {
             Backend::Ssd => {

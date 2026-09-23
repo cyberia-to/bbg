@@ -2,6 +2,9 @@
 mod backend;
 mod transaction;
 pub use transaction::Transaction;
+mod generation;
+pub use generation::ReaderGeneration;
+pub(crate) use generation::promote as promote_generation;
 mod records;
 pub use records::{RecordDomain, RecordLimits};
 #[cfg(all(test, feature = "backend-hdd"))]
@@ -40,6 +43,7 @@ pub struct Database {
 struct Shared {
     state: Mutex<State>,
     poisoned: AtomicBool,
+    coordination: Mutex<BTreeMap<[u8; 32], std::sync::Weak<Mutex<()>>>>,
 }
 struct State {
     engine: Engine,
@@ -47,6 +51,27 @@ struct State {
 }
 
 impl Database {
+    /// Same application lock across independent adapters of this physical owner.
+    /// Lock order: application coordination, then Database transaction. Never
+    /// acquire this lock recursively or while already in a transaction.
+    pub fn coordination_lock(&self, namespace: [u8; 32]) -> StorageResult<Arc<Mutex<()>>> {
+        let mut locks = self
+            .shared
+            .coordination
+            .lock()
+            .map_err(|_| StorageError::Corrupt("coordination map poisoned"))?;
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(&namespace).and_then(std::sync::Weak::upgrade) {
+            return Ok(lock);
+        }
+        if locks.len() >= 64 {
+            return Err(StorageError::Limit("live application coordination locks"));
+        }
+        let lock = Arc::new(Mutex::new(()));
+        locks.insert(namespace, Arc::downgrade(&lock));
+        Ok(lock)
+    }
+
     pub fn open(path: impl AsRef<Path>, backend: Backend) -> StorageResult<Self> {
         if migration_guard(path.as_ref())?
             .try_exists()
@@ -66,10 +91,7 @@ impl Database {
         {
             return Err(StorageError::Corrupt("incomplete application migration"));
         }
-        let migration = db.read(Table::Migration, b"status", 16)?;
-        if migration.as_deref().is_some_and(|s| s != b"complete") {
-            return Err(StorageError::Corrupt("incomplete application migration"));
-        }
+        db.reader_generation()?;
         db.last_transaction()?;
         db.read(Table::Metadata, b"last_commit", 32)?
             .map(|bytes| decode_marker(&bytes))
@@ -89,6 +111,7 @@ impl Database {
                     failure: None,
                 }),
                 poisoned: AtomicBool::new(false),
+                coordination: Mutex::new(BTreeMap::new()),
             }),
         }
     }
@@ -153,6 +176,15 @@ impl Database {
 
     pub fn is_poisoned(&self) -> bool {
         self.shared.poisoned.load(Ordering::Acquire) || self.shared.state.is_poisoned()
+    }
+
+    pub(crate) fn check_known_tables(&self) -> StorageResult<()> {
+        let state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| StorageError::Corrupt("panicked database transaction"))?;
+        state.engine.check_known_tables()
     }
 
     pub fn shards(&self) -> super::DiskStore {
@@ -307,6 +339,34 @@ pub(crate) fn change_id(changes: &Changes) -> [u8; 32] {
 #[cfg(all(test, feature = "backend-ssd"))]
 mod tests {
     use super::*;
+    #[test]
+    fn coordination_is_shared_bounded_and_reclaims_expired_roles() {
+        let root = std::env::temp_dir().join(format!("bbg-coordination-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let db = Database::open(root.join("bbg"), Backend::Ssd).unwrap();
+        let first = db.coordination_lock([0; 32]).unwrap();
+        let same = db.clone().coordination_lock([0; 32]).unwrap();
+        assert!(Arc::ptr_eq(&first, &same));
+        let held = first.lock().unwrap();
+        assert!(same.try_lock().is_err());
+        drop(held);
+        let others: Vec<_> = (1..64u8)
+            .map(|n| db.coordination_lock([n; 32]).unwrap())
+            .collect();
+        assert!(matches!(
+            db.coordination_lock([64; 32]),
+            Err(StorageError::Limit(_))
+        ));
+        drop(others);
+        let next = db.coordination_lock([64; 32]).unwrap();
+        assert!(!Arc::ptr_eq(&first, &next));
+        assert!(Arc::ptr_eq(&first, &db.coordination_lock([0; 32]).unwrap()));
+        drop(next);
+        drop(first);
+        drop(same);
+        drop(db);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn opener_rechecks_import_guard_after_acquiring_database_owner() {
         let root =

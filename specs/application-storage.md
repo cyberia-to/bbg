@@ -5,6 +5,27 @@ status: implementation
 ---
 # atomic application storage
 
+## Semantic namespace migration
+
+`apply_migration` binds a manifest, sorted source namespaces/exact heads and the
+target write under one Database transaction. All source heads are checked in
+that transaction. A successful activation installs immutable source→target /
+manifest fences and the target receipt together. Future source writes fail at
+ApplicationStore; historical exact retries and read/export remain available.
+One transaction accepts at most 256 sources; larger imports use staged manifests
+and bounded activation groups. No source or historical content is deleted.
+
+Activation writes `neuron-v1` to the existing migration status slot. New Database
+open accepts exactly this completed generation or the backend-import `complete`
+marker; older binaries reject `neuron-v1` as an unsupported migration status.
+This rejects an old writer even after reopening. Migration fingerprints must bind
+the manifest and every source head; the cybergraph adapter performs that framing.
+Failure before publication activates neither target nor fences. CommitUnknown
+uses the existing owner recovery rules. The application still owns semantic
+mapping and authorization verification; BBG does not infer identity from keys.
+
+## Ordinary application writes
+
 ApplicationStore stores cybergraph application content, ordered history, request
 deduplication and conditional heads through BBG's shared Database transaction
 owner. `open(directory)` selects the SSD/Fjall working profile; `from_database`
@@ -65,3 +86,11 @@ source/destination contents and checking contiguous history with exactly one
 receipt per accepted entry. A temporary disk index bounds receipt validation
 memory and is removed before completion. A failed destination is retained for diagnosis;
 retry uses a fresh destination. Existing destinations are never overwritten.
+# One-use admission
+
+`apply_once` uses the same atomic application transaction and request fingerprint
+as ordinary apply, but an existing receipt is a conflict even for identical
+bytes. This distinguishes a fresh durable dispatch claim from observing an old
+success. The duplicate check occurs under the same database transaction as head
+publication; a read-before-write check is insufficient. Ordinary writes and
+migrations retain exact receipt retries.

@@ -47,6 +47,12 @@ pub enum NativeChange<'a> {
         header: &'a SignalRecord,
     },
     Intent(&'a IntentRecord),
+    LocalCredit {
+        neuron: &'a Particle,
+        token: &'a Particle,
+        amount: u64,
+        focus: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +124,47 @@ impl Bbg {
                     let key = intent_key(intent);
                     prepared.capture(14, &key)?;
                     prepared.bbg.apply_intent(intent);
+                }
+                NativeChange::LocalCredit {
+                    neuron,
+                    token,
+                    amount,
+                    focus,
+                } => {
+                    let key = state::balance_key(neuron, token);
+                    let balance = prepared
+                        .bbg
+                        .state
+                        .balances
+                        .get(&key)
+                        .copied()
+                        .unwrap_or(0)
+                        .checked_add(*amount)
+                        .ok_or(Error::Overflow("balance"))?;
+                    let next_focus = prepared
+                        .bbg
+                        .state
+                        .neurons
+                        .get(*neuron)
+                        .map_or(0, |n| n.focus)
+                        .checked_add(*focus)
+                        .ok_or(Error::Overflow("focus"))?;
+                    prepared.capture(13, &key)?;
+                    prepared.capture(4, *neuron)?;
+                    prepared.bbg.state.balances.insert(key, balance);
+                    prepared
+                        .bbg
+                        .state
+                        .neurons
+                        .entry(**neuron)
+                        .or_insert(crate::NeuronRecord {
+                            focus: 0,
+                            karma: 0,
+                            stake: 0,
+                        })
+                        .focus = next_focus;
+                    prepared.bbg.state.refresh_root();
+                    prepared.bbg.checkpoint = prepared.bbg.checkpoint.advance(&prepared.bbg.state);
                 }
             }
             prepared.snapshots.push(Snapshot {

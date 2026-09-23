@@ -10,11 +10,15 @@
 //! conservation, VDF) is the responsibility of cybergraph.
 //! BBG only enforces the structural double-spend invariant via N(x).
 
+pub mod certificate;
 pub mod checkpoint;
 pub mod dim;
 pub mod proof;
 pub mod prune;
 pub mod query;
+pub mod query_auth;
+#[cfg(feature = "serde")]
+mod query_wire;
 pub mod signal;
 pub mod state;
 pub mod stats;
@@ -30,8 +34,8 @@ pub use proof::{
 };
 pub use prune::{PruneConfig, PruneState};
 pub use query::{
-    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
-    verify_query,
+    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_entity,
+    verify_opening, verify_opening_with_context, verify_query, verify_query_at,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use state::{BbgState, balance_key};

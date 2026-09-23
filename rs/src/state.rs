@@ -19,8 +19,8 @@ use nebu::Goldilocks;
 use crate::signal::{InsertError, Signal};
 use crate::stats::{GraphStats, STAT_RELATIONS};
 use crate::types::{
-    CardRecord, Particle, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId,
-    NeuronRecord, ParticleRecord, SignalRecord,
+    CardRecord, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId, NeuronRecord,
+    Particle, ParticleRecord, SignalRecord,
 };
 
 /// Compute the axon-particle id: H(from || to).
@@ -149,7 +149,7 @@ impl BbgState {
             let cb = c.as_bytes();
             let len = cb.len().min(32);
             b[..len].copy_from_slice(&cb[..len]);
-            crate::dim::goldilocks_from_bytes32(&b)
+            crate::dim::digest_limbs(&b)
         };
         zheng::RootLeaves {
             dims: [
@@ -167,7 +167,7 @@ impl BbgState {
             ],
             a: limbs(&self.commit_a()),
             n: limbs(&self.commit_n()),
-            stats: crate::dim::goldilocks_from_bytes32(&self.statistics().commit()),
+            stats: crate::dim::digest_limbs(&self.statistics().commit()),
         }
     }
 
@@ -195,28 +195,33 @@ impl BbgState {
         let node_count = self.particles.len() as u64;
 
         let relation_sizes: [u64; STAT_RELATIONS] = [
-            self.particles.len()  as u64,
-            self.axons_out.len()  as u64,
-            self.axons_in.len()   as u64,
-            self.neurons.len()    as u64,
-            self.locations.len()  as u64,
-            self.coins.len()      as u64,
-            self.cards.len()      as u64,
-            self.files.len()      as u64,
-            self.time.len()       as u64,
-            self.signals.len()    as u64,
-            self.balances.len()   as u64,
+            self.particles.len() as u64,
+            self.axons_out.len() as u64,
+            self.axons_in.len() as u64,
+            self.neurons.len() as u64,
+            self.locations.len() as u64,
+            self.coins.len() as u64,
+            self.cards.len() as u64,
+            self.files.len() as u64,
+            self.time.len() as u64,
+            self.signals.len() as u64,
+            self.balances.len() as u64,
         ];
 
         let max_out = self.axons_out.values().map(|v| v.len()).max().unwrap_or(0);
-        let max_in  = self.axons_in.values().map(|v| v.len()).max().unwrap_or(0);
+        let max_in = self.axons_in.values().map(|v| v.len()).max().unwrap_or(0);
         let max_degree = max_out.max(max_in) as u64;
 
         let diameter_bound = self
             .diameter_override
             .unwrap_or_else(|| node_count.saturating_sub(1));
 
-        GraphStats { node_count, relation_sizes, max_degree, diameter_bound }
+        GraphStats {
+            node_count,
+            relation_sizes,
+            max_degree,
+            diameter_bound,
+        }
     }
 
     /// Install a tighter diameter bound (computed and proven by tru).
@@ -260,16 +265,26 @@ impl BbgState {
 
             // particles[H(p,q)]: weight += a
             {
-                let new_weight = self.particles.get(&axon_id)
+                let new_weight = self
+                    .particles
+                    .get(&axon_id)
                     .map_or(link.amount, |p| p.weight.saturating_add(link.amount));
-                self.particles.entry(axon_id).or_insert(ParticleRecord::zero()).weight = new_weight;
+                self.particles
+                    .entry(axon_id)
+                    .or_insert(ParticleRecord::zero())
+                    .weight = new_weight;
             }
 
             // particles[q]: energy += a
             {
-                let new_energy = self.particles.get(&link.to)
+                let new_energy = self
+                    .particles
+                    .get(&link.to)
                     .map_or(link.amount, |p| p.energy.saturating_add(link.amount));
-                self.particles.entry(link.to).or_insert(ParticleRecord::zero()).energy = new_energy;
+                self.particles
+                    .entry(link.to)
+                    .or_insert(ParticleRecord::zero())
+                    .energy = new_energy;
             }
 
             // axons_out[p]: insert H(p,q)
@@ -285,7 +300,9 @@ impl BbgState {
             }
 
             // record reverse mapping for pruning
-            self.axon_edges.entry(axon_id).or_insert((link.from, link.to));
+            self.axon_edges
+                .entry(axon_id)
+                .or_insert((link.from, link.to));
 
             // neurons[ν]: focus -= cost (cost = amount; cybergraph already verified sufficiency)
             if let Some(nr) = self.neurons.get_mut(&signal.neuron) {
@@ -315,12 +332,15 @@ impl BbgState {
     /// dedupe and abandonment is observable.
     pub fn apply_intent(&mut self, intent: &IntentRecord) -> Particle {
         let key = intent_key(&intent.neuron, intent.h0, &intent.scope_hash);
-        self.intents.insert(key, IntentRecord {
-            neuron:     intent.neuron,
-            h0:         intent.h0,
-            scope_hash: intent.scope_hash,
-            signature:  intent.signature,
-        });
+        self.intents.insert(
+            key,
+            IntentRecord {
+                neuron: intent.neuron,
+                h0: intent.h0,
+                scope_hash: intent.scope_hash,
+                signature: intent.signature,
+            },
+        );
         key
     }
 
@@ -333,7 +353,6 @@ impl BbgState {
         self.signals.insert(step, record);
         self.mark_root_dirty();
     }
-
 }
 
 /// Compute the intent key = H(ν ‖ h0 ‖ scope_hash).

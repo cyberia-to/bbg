@@ -9,7 +9,7 @@
 pub type Particle = [u8; 32];
 
 /// Neuron identifier: 32-byte hemera hash.
-pub type NeuronId = [u8; 32];
+pub use neuron_id::NeuronId;
 
 /// A particle in the cybergraph.
 ///
@@ -33,7 +33,14 @@ pub struct ParticleRecord {
 
 impl ParticleRecord {
     pub fn zero() -> Self {
-        Self { energy: 0, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 }
+        Self {
+            energy: 0,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        }
     }
 }
 

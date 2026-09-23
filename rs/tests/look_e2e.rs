@@ -3,21 +3,19 @@
 // crystal-type: source
 // crystal-domain: cyber
 // ---
-//! End-to-end look proof against real BBG state.
+//! Legacy recursive-look rejection against real BBG state.
 //!
-//! A nox program declares the BBG root in its object, reads a committed cell
-//! via pattern 17, and the zheng proof binds the opened value, the cell index,
-//! the dimension commitment, and the recomputed root — the full chain from
-//! `state.root()` to a verified `TraceProof`. This is the property the look
-//! argument exists to enforce: a prover cannot read state the root does not
-//! commit to.
+//! Native reads remain available. The current TensorMerkle opening has no
+//! recursive verifier here, so Zheng must reject attempts to prove it through
+//! the legacy look relation. Exact public query authentication and state
+//! certificates have independent positive and adversarial integration tests.
 
+use bbg::BbgState;
 use bbg::query::ProofLookProvider;
 use bbg::types::ParticleRecord;
-use bbg::BbgState;
 use nebu::Goldilocks;
-use nox::{reduce, Outcome, Order, Reduction, VecTrace};
-use zheng::{commit, verify, ProofParams, Statement};
+use nox::{Order, Outcome, Reduction, VecTrace, reduce};
+use zheng::{ProofParams, Statement, commit};
 
 fn g(v: u64) -> Goldilocks {
     Goldilocks::new(v)
@@ -28,11 +26,25 @@ fn sample_state() -> BbgState {
     let mut state = BbgState::new();
     state.particles.insert(
         [1u8; 32],
-        ParticleRecord { energy: 77, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
+        ParticleRecord {
+            energy: 77,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        },
     );
     state.particles.insert(
         [2u8; 32],
-        ParticleRecord { energy: 88, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
+        ParticleRecord {
+            energy: 88,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        },
     );
     state
 }
@@ -74,15 +86,15 @@ fn open_statement(bbg_root: [u8; 32]) -> Statement {
 }
 
 #[test]
-fn look_proof_verifies_against_state_root() {
+fn legacy_recursive_opening_fails_closed() {
     let state = sample_state();
     let root = state.root();
 
-    // Particles dimension layout: [key(4) | energy, pi_star, weight, s_yes,
-    // s_no, meta_score] per entry — cell 4 is the first entry's energy.
+    // Particles dimension layout: [header(3)|key(8) | energy_lo,energy_hi, pi_star, weight, s_yes,
+    // s_no, meta_score] per entry — cell 11 is the first entry's energy.
     let mut ar = Reduction::<4096>::new();
     let obj = make_obj(&mut ar, &root);
-    let formula = make_look(&mut ar, 0, 4);
+    let formula = make_look(&mut ar, 0, 11);
 
     let provider = ProofLookProvider::new(&state);
     let mut trace = VecTrace::default();
@@ -96,12 +108,16 @@ fn look_proof_verifies_against_state_root() {
     assert_eq!(openings.len(), 1);
 
     let statement = open_statement(root);
-    let proof = commit(&trace, &[], &[], &openings, &statement, &ProofParams::default())
-        .expect("zheng commit with a real look opening");
-    assert!(
-        verify(&proof, &statement, &ProofParams::default()).is_ok(),
-        "the look proof verifies against the state root"
-    );
+    let error = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &statement,
+        &ProofParams::default(),
+    )
+    .unwrap_err();
+    assert!(format!("{error:?}").contains("UnsupportedRecursiveOpening"));
 }
 
 #[test]
@@ -113,13 +129,20 @@ fn look_against_stale_root_is_rejected() {
     let mut state = state;
     state.particles.insert(
         [3u8; 32],
-        ParticleRecord { energy: 99, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
+        ParticleRecord {
+            energy: 99,
+            pi_star: 0,
+            weight: 0,
+            s_yes: 0,
+            s_no: 0,
+            meta_score: 0,
+        },
     );
     state.refresh_root();
 
     let mut ar = Reduction::<4096>::new();
     let obj = make_obj(&mut ar, &stale_root);
-    let formula = make_look(&mut ar, 0, 4);
+    let formula = make_look(&mut ar, 0, 11);
 
     let provider = ProofLookProvider::new(&state);
     let mut trace = VecTrace::default();
@@ -130,7 +153,14 @@ fn look_against_stale_root_is_rejected() {
     // The openings carry the CURRENT leaves; the trace carries the STALE root.
     // The root-binding steps disagree — commit must fail, not produce a proof.
     let statement = open_statement(state.root());
-    let result = commit(&trace, &[], &[], &openings, &statement, &ProofParams::default());
+    let result = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &statement,
+        &ProofParams::default(),
+    );
     assert!(
         result.is_err(),
         "a look against a root the leaves do not hash to must not prove"
