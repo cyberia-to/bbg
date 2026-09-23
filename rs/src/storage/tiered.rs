@@ -97,6 +97,28 @@ impl TieredStore {
     pub fn archive(&mut self) -> Option<[u8; 32]> {
         self.cold.as_mut().map(|c| c.commit())
     }
+
+    /// Evict keys from WARM once their archival checkpoint has succeeded —
+    /// the closing half of the archival task (specs/storage.md, "archival
+    /// population"): the caller staged these keys into COLD (its own
+    /// `put`, ahead of a `demote`-shaped mechanism), then called `archive()`
+    /// and got `Some` back. Only then may WARM's copy be released, because
+    /// until that checkpoint succeeds WARM is the sole durable copy.
+    ///
+    /// Removes from WARM only — COLD already holds the value, HOT is
+    /// untouched. Calling this for a key whose checkpoint has not succeeded
+    /// (or that was never staged into COLD at all) creates exactly the gap
+    /// population must not create: present in neither WARM nor COLD. This
+    /// method trusts the caller's ordering; it does not itself verify COLD
+    /// holds the key, the same trust boundary `promote` and `evict` already
+    /// have with HOT/WARM.
+    pub fn evict_archived(&mut self, dimension: u8, keys: &[[u8; 32]]) {
+        if let Some(warm) = self.warm.as_mut() {
+            for key in keys {
+                warm.remove(dimension, key);
+            }
+        }
+    }
 }
 
 impl ShardStore for TieredStore {
@@ -341,5 +363,58 @@ mod tests {
         assert_eq!(dim0.len(), 2);
         let dim1: Vec<_> = store.iter(1).collect();
         assert_eq!(dim1.len(), 1);
+    }
+
+    #[test]
+    fn evict_archived_removes_from_warm_only() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+        // stand-in for the staging step (row 18's demote()): put directly
+        // into COLD, as if the checkpoint already succeeded.
+        store.cold.as_mut().unwrap().put(0, key(9), vec![g(42)]);
+
+        store.evict_archived(0, &[key(9)]);
+
+        assert!(store.warm.as_ref().unwrap().get(0, &key(9)).is_none());
+        assert_eq!(store.cold.as_ref().unwrap().get(0, &key(9)), Some(&[g(42)][..]));
+    }
+
+    #[test]
+    fn evict_archived_leaves_the_value_readable_through_the_cascade() {
+        // after eviction the key is gone from HOT and WARM but the cascade
+        // in TieredStore::get still finds it in COLD — a reader sees no
+        // difference, only the tier that answered changed.
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+        store.put(0, key(9), vec![g(42)]);
+        store.cold.as_mut().unwrap().put(0, key(9), vec![g(42)]);
+        store.hot.remove(0, &key(9)); // HOT already evicted this key earlier
+
+        store.evict_archived(0, &[key(9)]);
+
+        assert_eq!(store.get(0, &key(9)), Some(&[g(42)][..]));
+    }
+
+    #[test]
+    fn evict_archived_without_a_warm_tier_does_not_panic() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+
+        store.evict_archived(0, &[key(9)]);
+    }
+
+    #[test]
+    fn evict_archived_on_a_key_never_staged_is_a_no_op() {
+        let mut store = TieredStore::new(Box::new(MemStore::new()))
+            .with_warm(Box::new(MemStore::new()))
+            .with_cold(Box::new(MemStore::new()));
+
+        store.evict_archived(0, &[key(9)]);
+
+        assert!(store.warm.as_ref().unwrap().get(0, &key(9)).is_none());
+        assert!(store.cold.as_ref().unwrap().get(0, &key(9)).is_none());
     }
 }

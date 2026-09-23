@@ -187,6 +187,18 @@ rationale for the split: bbg knows storage internals (capacity, IOPS, polynomial
 
 when a `look(namespace, key)` executes, bbg resolves the tier transparently — the caller says what it wants, bbg finds it. pricing per tier determined by local energy cost: [[cyb/hal]] exposes hardware reality (RAM capacity, SSD IOPS, HDD bandwidth, power cost) as field-denominated prices.
 
+## archival population
+
+`demote(focus_threshold)` above is soma's policy verb; bbg's mechanism is two `TieredStore` methods, staging then release:
+
+- `demote(dimension, keys)` stages each key's WARM value into COLD's pending batch via `put`, returning the keys actually staged (a key absent from WARM, or a store with no COLD tier attached, is skipped rather than an error). bbg does not read focus itself — the caller judges eligibility and passes the key list.
+- staging alone does not seal a batch: `archive()` commits COLD's pending batch under one checkpoint identity, separate from the per-block `commit()` that flushes HOT and WARM.
+- `evict_archived(dimension, keys)` releases WARM's copy of keys whose checkpoint already succeeded (the caller's own `archive()` call returned `Some`). This is the only method that removes a key from WARM as part of the archival flow — `demote` never does.
+
+the checkpoint boundary: WARM remains the sole durable copy of a staged key until `archive()` for the batch containing it returns, and `evict_archived` must not run for a key ahead of that. a crash between staging and `archive()` leaves WARM's copy intact — the archival task retries the same keys with `demote`, and re-staging an already-archived key is a no-op commit, not a correctness hazard, because COLD is addressed by the same (dimension, key) space as every other tier. `evict_archived` trusts the caller's ordering rather than re-verifying COLD holds the key, the same trust boundary `promote` and `evict` already have with HOT/WARM.
+
+open: resuming population from COLD's last successful checkpoint after a restart needs a readable progress marker on COLD, which does not exist on this tier yet; today the archival task tracks its own progress. the archival task itself — what calls `demote`, `archive`, and `evict_archived`, and on what schedule or trigger — is unimplemented; this section specifies the mechanism it will call.
+
 ## storage proofs
 
 six proof types ensure data retention across tiers:
