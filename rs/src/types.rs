@@ -78,6 +78,11 @@ pub struct FileRecord {
 /// A signal finalization record committed to the signals dimension.
 pub struct SignalRecord {
     pub neuron: NeuronId,
+    /// this neuron's per-chain step this record was filed at. Two different
+    /// neurons' first signals are both step 0, so the dimension's map key is
+    /// derived from `(neuron, step)`, not `step` alone — the field keeps the
+    /// step readable once the key itself is a hash (audit/signal-record-order-collision.md).
+    pub step: u64,
     /// destination network this signal was delivered to (a card id)
     pub network: Particle,
     pub link_count: u32,

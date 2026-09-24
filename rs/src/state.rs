@@ -47,6 +47,20 @@ pub fn balance_key(owner: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
     out
 }
 
+/// Compute the signals map key: H(neuron || step). A bare `step` collides —
+/// every neuron's first signal is step 0 — so the key binds both
+/// (audit/signal-record-order-collision.md).
+pub fn signal_key(neuron: &NeuronId, step: u64) -> Particle {
+    let mut buf = [0u8; 40];
+    buf[..32].copy_from_slice(neuron);
+    buf[32..].copy_from_slice(&step.to_le_bytes());
+    let h = hemera_hash(&buf);
+    let b = h.as_bytes();
+    let mut out = [0u8; 32];
+    out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
+    out
+}
+
 /// The full BBG state: 11 dimensions + private commitment sets.
 pub struct BbgState {
     pub particles: BTreeMap<Particle, ParticleRecord>,
@@ -59,8 +73,8 @@ pub struct BbgState {
     pub files: BTreeMap<Particle, FileRecord>,
     /// height → BBG_root snapshot
     pub time: BTreeMap<u64, Particle>,
-    /// step → signal record
-    pub signals: BTreeMap<u64, SignalRecord>,
+    /// H(neuron || step) → signal record; see [`signal_key`]
+    pub signals: BTreeMap<Particle, SignalRecord>,
     /// A(x): commit_point → value (private polynomial commitments)
     pub commitments: BTreeMap<[u8; 32], Goldilocks>,
     /// N(x): spent nullifiers
@@ -328,9 +342,12 @@ impl BbgState {
     ///
     /// Used when the signal has already been validated and ordered by sync
     /// but the cyberlink batch is being applied separately (e.g., for sealing
-    /// a previously-declared intent).
+    /// a previously-declared intent). `step` wins over `record.step` — the
+    /// caller-supplied step is the trusted one, keyed by [`signal_key`] so
+    /// two neurons' same-numbered step no longer collide.
     pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
-        self.signals.insert(step, record);
+        let key = signal_key(&record.neuron, step);
+        self.signals.insert(key, SignalRecord { step, ..record });
         self.mark_root_dirty();
     }
 

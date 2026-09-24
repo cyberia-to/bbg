@@ -149,14 +149,13 @@ fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
         Dim::Signals => state
             .signals
             .iter()
-            .map(|(s, v)| {
-                let mut key = [0u8; 32];
-                key[..8].copy_from_slice(&s.to_le_bytes());
+            .map(|(key, v)| {
                 let mut vals = goldilocks_from_bytes32(&v.neuron).to_vec();
                 vals.push(gu(v.link_count as u64));
                 vals.push(gu(v.block_height));
                 vals.extend_from_slice(&goldilocks_from_bytes32(&v.proof_hash));
-                (key, vals)
+                vals.push(gu(v.step));
+                (*key, vals)
             })
             .collect(),
         Dim::Balances => state.balances.iter().map(|(k, v)| (*k, vec![gu(*v)])).collect(),
@@ -219,9 +218,8 @@ pub fn prove_file(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
     open_dim(&dim_entries(state, Dim::Files), particle, 0)
 }
 
-pub fn prove_signal(state: &BbgState, step: u64) -> Option<QueryProof> {
-    let mut key = [0u8; 32];
-    key[..8].copy_from_slice(&step.to_le_bytes());
+pub fn prove_signal(state: &BbgState, neuron: &NeuronId, step: u64) -> Option<QueryProof> {
+    let key = crate::state::signal_key(neuron, step);
     // Signals' primary scalar is link_count, at value offset 4 (neuron id = 4 elems first).
     open_dim(&dim_entries(state, Dim::Signals), &key, 4)
 }

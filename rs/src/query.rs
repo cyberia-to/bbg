@@ -28,7 +28,7 @@ use zheng::LookOpening;
 
 use crate::proof::{
     prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_file, prove_location,
-    prove_neuron, prove_particle, prove_signal, prove_time, QueryProof,
+    prove_neuron, prove_particle, prove_time, QueryProof,
 };
 use crate::state::BbgState;
 
@@ -70,11 +70,12 @@ impl Dim {
 
 /// Generate a `QueryProof` for dimension `dim` at key `key`.
 ///
-/// `key` is a 32-byte particle/hash. For `Time` and `Signals` the u64 height
-/// or step is read from the first 8 bytes (little-endian).
+/// `key` is a 32-byte particle/hash. For `Time` the u64 height is read from
+/// the first 8 bytes (little-endian).
 ///
-/// `Balances` returns `None` — use `prove_balances(state, owner, token)` directly
-/// because the key is derived from two inputs.
+/// `Balances` and `Signals` return `None` — use `prove_balances(state, owner,
+/// token)` or `prove_signal(state, neuron, step)` directly, because each key
+/// is derived from two inputs.
 pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProof> {
     match dim {
         Dim::Particles => prove_particle(state, key),
@@ -90,11 +91,7 @@ pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProo
             buf.copy_from_slice(&key[..8]);
             prove_time(state, u64::from_le_bytes(buf))
         }
-        Dim::Signals   => {
-            let mut buf = [0u8; 8];
-            buf.copy_from_slice(&key[..8]);
-            prove_signal(state, u64::from_le_bytes(buf))
-        }
+        Dim::Signals   => None,
         Dim::Balances  => None,
     }
 }
