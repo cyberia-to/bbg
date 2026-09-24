@@ -17,7 +17,12 @@ single canonical field elements. Keys follow the dimension map's deterministic
 ordering. Signals include neuron, network, link_count, block_height, proof_hash.
 Root commitments and query proofs use the same entry serializer.
 
-The table pads to exactly its next power of two for Brakedown version 2.
+When the next power of two is at most 65,536 fields, the table pads to that
+size for Brakedown version 2. Larger tables commit with Hemera over
+`"bbg-dim-oversize-v1" || length_u64_le || fields_u64_le`, without padding.
+Certificate verification recomputes the same branch. The large-table branch
+does not support polynomial openings; complete-table certificates still work
+within the aggregate certificate bound below.
 The header binds its unpadded length and entry count. Empty dimensions encode
 `[2,3,0]`; padding cells are not addressable. Particle energy is at cell 11 for
 the first record: three header fields plus eight key limbs. The following cell
