@@ -28,6 +28,13 @@ across bounded values; file size is independent of an individual value limit.
 | Retention root | Authorized obligation over a descriptor/closure, with its release rule | Until explicit release or agreed expiry |
 | Publication receipt | Request identity, selected head and committed outcome | Application retry/recovery policy |
 
+FS namespace bindings, channel heads and patch records are application graph
+data under this same owner. FS/Cybergraph define name resolution and patch
+semantics; BBG stores their records and paged indexes. Retaining a filesystem
+revision protects its namespace/patch state and required content closure.
+Removing one alias cannot release content still retained by another obligation.
+Private paths and directory membership remain in their authorized scope.
+
 Descriptors, closure indexes and progress are themselves paged where needed.
 No single manifest or in-memory collection must grow to contain all files,
 parts or revisions. Internal part keys remain distinct from public file identity.
