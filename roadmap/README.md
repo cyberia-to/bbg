@@ -25,6 +25,14 @@ The P0 document defines ordered tasks, owners and executable exit criteria.
 Keep contracts in `specs/`, rationale in `docs/explanation/`, and observed
 results with source revisions in `audit/`.
 
+## cross-stack content storage
+
+[[soft3/roadmap/storage/README|The storage project]] coordinates canonical file
+identity, BBG content persistence, Radio transport and consumer migration.
+[Content storage](../specs/content-storage.md) is BBG's specialized contract.
+Its S3/S4 work packages build on P0 and carry the content-specific acceptance
+matrix; P0 backend availability alone cannot qualify file recovery.
+
 ## other design tracks
 
 | track | contract | scope |

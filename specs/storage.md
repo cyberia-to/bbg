@@ -5,11 +5,20 @@ crystal-domain: cyber
 ---
 # storage
 
-physical storage architecture for [[bbg]]. the signal log is the primary data — all state is derived from deterministic replay. a [shared Database owner](database.md) backs durable shard and application views. the working profile uses [[fjall]] on SSD; optional archival storage uses redb on HDD. validators and light clients use the same logical encoding — the difference is quantity of data, not how it is stored.
+physical storage architecture for [[bbg]]. the signal log determines replayable graph state; referenced file bytes have their own retention obligation. a [shared Database owner](database.md) backs durable shard, application and content views. the selected SSD profile uses [[fjall]]; the HDD profile uses redb. validators and light clients use the same logical encoding — the difference is quantity of data, not how it is stored.
+
+[Content storage](content-storage.md) governs durable payloads, staging,
+publication and retention under [[soft3/specs/storage|the stack contract]].
+That contract takes precedence for file persistence and network boundaries.
+[[soft3/roadmap/storage/identity|The identity decision]] must reconcile canonical
+file identity before a polynomial or tree representation is adopted as its
+public address.
 
 ## signal-first model
 
-bbg state is a deterministic function of the signal log. signals are append-only and self-certifying. the entire L1-L3 state is a materialized view, not primary data.
+replayable bbg graph state is a deterministic function of the signal log under
+its transition rules. signals are append-only and self-certifying. materialized
+indexes can be reconstructed from the complete inputs those rules require.
 
 ```
 BBG_state(h) = fold(genesis, signals[0..h])
@@ -19,11 +28,14 @@ for any height h:
   compare with claimed BBG_root → fraud detection
 ```
 
-the irreducible minimum per node:
+the replay inputs for graph state:
 - signal log: append-only, DAS-protected, completeness-proved
 - latest checkpoint: ~232 bytes (BBG_root + universal accumulator + height)
 
-everything else is derivable: polynomial evaluation tables, particle data, axon aggregates, focus/φ* values — all reconstructible from signal replay.
+derived polynomial evaluation tables, axon aggregates and focus/φ* values can
+be reconstructed from complete replay inputs. A particle reference does not
+contain its file bytes. Protected files, private application content and
+required history need retained complete copies under the content contract.
 
 ## storage interface
 
@@ -58,9 +70,8 @@ trait ShardStore {
     fn iter(&self, dimension: u8) -> Box<dyn Iterator<Item = (&[u8; 32], &[FieldElement])> + '_>;
 }
 
-/// Content retrieval from the network tier (L3). Injected by cybergraph;
-/// BBG holds an optional reference and delegates on local miss. Transport
-/// is not owned by BBG — this trait is the only network boundary BBG crosses.
+/// Legacy compatibility surface scheduled for retirement in the storage project.
+/// New content consumers use local BBG coverage and Foculus orchestration.
 trait NetworkStore: Send + Sync {
     /// Fetch raw particle content by particle. Returns None if unreachable.
     fn fetch(&self, particle: &[u8; 32]) -> Option<Vec<u8>>;
@@ -68,6 +79,12 @@ trait NetworkStore: Send + Sync {
     fn das_sample(&self, particle: &[u8; 32], offset: u64) -> Option<QueryProof>;
 }
 ```
+
+The target content service returns local coverage and missing ranges. Foculus
+coordinates retrieval through Radio and writes validated arrivals through BBG.
+It performs network waits outside Database transactions. The legacy
+`NetworkStore` interface above supplies migration context only and MUST NOT
+be extended as the new content-storage API.
 
 ### durable access and commit
 
@@ -194,9 +211,12 @@ backends, selected by scale:
 | unimem | `honeycrisp::unimem` (IOSurface-pinned) | polynomial eval + proof generation, Apple Silicon | IOSurface Blocks (Tape/Grid) | ~1 ns alloc, zero-copy CPU/AMX/GPU/ANE | Apple Silicon nodes (M-series) |
 | ssd | `fjall` (LSM-tree, pure Rust) | shard exceeds RAM | LSM-tree with RAM-cached top levels | 20 μs read | nation → planet scale |
 | hdd | `redb` (B-tree MVCC, pure Rust) | full history, cold | sorted log + NMT layout index | sequential 200 MB/s | deep replay, research |
-| network | `NetworkStore` trait (injected by cybergraph) | L3 content on local miss, DAS sampling | φ*-weighted replication across peers | seconds (retrieval) | particle content not held locally |
 
-`honeycrisp/unimem` is selected for Apple Silicon because IOSurface-backed pinned Blocks give a single physical allocation visible without copying to CPU, AMX matrix coprocessor, Metal GPU, and ANE. Polynomial evaluation tables (field element slices) allocated in a Block are consumed directly by Brakedown matrix ops on AMX and by GPU compute shaders — no memcpy at any stage. `fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media. `NetworkStore` is a trait — BBG holds an optional injection from cybergraph; transport is not owned by BBG.
+`honeycrisp/unimem` is selected for Apple Silicon because IOSurface-backed pinned Blocks give a single physical allocation visible without copying to CPU, AMX matrix coprocessor, Metal GPU, and ANE. Polynomial evaluation tables (field element slices) allocated in a Block are consumed directly by Brakedown matrix ops on AMX and by GPU compute shaders — no memcpy at any stage. `fjall` is selected for SSD because its LSM compaction matches SSD sequential write patterns and high IOPS. `redb` is selected for HDD because its MVCC B-tree supports the namespace range scans needed for NMT layout reads on sequential spinning media.
+
+Remote retrieval is orchestrated by Foculus through Radio. Local BBG reads
+return coverage rather than transparently entering the network. The host
+selects durable profiles explicitly through the Database owner.
 
 the trend: as storage gets faster, data structures get simpler. trees compensate for slow storage. when access is O(1) (RAM), the tree adds cost without benefit. with GFP (field ops in silicon) + RAM: the data structure disappears. bytes and math.
 
@@ -223,13 +243,12 @@ WARM (recent state, SSD):
     backend: ssd (fjall LSM-tree, RAM-cached top levels)
     latency: 20 μs
 
-CONTENT (files, network):
-    particle content (raw bytes), indexed by particle
-    DAS availability proofs via files dimension of BBG_poly
-    self-authenticating: H(content) = particle
-    backend: network (NetworkStore trait, injected by cybergraph)
-    latency: seconds (network retrieval)
-    miss path: ShardStore miss → NetworkStore.fetch(particle) → cache to ssd
+CONTENT (retained files and partial transfers):
+    canonical file descriptors, payload parts, coverage and retention
+    backend: selected shared BBG Database (Fjall/SSD or redb/HDD)
+    verification: canonical identity/proof profile, pending the S1 decision
+    local miss → caller/Foculus → Radio transfer → verified BBG staging
+    graph availability evidence and actual byte retention have distinct claims
 
 COLD (full history, HDD/network):
     historical state via BBG_poly time dimension
@@ -532,20 +551,18 @@ same data, same storage, two access modes. interactive queries go through CozoDB
 
 ## polynomial particle storage
 
-particle storage = polynomial evaluation table storage. when particles are polynomial nouns, the content store holds evaluation tables of particle polynomials. ShardStore serves polynomial nouns natively: `get(dimension, key)` returns field elements that are polynomial evaluations.
+Polynomial content is a candidate representation under
+[[soft3/roadmap/storage/identity|S1]], with an explicit data-to-polynomial
+mapping and commitment-to-particle binding. It must preserve exact bytes or
+the declared semantic equivalence of the file adapter. A Lens opening over
+aggregate graph state proves a different statement from an opening of a file
+range; their roots and verifier inputs must remain distinct.
 
-the same backend stores BBG_poly evaluation tables (aggregate state: energy, pi-star, axon weights) AND individual particle polynomials (content data). the fjall "particles" partition holds both: the BBG_poly dimension entries for aggregate queries, and the particle's own polynomial evaluation table for content access.
-
-```
-"particles" partition serves two polynomial levels:
-  BBG_poly(particles, particle, t) → aggregate state (energy, φ*, axon fields)
-  particle_poly(particle, position) → content bytes at any offset
-
-both are polynomial evaluations. both use Lens openings for proofs.
-both live in the same fjall partition, keyed by particle.
-```
-
-Lens.open on BBG_poly answers "what is the energy of particle P?" Lens.open on the particle's own polynomial answers "what are bytes 1024..2048 of particle P?" same mechanism, same proof format, same verification.
+The shared Database can hold both state evaluations and content records.
+Private application content remains in its authorized scope under
+[content storage](content-storage.md). Storing content in BBG never implicitly
+inserts it into public aggregate indexes. Physical layout and proof caches
+cannot select a competing canonical file identity.
 
 ## algebra-adaptive storage
 
@@ -558,7 +575,10 @@ the noun store holds trees with different-sized leaves depending on the algebra.
 | word | 32 bits / 4 bytes | word-type | fits in F_p |
 | hash | 256 bits / 32 bytes | 4 × F_p identity | particles, content addresses (hemera) |
 
-the content-addressed store handles all leaf widths. `H(noun)` hashes the canonical serialization regardless of leaf size — a noun with bit-leaves and a noun with field-leaves both live in the same "particles" partition, keyed by their hash.
+The content service can store the representations of all leaf widths. The
+canonical interpretation and commitment are governed by S1; backend layout
+does not decide whether two encoded values have the same identity. Public
+aggregate entries and private content records retain their separate scopes.
 
 different algebras produce different memory access patterns on the same noun store:
 
@@ -567,21 +587,25 @@ different algebras produce different memory access patterns on the same noun sto
 - **graph programs** (Arc): sparse trees with hash-type leaves (particles pointing to other nouns). random access patterns. latency-bound.
 - **mixed programs** (Rs): trees with both field and word leaves. irregular access.
 
-the existing keyspace layout handles this naturally — particles are content-addressed by hash regardless of leaf type. hot-path optimization should consider which partitions are accessed by which algebra patterns. cache eviction policy, prefetch strategy, and fjall block size all benefit from knowing the dominant algebra in the current workload.
+Hot-path layout may reflect the algebra's access pattern. Prefetch and cache
+eviction operate under the content retention contract, independently of the
+canonical particle construction.
 
 ## dependency graph
 
 ```
-redb (hdd)   fjall (ssd)   HashMap (memory)   unimem (Apple Silicon)   NetworkStore (trait)
-      ↑             ↑              ↑                    ↑                      ↑
-                              bbg (authenticated state logic)
-                                  ↑               ↑
-                               CozoDB           zheng
-                              (queries)        (proofs)
-
-NetworkStore impl lives in cybergraph/radio — injected into bbg at init.
-BBG owns tier routing; does not own transport.
+redb (hdd)   fjall (ssd)   BTreeMap (memory)   unimem (Apple Silicon)
+      ↑             ↑              ↑                    ↑
+                   bbg (local state and content)
+                       ↑                  ↑
+              cybergraph / foculus     query / proof consumers
+                       ↓
+                     radio (transport)
 ```
+
+Arrows show consumer calls toward services. Foculus orchestrates local BBG
+operations and Radio transfers; BBG returns local misses. Durable content and
+transfer state remain with the shared Database owner.
 
 bbg owns the fjall keyspace. CozoDB and zheng are consumers — CozoDB for interactive Datalog queries, zheng for proof generation and verification. neither knows about the other. bbg mediates.
 

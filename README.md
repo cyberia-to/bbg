@@ -10,6 +10,12 @@ before declaring the node reliable. The [roadmap](roadmap/README.md) owns work
 order; the [persistence audit](audit/persistence.md) records verified behavior
 and remaining failures.
 
+The [content storage contract](specs/content-storage.md) extends that shared
+owner to file parts, transfer progress and retention. The cross-stack
+[[soft3/roadmap/storage/README|storage project]] tracks canonical file identity,
+Radio integration and consumer recovery; BBG remains the persistence authority
+for every deployment.
+
 ## three laws
 
 **bounded locality.** no global recompute for local change. every operation's cost is proportional to what it touches. at 10¹⁵ nodes, global operations are physically impossible.
@@ -67,6 +73,7 @@ light client join:    one zheng verification + namespace sync
 | [[data-availability]] | 2D Reed-Solomon, NMT commitment, fraud proofs, DAS |
 | [[temporal]] | edge decay, pruning protocol, storage reclamation |
 | [[storage]] | tiered storage model, private record lifecycle |
+| [content storage](specs/content-storage.md) | durable parts, bounded publication, retention and recovery |
 
 ## explanations
 

@@ -10,6 +10,11 @@ ShardStore views share an owner, exclusive filesystem lock and failure state.
 The working profile is SSD; HDD is available for explicitly selected storage
 and archive use. Attaching a COLD store does not create a cross-device transaction.
 
+[Content storage](content-storage.md) uses this same owner for durable file
+parts, staging, retention and publication. The budgets below bound individual
+operations; content and history grow through paged structures and multiple
+transactions without arbitrary total file, library or revision limits.
+
 ## transactions
 
 `transaction(closure)` serializes conditional reads, bounded staging and one
