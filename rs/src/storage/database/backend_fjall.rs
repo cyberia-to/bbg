@@ -55,6 +55,11 @@ impl FjallEngine {
                 Table::Requests,
                 Table::Claims,
                 Table::Migration,
+                Table::Uploads,
+                Table::Parts,
+                Table::PartChecks,
+                Table::Files,
+                Table::RetainedContent,
             ])
             .chain(
                 super::super::RecordDomain::ALL

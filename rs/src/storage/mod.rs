@@ -32,6 +32,9 @@ pub use access::{
 pub mod application;
 
 #[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
+pub mod content;
+
+#[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]
 pub mod database;
 
 #[cfg(any(feature = "backend-ssd", feature = "backend-hdd"))]

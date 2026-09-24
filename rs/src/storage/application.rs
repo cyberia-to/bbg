@@ -7,6 +7,7 @@ use std::{fmt, path::Path};
 mod migration;
 mod validation;
 mod transfer;
+pub(super) use transfer::stage_key as transfer_stage_key;
 mod archive;
 pub use archive::{ApplicationArchive, ArchiveSeal, ArchiveSummary, MAX_INSPECTION_ROWS, MAX_INSPECTION_BYTES};
 pub use transfer::{TransferSource, TransferProgress};
@@ -158,6 +159,7 @@ impl ApplicationStore {
             || migration.sources.iter().any(|(id,_)|*id==write.namespace){return Err(Error::Limit);}
         self.apply_with(write,|tx|{
             for (origin,expected) in migration.sources {
+                require_no_streamed_content(tx, origin)?;
                 transfer::require_complete(tx, origin, &write.namespace)?;
                 let current=tx.get(Table::Heads,origin,40)?.map(|bytes|decode_head(&bytes)).transpose()?;
                 if current!=Some(*expected){return Err(Error::HeadMismatch);}
@@ -259,7 +261,15 @@ fn validate_write(write: &Write<'_>) -> Result<(), Error> {
     }
     Ok(())
 }
-fn fence_key(namespace:&Particle)->Vec<u8>{
+pub(super) fn require_no_streamed_content(tx: &Transaction<'_>, namespace: &Particle) -> Result<(), Error> {
+    for table in [Table::Uploads, Table::Files] {
+        if !tx.scan(table, None, namespace, ByteLimits { max_entries: 1, max_bytes: 256 })?.is_empty() {
+            return Err(Error::Storage("streamed content requires a content-aware namespace migration".into()));
+        }
+    }
+    Ok(())
+}
+pub(super) fn fence_key(namespace:&Particle)->Vec<u8>{
     let mut key=b"neuron-fence\0".to_vec();key.extend(namespace);key
 }
 fn immutable_put(

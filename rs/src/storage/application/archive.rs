@@ -89,6 +89,13 @@ impl ApplicationArchive {
                 return Err(Error::Conflict);
             }
         }
+        // This legacy archive copies application tables only. Reject a source
+        // with streamed content rather than exporting dangling retained roots.
+        for table in [Table::Uploads, Table::Parts, Table::PartChecks, Table::Files, Table::RetainedContent] {
+            if !db.scan(table, None, &[], tiny)?.is_empty() {
+                return Err(Error::Storage("streamed content requires a content-aware archive".into()));
+            }
+        }
         let heads = db.scan(
             Table::Heads,
             None,

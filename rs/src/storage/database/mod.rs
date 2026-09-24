@@ -243,6 +243,11 @@ pub(crate) enum Table {
     Claims,
     Migration,
     Native(RecordDomain),
+    Uploads,
+    Parts,
+    PartChecks,
+    Files,
+    RetainedContent,
 }
 impl Table {
     pub(crate) fn name(self) -> &'static str {
@@ -256,6 +261,11 @@ impl Table {
             Self::Claims => "application_unique_claims",
             Self::Migration => "bbg_import_v1",
             Self::Native(domain) => domain.name(),
+            Self::Uploads => "content_uploads",
+            Self::Parts => "content_parts",
+            Self::PartChecks => "content_part_checks",
+            Self::Files => "content_files",
+            Self::RetainedContent => "content_retention",
         }
     }
 }

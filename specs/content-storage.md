@@ -42,6 +42,40 @@ Sharing identical parts is allowed only within a qualified privacy scope.
 
 ## capabilities
 
+### local streamed-content API
+
+`ContentStore::from_database` attaches to the existing owner. `begin(upload,
+spec)` binds `Upload { namespace, request }` to expected particle, length,
+verifier profile and physical part size. Retry must preserve that binding.
+`write_part` accepts exact-sized parts in any order, with a shorter final part;
+identical retries succeed and conflicting bytes fail. Payload and checksum/
+coverage records commit together. Part size is a per-operation budget, independent
+of the total file size. `uploads` and `coverage` page through durable state.
+
+`verify(upload, verifier)` creates a bounded verification session over immutable
+parts. The trusted host supplies the verifier implementation matching the bound
+profile. Each `step` reads a bounded number of parts, checks stored checksums and
+feeds the canonical verifier. Completion checks particle and length before
+publishing the immutable namespace-scoped descriptor. Interrupted verification
+restarts hashing from the beginning; already stored parts survive. This interface
+supplies full-stream verification, with range-proof qualification remaining S1.
+
+`read_range` reads bounded ranges of sealed content and validates stored part
+checksums. It provides local integrity, not a transferable range proof. A shared
+`Transaction::retain_content` binds a sealed descriptor to an application root
+inside the application's conditional publication transaction. Namespace scoping
+is storage isolation; the host/Cybergraph supplies authorization.
+
+`cancel` marks a noncanonical upload cancelled and reclaims its parts in bounded
+batches. A cancelled request stays bound and cannot be reused. Canonical sealed
+content remains protected; releasing it and collecting its retention roots is
+the separate S4 work package. A repeated upload of already sealed content can
+resolve to the existing descriptor and cancel its redundant staged parts.
+
+Cybergraph's initial verifier preserves existing `Content::Blob` Hemera identity.
+Its explicit profile is a compatibility boundary pending S1, not a final choice
+of the stack's future structured-file construction.
+
 | capability | required semantics |
 |---|---|
 | Begin / resume write | Bind namespace, operation identity, verifier and resource reservation; detect incompatible retry |

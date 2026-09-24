@@ -194,6 +194,7 @@ impl TransferSource {
                 crate::storage::database::ReaderGeneration::NeuronV1,
             )?;
             for (id, _) in &self.sources {
+                super::require_no_streamed_content(tx, id)?;
                 if *id == self.target
                     || tx.get(Table::Heads, id, 40)?.is_some()
                     || tx
@@ -228,7 +229,7 @@ fn limits() -> ByteLimits {
         max_bytes: MAX_TRANSACTION_BYTES - 4096,
     }
 }
-pub(super) fn stage_key(id: &Particle) -> [u8; 33] {
+pub(in crate::storage) fn stage_key(id: &Particle) -> [u8; 33] {
     let mut k = [0; 33];
     k[0] = b's';
     k[1..].copy_from_slice(id);
