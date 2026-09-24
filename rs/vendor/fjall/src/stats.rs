@@ -21,13 +21,3 @@ pub struct Stats {
     /// Number of completed compactions
     pub(crate) compactions_completed: AtomicUsize,
 }
-
-impl Stats {
-    pub fn outstanding_flushes(&self) -> usize {
-        self.flushes_enqueued
-            .load(std::sync::atomic::Ordering::Relaxed)
-            - self
-                .flushes_completed
-                .load(std::sync::atomic::Ordering::Relaxed)
-    }
-}

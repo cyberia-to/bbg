@@ -39,7 +39,7 @@ impl TxKeyspace {
     /// Starts a new writeable transaction.
     #[cfg(feature = "single_writer_tx")]
     #[must_use]
-    pub fn write_tx(&self) -> WriteTransaction {
+    pub fn write_tx(&self) -> WriteTransaction<'_> {
         let guard = self.single_writer_lock.lock().expect("poisoned tx lock");
         let instant = self.inner.instant();
 

@@ -2,7 +2,7 @@
 // This source code is licensed under both the Apache 2.0 and MIT License
 // (found in the LICENSE-* files in the repository)
 
-use crate::{journal::error::RecoveryMode, path::absolute_path, Keyspace};
+use crate::{path::absolute_path, Keyspace};
 use lsm_tree::{descriptor_table::FileDescriptorTable, Cache};
 use std::{
     path::{Path, PathBuf},
@@ -45,8 +45,6 @@ pub struct Config {
 
     /// Fsync every N ms asynchronously
     pub(crate) fsync_ms: Option<u16>,
-
-    pub(crate) journal_recovery_mode: RecoveryMode,
 }
 
 const DEFAULT_CPU_CORES: usize = 4;
@@ -80,7 +78,6 @@ impl Default for Config {
             fsync_ms: None,
             flush_workers_count: cpus.min(4),
             compaction_workers_count: cpus.min(4),
-            journal_recovery_mode: RecoveryMode::default(),
             manual_journal_persist: false,
 
             cache: Arc::new(Cache::with_capacity_bytes(/* 32 MiB */ 32*1_024*1_024)),
