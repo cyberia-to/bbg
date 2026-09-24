@@ -1,0 +1,80 @@
+[
+  {
+    "command": "CARGO_TARGET_DIR=/tmp/cyber-content-storage-20260924/target cargo test --release --manifest-path rs/Cargo.toml --features backend-ssd,backend-hdd --lib storage:: --offline",
+    "cwd_repository": "bbg",
+    "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
+    "exit_code": 0,
+    "log": "logs/bbg-storage-unit.log",
+    "sha256": "7834e9d4b58d4917612fc540b7fdcfd667469dbd3a17ed54fa5a44c8b9269396",
+    "test_summaries": [
+      {
+        "passed": 45,
+        "failed": 0
+      }
+    ],
+    "passed_total": 45,
+    "warnings": 0
+  },
+  {
+    "command": "CARGO_TARGET_DIR=/tmp/cyber-content-storage-20260924/target cargo test --release --manifest-path rs/Cargo.toml --features backend-ssd,backend-hdd --test content_storage --test application_storage --test shared_application --test application_migration --test storage_persistence --test storage_contract --test native_records --offline",
+    "cwd_repository": "bbg",
+    "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
+    "exit_code": 0,
+    "log": "logs/bbg-storage-integration.log",
+    "sha256": "ce422a640d995c5d901fb8f2807270a751d35965f21198436e7404b88e43d907",
+    "test_summaries": [
+      {
+        "passed": 13,
+        "failed": 0
+      },
+      {
+        "passed": 5,
+        "failed": 0
+      },
+      {
+        "passed": 8,
+        "failed": 0
+      },
+      {
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "passed": 8,
+        "failed": 0
+      },
+      {
+        "passed": 13,
+        "failed": 0
+      },
+      {
+        "passed": 5,
+        "failed": 0
+      }
+    ],
+    "passed_total": 55,
+    "warnings": 0
+  },
+  {
+    "command": "CARGO_TARGET_DIR=/tmp/cyber-content-storage-20260924/target cargo check --manifest-path rs/Cargo.toml --no-default-features --offline",
+    "cwd_repository": "bbg",
+    "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
+    "exit_code": 0,
+    "log": "logs/bbg-check-base.log",
+    "sha256": "1db97ecf051ca16b2fe976ab6ee5a1de020bf11f6d7897bf73ea17d0281f828c",
+    "test_summaries": [],
+    "passed_total": 0,
+    "warnings": 0
+  },
+  {
+    "command": "CARGO_TARGET_DIR=/tmp/cyber-content-storage-20260924/target cargo check --manifest-path rs/Cargo.toml --no-default-features --features backend-hdd --offline",
+    "cwd_repository": "bbg",
+    "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
+    "exit_code": 0,
+    "log": "logs/bbg-check-hdd.log",
+    "sha256": "505e7bd361f17aeaa7ae7a771e9fdb1271bd329373732491e1418ebde0663c2a",
+    "test_summaries": [],
+    "passed_total": 0,
+    "warnings": 0
+  }
+]

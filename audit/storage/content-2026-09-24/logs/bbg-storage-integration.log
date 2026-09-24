@@ -1,0 +1,102 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling bbg v0.3.0 (/private/tmp/cyber-content-storage-20260924/bbg/rs)
+    Finished `release` profile [optimized] target(s) in 2.91s
+     Running tests/application_migration.rs (/tmp/cyber-content-storage-20260924/target/release/deps/application_migration-4a6498470e397d2a)
+
+running 13 tests
+test an_import_guard_blocks_open_even_before_the_destination_exists ... ok
+test parent_aliases_check_the_same_guard_for_an_absent_destination ... ok
+test path_aliases_cannot_bypass_a_guard_before_the_first_database_marker ... ok
+test missing_or_unknown_tables_are_rejected_before_destination_creation ... ok
+test migration_requires_exclusive_access_to_the_source ... ok
+test integrity::successful_receipt_validation_removes_its_temporary_reverse_index ... ok
+test existing_destinations_are_refused_and_legacy_open_preserves_file_bytes ... ok
+test integrity::an_empty_legacy_application_database_can_migrate_and_accept_its_first_write ... ok
+test migration_preserves_paged_history_retries_claims_and_the_usable_source ... ok
+test integrity::duplicate_receipts_cannot_cover_another_missing_history_entry ... ok
+test dangling_history_and_receipts_cannot_complete_migration ... ok
+test integrity::missing_all_or_one_receipt_prevents_migration_completion ... ok
+test malformed_records_leave_a_sealed_destination ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.25s
+
+     Running tests/application_storage.rs (/tmp/cyber-content-storage-20260924/target/release/deps/application_storage-cf5268f32260a50e)
+
+running 5 tests
+test simultaneous_writers_cannot_both_advance_the_same_head ... ok
+test rejection_does_not_publish_staged_bytes_or_advance_history ... ok
+test unique_claims_cover_namespaces_and_rollback_with_rejected_content ... ok
+test head_races_and_changed_retries_are_conflicts ... ok
+test committed_head_content_and_request_survive_reopen ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.73s
+
+     Running tests/content_storage.rs (/tmp/cyber-content-storage-20260924/target/release/deps/content_storage-a76877656f127410)
+
+running 8 tests
+test content_crash_child ... ok
+test legacy_application_archive_refuses_to_omit_streamed_content ... ok
+test empty_and_duplicate_files_share_identity_across_physical_part_sizes ... ok
+test out_of_order_upload_resumes_after_reopen_and_rejects_conflicting_retries ... ok
+test retained_content_and_application_head_publish_or_rollback_together ... ok
+test canonical_identity_is_checked_and_cancelled_sessions_cannot_reappear ... ok
+test namespace_uploads_are_paged_without_a_collection_limit ... ok
+test process_exit_without_destructors_preserves_acknowledged_content ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.09s
+
+     Running tests/native_records.rs (/tmp/cyber-content-storage-20260924/target/release/deps/native_records-823e1c8c0ec09b06)
+
+running 3 tests
+test native_record_reads_and_scans_enforce_bounds_without_cross_domain_leaks ... ok
+test rejected_application_transition_discards_all_native_and_shard_changes ... ok
+test native_domains_shards_and_application_publish_in_one_reopenable_commit ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.59s
+
+     Running tests/shared_application.rs (/tmp/cyber-content-storage-20260924/target/release/deps/shared_application-3c5c36fba344f8c6)
+
+running 8 tests
+test application_child ... ok
+test rejected_combined_transition_publishes_neither_domain ... ok
+test conflicting_claims_across_namespaces_serialize_and_rollback ... ok
+test duplicate_conflicting_content_in_one_batch_is_rejected ... ok
+test old_retry_after_successor_never_executes_shard_transition_again ... ok
+test opaque_application_values_exceed_shard_value_size_without_field_conversion ... ok
+test applications_and_shards_share_one_owner_and_publication_boundary ... ok
+test killed_process_recovers_shards_history_claims_and_receipt_together ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.43s
+
+     Running tests/storage_contract.rs (/tmp/cyber-content-storage-20260924/target/release/deps/storage_contract-e688af525a2669bf)
+
+running 13 tests
+test storage_child ... ok
+test pending_element_budget_rejects_growth_without_losing_earlier_values ... ok
+test disk_access_enforces_dimensions_and_allocation_budgets ... ok
+test full_scan_detects_malformed_keys_before_the_smallest_valid_key ... ok
+test reopened_trait_reads_and_paginates_every_persistent_dimension ... ok
+test a_second_writer_cannot_open_the_same_store ... ok
+test repeated_hot_overwrites_are_coalesced_and_rejected_writes_leave_store_usable ... ok
+test deletes_are_staged_with_updates_and_survive_reopen ... ok
+test warm_recovery_and_deletion_override_an_old_archive ... ok
+test commit_identity_binds_values_deletes_and_canonical_order ... ok
+test malformed_disk_values_are_errors_not_missing_or_reduced_values ... ok
+test process_kill_preserves_atomic_batches_and_releases_the_writer ... ok
+test durable_attachment_rejects_a_conflicting_hot_cache ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.83s
+
+     Running tests/storage_persistence.rs (/tmp/cyber-content-storage-20260924/target/release/deps/storage_persistence-1960ac4e0bb891c9)
+
+running 5 tests
+test eviction_keeps_ephemeral_in_hot ... ok
+test eviction_without_warm_preserves_the_last_copy ... ok
+test redb_commit_and_hot_mutation_survive_reopen ... ok
+test fjall_commit_and_hot_mutation_survive_reopen ... ok
+test disk_backends_persist_dimensions_overwrites_and_keep_ephemeral_local ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.61s
+

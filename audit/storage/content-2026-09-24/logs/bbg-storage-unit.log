@@ -1,0 +1,53 @@
+   Compiling bbg v0.3.0 (/private/tmp/cyber-content-storage-20260924/bbg/rs)
+    Finished `release` profile [optimized] target(s) in 2.34s
+     Running unittests src/lib.rs (/tmp/cyber-content-storage-20260924/target/release/deps/bbg-30edd876d51b1c9a)
+
+running 45 tests
+test storage::application::transfer::tests::transfer_child ... ok
+test storage::application::migration::tests::import_directory_creation_preserves_a_competing_store ... ok
+test storage::content::tests::faults::uncertain_part_seal_and_head_commits_freeze_every_view_and_recover_atomically ... ok
+test storage::content::tests::cancelling_a_sparse_huge_upload_visits_only_stored_parts ... ok
+test storage::content::tests::corrupt_parts_are_rejected_by_verification_and_sealed_reads ... ok
+test storage::database::backend::tests::engine_scan_rejects_oversized_keys_before_copying ... ok
+test storage::database::backend::tests::engine_scans_prefixes_and_exclusive_cursors_with_byte_limits ... ok
+test storage::database::native_tests::native_lost_barrier_ack_recovers_all_domains_and_deduplicates_retry ... ok
+test storage::application::transfer::tests::archive_rejects_missing_receipt_and_empty_path_without_a_source_transaction ... ok
+test storage::database::native_tests::native_precommit_read_error_rolls_back_every_composed_domain ... ok
+test storage::database::native_tests::native_sync_error_freezes_every_shared_view_until_reopen ... ok
+test storage::database::native_tests::native_write_error_recovers_a_whole_composed_commit ... ok
+test storage::database::backend::tests::engine_rejects_a_second_writer_and_creates_private_paths ... ok
+test storage::redb::tests::disk_read_failure_is_an_error_and_preserves_committed_data ... ok
+test storage::redb::tests::disk_sync_failure_keeps_pending_batch_and_recovers_atomically ... ok
+test storage::redb::tests::failed_warm_commit_retains_hot_pending_state_and_blocks_publication ... ok
+test storage::database::backend::tests::engine_reopens_changes_and_deletions_across_tables ... ok
+test storage::redb::tests::disk_write_failure_keeps_pending_batch_and_recovers_atomically ... ok
+test storage::tiered::tests::ephemeral_not_in_dirty_after_commit ... ok
+test storage::application::transfer::tests::archive_inspection_is_read_only_bounded_and_survives_the_seal ... ok
+test storage::tiered::tests::ephemeral_not_written_to_warm ... ok
+test storage::tiered::tests::fetch_content_accepts_matching_content ... ok
+test storage::tiered::tests::fetch_content_none_without_a_network_tier ... ok
+test storage::redb::tests::lost_sync_acknowledgement_is_resolved_by_reopened_marker ... ok
+test storage::tiered::tests::fetch_content_rejects_content_that_does_not_hash_to_the_particle ... ok
+test storage::tiered::tests::get_mut_and_mark_dirty_roundtrip ... ok
+test storage::tiered::tests::hot_hit_shadows_warm ... ok
+test storage::tiered::tests::iter_returns_dimension_entries ... ok
+test storage::redb::tests::shared_application_barrier_failure_freezes_every_view_and_resolves_both_domains ... ok
+test storage::tiered::tests::promote_moves_warm_to_hot ... ok
+test storage::tiered::tests::read_cascades_hot_then_warm ... ok
+test storage::redb::tests::shared_application_lost_barrier_reply_never_replays_an_accepted_transition ... ok
+test storage::tiered::tests::remove_clears_from_all_tiers ... ok
+test storage::tiered::tests::write_through_to_warm ... ok
+test storage::database::generation::tests::generation_promotion_is_durable_monotonic_and_rejects_incomplete_states ... ok
+test storage::application::transfer::tests::broken_receipt_coverage_never_completes ... ok
+test storage::database::transaction::tests::staging_reserves_automatic_markers_within_total_transaction_limits ... ok
+test storage::application::transfer::tests::activation_requires_complete_transfer_and_the_pinned_target ... ok
+test storage::application::transfer::tests::interrupted_validation_does_not_advance_cursor_or_copy_a_partial_page ... ok
+test storage::database::tests::coordination_is_shared_bounded_and_reclaims_expired_roles ... ok
+test storage::content::tests::legacy_namespace_migration_preserves_staging_and_sealed_files ... ok
+test storage::database::tests::opener_rechecks_import_guard_after_acquiring_database_owner ... ok
+test storage::content::tests::publication_and_uploads_obey_existing_namespace_and_export_fences ... ok
+test storage::content::tests::legacy_archive_import_cannot_fence_existing_uploads_at_its_destination ... ok
+test storage::application::transfer::tests::killed_transfer_resumes_source_seal_target_reservation_pages_and_completion ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 26.76s
+

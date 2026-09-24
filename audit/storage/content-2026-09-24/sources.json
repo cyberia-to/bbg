@@ -1,0 +1,173 @@
+{
+  "scope": "Local component validation; no release or power-loss qualification",
+  "repositories": {
+    "bbg": {
+      "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
+      "tree": "a6fd4bfe387ef217fc404e35ca1741b132f8e2b0",
+      "origin": "https://github.com/cyberia-to/bbg.git",
+      "packages": [
+        {
+          "name": "bbg",
+          "version": "0.3.0",
+          "manifest": "rs/Cargo.toml"
+        },
+        {
+          "name": "fjall",
+          "version": "2.11.2",
+          "manifest": "rs/vendor/fjall/Cargo.toml"
+        }
+      ]
+    },
+    "hemera": {
+      "revision": "2bb9bb623cd97fb685acd7b9882518a2901723af",
+      "tree": "84d75cb13103474cfd6001accc214e74251f2251",
+      "origin": "https://github.com/cyberia-to/hemera.git",
+      "packages": [
+        {
+          "name": "cyber-hemera",
+          "version": "0.3.1",
+          "manifest": "rs/Cargo.toml"
+        }
+      ]
+    },
+    "lens": {
+      "revision": "b921e9ea589be99441a7e8afcf4a70148f1a8449",
+      "tree": "d5f2953928982b161bf29bd21ff4c946ac046e17",
+      "origin": "https://github.com/cyberia-to/lens.git",
+      "packages": [
+        {
+          "name": "cyber-lens",
+          "version": "0.2.0",
+          "manifest": "src/Cargo.toml"
+        },
+        {
+          "name": "cyber-lens-assayer",
+          "version": "0.2.0",
+          "manifest": "assayer/Cargo.toml"
+        },
+        {
+          "name": "cyber-lens-binius",
+          "version": "0.1.1",
+          "manifest": "binius/Cargo.toml"
+        },
+        {
+          "name": "cyber-lens-brakedown",
+          "version": "0.2.0",
+          "manifest": "brakedown/Cargo.toml"
+        },
+        {
+          "name": "cyber-lens-core",
+          "version": "0.1.2",
+          "manifest": "core/Cargo.toml"
+        },
+        {
+          "name": "cyber-lens-ikat",
+          "version": "0.2.0",
+          "manifest": "ikat/Cargo.toml"
+        },
+        {
+          "name": "cyber-lens-porphyry",
+          "version": "0.2.0",
+          "manifest": "porphyry/Cargo.toml"
+        }
+      ]
+    },
+    "neuron": {
+      "revision": "c87541120caae4fb5d5bb401653d1cbcbeffeb7d",
+      "tree": "46296ad2fa21f495ab75d4045736a8d30f2a8f70",
+      "origin": "https://github.com/cyberia-to/neuron.git",
+      "packages": [
+        {
+          "name": "neuron-id",
+          "version": "0.1.0",
+          "manifest": "id/Cargo.toml"
+        }
+      ]
+    },
+    "nox": {
+      "revision": "bf83009581ed1e8e034a536b32a88f75bf9299cf",
+      "tree": "f2766e6d7b410a2aa773eb9fb2b51f85be7aec6c",
+      "origin": "https://github.com/cyberia-to/nox.git",
+      "packages": [
+        {
+          "name": "cyber-nox",
+          "version": "0.3.0",
+          "manifest": "rs/Cargo.toml"
+        }
+      ]
+    },
+    "strata": {
+      "revision": "56aedb2d12b3126c601eb333419136d403614dbb",
+      "tree": "0fd77e2fd8467a4e4a4ab6093c628d8ec792e3eb",
+      "origin": "https://github.com/cyberia-to/strata.git",
+      "packages": [
+        {
+          "name": "strata-compute",
+          "version": "0.1.1",
+          "manifest": "compute/Cargo.toml"
+        },
+        {
+          "name": "strata-core",
+          "version": "0.1.1",
+          "manifest": "core/Cargo.toml"
+        },
+        {
+          "name": "strata-ext",
+          "version": "0.1.1",
+          "manifest": "ext/Cargo.toml"
+        },
+        {
+          "name": "strata-genies",
+          "version": "0.1.1",
+          "manifest": "genies/rs/Cargo.toml"
+        },
+        {
+          "name": "strata-jali",
+          "version": "0.1.1",
+          "manifest": "jali/rs/Cargo.toml"
+        },
+        {
+          "name": "strata-kuro",
+          "version": "0.1.1",
+          "manifest": "kuro/rs/Cargo.toml"
+        },
+        {
+          "name": "strata-nebu",
+          "version": "0.1.1",
+          "manifest": "nebu/rs/Cargo.toml"
+        },
+        {
+          "name": "strata-proof",
+          "version": "0.1.1",
+          "manifest": "proof/Cargo.toml"
+        },
+        {
+          "name": "strata-trop",
+          "version": "0.1.1",
+          "manifest": "trop/rs/Cargo.toml"
+        }
+      ]
+    },
+    "zheng": {
+      "revision": "3db59040070ee66eb7449e47b3bf13a00f5d632b",
+      "tree": "57399890f336e90b766440a1875ae834b4f2c728",
+      "origin": "https://github.com/cyberia-to/zheng.git",
+      "packages": [
+        {
+          "name": "zheng",
+          "version": "0.4.0",
+          "manifest": "rs/Cargo.toml"
+        }
+      ]
+    }
+  },
+  "lock_sha256": "7d9e90ef5e3aadfe621155a341c1083f2ab9ecc747de93ec5194af804a7ec640",
+  "environment": {
+    "platform": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+    "filesystem": "APFS",
+    "solid_state_volume": true,
+    "filesystem_probe": "df /private/tmp; diskutil info -plist /dev/disk3s5"
+  }
+}
