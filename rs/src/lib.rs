@@ -126,8 +126,8 @@ impl Bbg {
         prove_file(&self.state, particle)
     }
 
-    pub fn prove_signal(&self, step: u64) -> Option<QueryProof> {
-        prove_signal(&self.state, step)
+    pub fn prove_signal(&self, neuron: &NeuronId, step: u64) -> Option<QueryProof> {
+        prove_signal(&self.state, neuron, step)
     }
 
     pub fn prove_time(&self, height: u64) -> Option<QueryProof> {
