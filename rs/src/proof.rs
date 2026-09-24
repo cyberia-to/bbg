@@ -195,6 +195,22 @@ pub fn prove_neuron(state: &BbgState, id: &NeuronId) -> Option<QueryProof> {
     open_dim(&dim_entries(state, Dim::Neurons), id, 0)
 }
 
+/// Verify a neurons-dimension proof against a trusted `state`: reject a proof
+/// whose `commitment` does not match `state.commit_neurons()` before trusting
+/// the Brakedown opening, so a proof captured from a different (or forged)
+/// state cannot be replayed here. Same shape as `verify_particle_bound`'s
+/// commitment check for the particles dimension; does not itself bind the
+/// opened cell to a claimed `NeuronId` (see `verify_particle`'s doc comment
+/// for why that half needs a structural change to `QueryProof`).
+pub fn verify_neuron_bound(state: &BbgState, proof: &QueryProof) -> bool {
+    if proof.commitment != state.commit_neurons() {
+        return false;
+    }
+    let value = eval_value_from_bytes(&proof.value_bytes);
+    let mut tx = LensTx::new(b"bbg-dim-open");
+    Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
+}
+
 pub fn prove_axons_out(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
     open_dim(&dim_entries(state, Dim::AxonsOut), particle, 0)
 }
@@ -329,4 +345,39 @@ fn eval_value_from_bytes(bytes: &[u8]) -> Goldilocks {
     let mut buf = [0u8; 8];
     buf.copy_from_slice(&bytes[..8]);
     Goldilocks::new(u64::from_le_bytes(buf))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::NeuronRecord;
+
+    fn particle(seed: u8) -> Particle {
+        [seed; 32]
+    }
+
+    fn seeded_state() -> BbgState {
+        let mut s = BbgState::new();
+        s.neurons.insert(particle(1), NeuronRecord { focus: 50_000, karma: 7, stake: 3 });
+        s.neurons.insert(particle(2), NeuronRecord { focus: 1, karma: 0, stake: 0 });
+        s
+    }
+
+    #[test]
+    fn verify_neuron_bound_accepts_genuine_proof() {
+        let state = seeded_state();
+        let proof = prove_neuron(&state, &particle(1)).unwrap();
+        assert!(verify_neuron_bound(&state, &proof));
+    }
+
+    #[test]
+    fn verify_neuron_bound_rejects_proof_from_a_different_state() {
+        let state = seeded_state();
+        let proof = prove_neuron(&state, &particle(1)).unwrap();
+
+        let mut other = seeded_state();
+        other.neurons.insert(particle(3), NeuronRecord { focus: 999, karma: 0, stake: 0 });
+
+        assert!(!verify_neuron_bound(&other, &proof));
+    }
 }

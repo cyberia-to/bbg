@@ -68,7 +68,7 @@ impl BbgState {
         commit_dim(&entries)
     }
 
-    pub(super) fn commit_neurons(&self) -> Commitment {
+    pub(crate) fn commit_neurons(&self) -> Commitment {
         let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .neurons
             .iter()
