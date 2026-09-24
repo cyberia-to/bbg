@@ -1,0 +1,106 @@
+{
+  "schema": "bbg/durable-shard-storage-audit/v1",
+  "recorded_at": "2026-09-11T17:10:08+0000",
+  "implementation_revision": "011e5ab049e4a4a72521e162bbc2080eadbeaecb",
+  "evy_revision": "c29fed9e29914105f69fbfc9769b2da50ee06474",
+  "workspace_changes": [
+    " M rs/src/dim.rs",
+    " M rs/src/lib.rs",
+    " M rs/src/proof.rs",
+    " M rs/src/query.rs",
+    " M rs/src/state.rs",
+    " M rs/src/state/commits.rs",
+    " M rs/tests/look_e2e.rs",
+    " M rs/tests/serde_wire.rs",
+    " M specs/query.md",
+    " M specs/state.md",
+    "?? rs/src/certificate.rs",
+    "?? rs/src/query_auth.rs",
+    "?? rs/src/query_wire.rs",
+    "?? rs/tests/query_authentication.rs",
+    "?? rs/tests/state_certificate.rs",
+    "?? specs/state-certificate.md"
+  ],
+  "files": [
+    {
+      "path": "rs/Cargo.toml",
+      "sha256": "516bfbf55ed596216751e61b416fe9167002495eb734aa3891baa5e7399814ef"
+    },
+    {
+      "path": "rs/Cargo.lock",
+      "sha256": "9d2de1e582a42239c1cd55c144229a37ff0b7ac26ea09460674be056bbd56616"
+    },
+    {
+      "path": "rs/src/storage/mod.rs",
+      "sha256": "7a2535dd2aa9bfc6f61be2f6c99d39731a5850cbfee968de07cbd7e1cf0103ab"
+    },
+    {
+      "path": "rs/src/storage/access.rs",
+      "sha256": "51219bb389f6df9ae629f54ae5c33f5db8d0e066b2d911be5a8047ab09e7ae7f"
+    },
+    {
+      "path": "rs/src/storage/buffer.rs",
+      "sha256": "6683fe038ffc064415701338cfa8955896a024cb3909c6960ae970c6a0b6b2d0"
+    },
+    {
+      "path": "rs/src/storage/mem.rs",
+      "sha256": "800734375ae6a5f8a0ba648bcda5180eabdfe30abf1024b9cdcdb495fd6f8f0c"
+    },
+    {
+      "path": "rs/src/storage/fjall.rs",
+      "sha256": "2c029baf7b9aab05bc94a4d9d331549713ae1ca91cd84d8f57d3d55509cff4b2"
+    },
+    {
+      "path": "rs/src/storage/redb.rs",
+      "sha256": "b5a531d7577fcfa2bd596f4cf527ea15d67c5b3fb80a144e18286f95af85b120"
+    },
+    {
+      "path": "rs/src/storage/tiered.rs",
+      "sha256": "01764b795e42cb2503ccf9c3cdaeaa349cdd0322c22e935a62e8619d5b6812c4"
+    },
+    {
+      "path": "rs/src/storage/redb_tests.rs",
+      "sha256": "323e7fc1e3d8cc50b1924bac0e8eda5d71409285fd7c5ade98580ccf01b20e9c"
+    },
+    {
+      "path": "rs/src/storage/tiered_tests.rs",
+      "sha256": "7ba6d3dbbeaa786934d0ea36ea2129eb1264cca33efd31d501113fd1a92dd17c"
+    },
+    {
+      "path": "rs/tests/storage_contract.rs",
+      "sha256": "75657541b6e1edf671d2d1c1212f709c4dbdcaa69d60323e5e66fb0d53728d74"
+    },
+    {
+      "path": "rs/tests/storage_persistence.rs",
+      "sha256": "5347510ab727f5c61666b3198dd46dbddac9fd20ab1b56b5c5dc96da7d6d07f8"
+    },
+    {
+      "path": "rs/tests/storage_tier_failures.rs",
+      "sha256": "241055d6d425443fe85ae407219407648b801f98615c983a754c35f40eeb288f"
+    },
+    {
+      "path": "rs/vendor/fjall/src/batch/mod.rs",
+      "sha256": "83b5ed36471bd3d1488729d6258bf4c05d7b4b8aaf1bcb957aed86030e19a0f3"
+    },
+    {
+      "path": "rs/vendor/fjall/src/batch/tests.rs",
+      "sha256": "5c46763b7d866d0feb6a5144e9c188b5eed3388ed6d6bddc85882d705864ef50"
+    },
+    {
+      "path": "rs/vendor/fjall/src/journal/writer.rs",
+      "sha256": "a8e58c56e8bc424d124c9b38238acee5d7ae1c476f8f9d11c6d8bdb90513dbf5"
+    },
+    {
+      "path": "../evy/crates/evy_ecs_storage/src/storage.rs",
+      "sha256": "fe3202ec28b52a81f613a31d120236f90a82dff11867a44896f929a5a730646b"
+    },
+    {
+      "path": "../evy/crates/evy_engine_dispatch/src/scheduler.rs",
+      "sha256": "6274c92f8af25b9629465bcffb09ef02b64aedc4487e18d7e74517dbe82976ac"
+    },
+    {
+      "path": "../evy/crates/evy_engine_core/src/engine.rs",
+      "sha256": "c1b12cf6669e5378b26f76b65c89aefd22af6c3282bd278c1a1f30ba4951a393"
+    }
+  ]
+}

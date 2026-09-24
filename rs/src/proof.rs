@@ -3,38 +3,42 @@
 // crystal-type: source
 // crystal-domain: cyber
 // ---
-//! Reads over committed BBG dimensions.
+//! Authenticated reads over committed BBG dimensions.
 //!
-//! bbg is unified polynomial state: each dimension is a sorted polynomial
-//! committed via Brakedown (see `dim.rs`). The one read primitive is an
-//! **index-addressed cell open** — `open_cell(dim, idx)` opens the dimension
-//! polynomial at the hypercube corner of cell `idx`, so the opened value IS
-//! `evals[idx]`, bound to the dimension commitment (and thus the BBG root). This
-//! matches what nox's `look` pattern and zheng's `look_openings_from_provider`
-//! already assume (key = flat index → corner).
+//! Public namespaces 0..9 carry a complete-table StateCertificate in version-3
+//! query context. A cell is addressed by its unpadded flat index; entity helpers
+//! locate the primary value cell and `verify_entity` checks the exact key layout.
+//! Full u64 values occupy two u32 cells; one cell proof does not claim a record.
 //!
-//! Everything entity / record / relational composes ABOVE this primitive (in
-//! inf), not here: inclusion = open the key cells + check `== K`; non-inclusion =
-//! open the two adjacent sorted keys + a range check; a record = several cell
-//! opens. bbg only commits sorted dimension polynomials and opens cells.
-//! `prove_*` are thin entity-keyed conveniences (locate, then `open_cell`) for
-//! light clients. See bbg/roadmap/provable-reads.md.
+//! Private balance/A openings stay contextless and disclose no additional table.
+//! They cannot establish a state-root/entity claim through the public query API.
+//! See specs/query.md for bounds and the complete authentication contract.
 
-use lens::{brakedown::Brakedown, Commitment, Lens, MultilinearPoly, Opening, Transcript as LensTx};
+use lens::{
+    Commitment, Lens, MultilinearPoly, Opening, Transcript as LensTx, brakedown::Brakedown,
+};
 use nebu::Goldilocks;
 
-use crate::dim::{goldilocks_from_bytes32, goldilocks_from_u64};
+use crate::dim::{
+    HEADER_FIELDS, KEY_FIELDS, bytes32_limbs as goldilocks_from_bytes32, dim_serialize,
+    scalar_fields,
+};
 use crate::query::Dim;
-use crate::state::{balance_key, BbgState};
+use crate::query_auth::{QueryContext, MAX_QUERY_FIELDS};
+use crate::state::{BbgState, balance_key};
 use crate::types::{NeuronId, Particle};
 
 /// A proof that a committed cell of a BBG dimension has a given value.
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(deny_unknown_fields))]
 pub struct QueryProof {
     pub commitment: Commitment,
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::query_wire::opening"))]
     pub opening: Opening,
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "crate::query_wire::value"))]
     pub value_bytes: Vec<u8>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub context: Option<QueryContext>,
     /// The hypercube corner (LSB-first) of the opened cell.
     #[cfg_attr(feature = "serde", serde(with = "goldilocks_vec"))]
     pub point: Vec<Goldilocks>,
@@ -58,7 +62,7 @@ mod goldilocks_vec {
     pub fn deserialize<'de, D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Vec<Goldilocks>, D::Error> {
-        let raw: Vec<u64> = serde::Deserialize::deserialize(deserializer)?;
+        let raw: Vec<u64> = crate::query_wire::point(deserializer)?;
         raw.into_iter()
             .map(|u| {
                 if u < P {
@@ -79,22 +83,25 @@ mod goldilocks_vec {
 ///
 /// Single source of truth for each dimension's on-poly layout, so the
 /// entity-keyed `prove_*` path and the index-addressed `open_cell` path cannot
-/// diverge. Flattened, each entry occupies `[key(4 elems) | value-fields]`.
-fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
-    let gu = goldilocks_from_u64;
+/// diverge. Flattened, each entry occupies `[key(8 u32 limbs) | value-fields]`.
+pub(crate) fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
+    let fields = scalar_fields;
     match dim {
         Dim::Particles => state
             .particles
             .iter()
             .map(|(k, v)| {
-                (*k, vec![gu(v.energy), gu(v.pi_star), gu(v.weight), gu(v.s_yes), gu(v.s_no), gu(v.meta_score)])
+                (
+                    *k,
+                    fields(&[v.energy, v.pi_star, v.weight, v.s_yes, v.s_no, v.meta_score]),
+                )
             })
             .collect(),
         Dim::AxonsOut => state
             .axons_out
             .iter()
             .map(|(k, v)| {
-                let mut vals = vec![gu(v.len() as u64)];
+                let mut vals = fields(&[v.len() as u64]);
                 for c in v {
                     vals.extend_from_slice(&goldilocks_from_bytes32(c));
                 }
@@ -105,7 +112,7 @@ fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
             .axons_in
             .iter()
             .map(|(k, v)| {
-                let mut vals = vec![gu(v.len() as u64)];
+                let mut vals = fields(&[v.len() as u64]);
                 for c in v {
                     vals.extend_from_slice(&goldilocks_from_bytes32(c));
                 }
@@ -115,14 +122,18 @@ fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
         Dim::Neurons => state
             .neurons
             .iter()
-            .map(|(k, v)| (*k, vec![gu(v.focus), gu(v.karma), gu(v.stake)]))
+            .map(|(k, v)| (*k, fields(&[v.focus, v.karma, v.stake])))
             .collect(),
         Dim::Locations => state
             .locations
             .iter()
-            .map(|(k, v)| (*k, vec![gu(v.lat as u32 as u64), gu(v.lon as u32 as u64)]))
+            .map(|(k, v)| (*k, fields(&[v.lat as u32 as u64, v.lon as u32 as u64])))
             .collect(),
-        Dim::Coins => state.coins.iter().map(|(k, v)| (*k, vec![gu(v.total_supply)])).collect(),
+        Dim::Coins => state
+            .coins
+            .iter()
+            .map(|(k, v)| (*k, fields(&[v.total_supply])))
+            .collect(),
         Dim::Cards => state
             .cards
             .iter()
@@ -135,7 +146,7 @@ fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
         Dim::Files => state
             .files
             .iter()
-            .map(|(k, v)| (*k, vec![gu(v.available as u64), gu(v.chunk_count as u64)]))
+            .map(|(k, v)| (*k, fields(&[v.available as u64, v.chunk_count as u64])))
             .collect(),
         Dim::Time => state
             .time
@@ -153,13 +164,17 @@ fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
                 let mut key = [0u8; 32];
                 key[..8].copy_from_slice(&s.to_le_bytes());
                 let mut vals = goldilocks_from_bytes32(&v.neuron).to_vec();
-                vals.push(gu(v.link_count as u64));
-                vals.push(gu(v.block_height));
+                vals.extend(goldilocks_from_bytes32(&v.network));
+                vals.extend(fields(&[v.link_count as u64, v.block_height]));
                 vals.extend_from_slice(&goldilocks_from_bytes32(&v.proof_hash));
                 (key, vals)
             })
             .collect(),
-        Dim::Balances => state.balances.iter().map(|(k, v)| (*k, vec![gu(*v)])).collect(),
+        Dim::Balances => state
+            .balances
+            .iter()
+            .map(|(k, v)| (*k, fields(&[*v])))
+            .collect(),
     }
 }
 
@@ -169,7 +184,14 @@ fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Goldilocks>)> {
 /// IS `evals[idx]`, bound to the dimension commitment. `None` if `idx` is out of
 /// range. This is the one read primitive; everything else composes above it.
 pub fn open_cell(state: &BbgState, dim: Dim, idx: usize) -> Option<QueryProof> {
-    open_cell_from_entries(&dim_entries(state, dim), idx)
+    let entries = dim_entries(state, dim);
+    let count = HEADER_FIELDS + entries.iter().map(|(_, v)| KEY_FIELDS + v.len()).sum::<usize>();
+    if (dim as u64) <= 9 && count > MAX_QUERY_FIELDS { return None; }
+    let mut proof = open_cell_from_entries(&entries, idx)?;
+    if (dim as u64) <= 9 {
+        proof.context = Some(QueryContext::from_state(state, dim, idx)?);
+    }
+    Some(proof)
 }
 
 /// The value of cell `idx` in `dim`, no proof. Matches `open_cell`'s value.
@@ -181,67 +203,94 @@ pub fn cell_value(state: &BbgState, dim: Dim, idx: usize) -> Option<Goldilocks> 
 
 /// Open the primary cell of `particle` in the particles dimension.
 pub fn prove_particle(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::Particles), particle, 0)
+    open_entity(state, Dim::Particles, particle, 0)
 }
 
-/// Verify a query proof: the opening proves `value` at `point` under `commitment`.
-pub fn verify_particle(proof: &QueryProof, _root: &Particle, _particle: &Particle) -> bool {
-    let value = eval_value_from_bytes(&proof.value_bytes);
-    let mut tx = LensTx::new(b"bbg-dim-open");
-    Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
+/// Verify this particle's primary cell under the caller's trusted state root.
+/// Contextless legacy/private openings cannot establish this claim.
+pub fn verify_particle(proof: &QueryProof, root: &Particle, particle: &Particle) -> bool {
+    crate::query_auth::verify_entity(proof, root, Dim::Particles, particle)
 }
 
 pub fn prove_neuron(state: &BbgState, id: &NeuronId) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::Neurons), id, 0)
+    open_entity(state, Dim::Neurons, id, 0)
 }
 
 pub fn prove_axons_out(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::AxonsOut), particle, 0)
+    open_entity(state, Dim::AxonsOut, particle, 0)
 }
 
 pub fn prove_axons_in(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::AxonsIn), particle, 0)
+    open_entity(state, Dim::AxonsIn, particle, 0)
 }
 
 pub fn prove_location(state: &BbgState, id: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::Locations), id, 0)
+    open_entity(state, Dim::Locations, id, 0)
 }
 
 pub fn prove_coin(state: &BbgState, denom: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::Coins), denom, 0)
+    open_entity(state, Dim::Coins, denom, 0)
 }
 
 pub fn prove_card(state: &BbgState, card_id: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::Cards), card_id, 0)
+    open_entity(state, Dim::Cards, card_id, 0)
 }
 
 pub fn prove_file(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
-    open_dim(&dim_entries(state, Dim::Files), particle, 0)
+    open_entity(state, Dim::Files, particle, 0)
 }
 
 pub fn prove_signal(state: &BbgState, step: u64) -> Option<QueryProof> {
     let mut key = [0u8; 32];
     key[..8].copy_from_slice(&step.to_le_bytes());
-    // Signals' primary scalar is link_count, at value offset 4 (neuron id = 4 elems first).
-    open_dim(&dim_entries(state, Dim::Signals), &key, 4)
+    // link_count follows two eight-limb IDs: neuron and network.
+    open_entity(state, Dim::Signals, &key, 16)
 }
 
 pub fn prove_time(state: &BbgState, height: u64) -> Option<QueryProof> {
     let mut key = [0u8; 32];
     key[..8].copy_from_slice(&height.to_le_bytes());
-    open_dim(&dim_entries(state, Dim::Time), &key, 0)
+    open_entity(state, Dim::Time, &key, 0)
 }
 
 pub fn prove_balances(state: &BbgState, owner: &[u8; 32], token: &[u8; 32]) -> Option<QueryProof> {
     let key = balance_key(owner, token);
-    open_dim(&dim_entries(state, Dim::Balances), &key, 0)
+    open_entity(state, Dim::Balances, &key, 0)
+}
+
+/// Explicitly disclose the complete opt-in plaintext balance table. Private
+/// A/N contents are never included. Pin the result with verify_public_balance.
+pub fn prove_public_balance(state: &BbgState, owner: &[u8; 32], token: &[u8; 32]) -> Option<QueryProof> {
+    let fields = HEADER_FIELDS.checked_add(state.balances.len().checked_mul(KEY_FIELDS + 2)?)?;
+    if fields > MAX_QUERY_FIELDS { return None; }
+    let key = balance_key(owner, token);
+    let position = state.balances.keys().position(|k| k == &key)?;
+    let index = HEADER_FIELDS + position * (KEY_FIELDS + 2) + KEY_FIELDS;
+    let mut proof = prove_balances(state, owner, token)?;
+    proof.context = Some(QueryContext::from_state(state, Dim::Balances, index)?);
+    Some(proof)
 }
 
 /// Open the A(x) polynomial (private commitments) at the given point.
 pub fn prove_commitment(state: &BbgState, point: &[u8; 32]) -> Option<QueryProof> {
-    let entries: Vec<(Particle, Vec<Goldilocks>)> =
-        state.commitments.iter().map(|(k, v)| (*k, vec![*v])).collect();
+    let entries: Vec<(Particle, Vec<Goldilocks>)> = state
+        .commitments
+        .iter()
+        .map(|(k, v)| (*k, vec![*v]))
+        .collect();
     open_dim(&entries, point, 0)
+}
+
+fn open_entity(state: &BbgState, dim: Dim, key: &Particle, value_col: usize) -> Option<QueryProof> {
+    let entries = dim_entries(state, dim);
+    let mut offset = HEADER_FIELDS;
+    for (entry_key, values) in entries {
+        if entry_key == *key {
+            return (value_col < values.len()).then(|| open_cell(state, dim, offset + KEY_FIELDS + value_col)).flatten();
+        }
+        offset += KEY_FIELDS + values.len();
+    }
+    None
 }
 
 // ── internals ────────────────────────────────────────────────────────────────
@@ -253,19 +302,14 @@ pub fn prove_commitment(state: &BbgState, point: &[u8; 32]) -> Option<QueryProof
 /// `look_openings_from_provider` convention.
 fn corner_point(idx: usize, num_vars: usize) -> Vec<Goldilocks> {
     (0..num_vars)
-        .map(|j| if (idx >> j) & 1 == 1 { Goldilocks::ONE } else { Goldilocks::ZERO })
+        .map(|j| {
+            if (idx >> j) & 1 == 1 {
+                Goldilocks::ONE
+            } else {
+                Goldilocks::ZERO
+            }
+        })
         .collect()
-}
-
-/// Flatten entries into the committed `[key(4)|val|…]` field vector (unpadded).
-/// Cell index `i` of this vector is what `look(ns, i)` reads.
-fn dim_serialize(entries: &[(Particle, Vec<Goldilocks>)]) -> Vec<Goldilocks> {
-    let mut elems: Vec<Goldilocks> = Vec::new();
-    for (k, vals) in entries {
-        elems.extend_from_slice(&goldilocks_from_bytes32(k));
-        elems.extend_from_slice(vals);
-    }
-    elems
 }
 
 /// Build/commit the dimension poly and open at the corner of cell `idx`.
@@ -273,18 +317,13 @@ fn open_cell_from_entries(
     entries: &[(Particle, Vec<Goldilocks>)],
     idx: usize,
 ) -> Option<QueryProof> {
-    if entries.is_empty() {
-        return None;
-    }
     let mut elems = dim_serialize(entries);
 
-    // Pad to at least 2^KEY_VARS, then to the next power of two.
-    const KEY_VARS: usize = 4;
-    let target = elems.len().next_power_of_two().max(1 << KEY_VARS);
-    elems.resize(target, Goldilocks::ZERO);
     if idx >= elems.len() {
         return None;
     }
+    let target = elems.len().next_power_of_two();
+    elems.resize(target, Goldilocks::ZERO);
 
     let poly = MultilinearPoly::new(elems);
     let commitment = Brakedown::commit(&poly);
@@ -296,7 +335,13 @@ fn open_cell_from_entries(
     let mut tx = LensTx::new(b"bbg-dim-open");
     let opening = Brakedown::open(&poly, &point, &mut tx);
 
-    Some(QueryProof { commitment, opening, value_bytes, point })
+    Some(QueryProof {
+        commitment,
+        opening,
+        value_bytes,
+        point,
+        context: None,
+    })
 }
 
 /// Entity-keyed open: locate `key`'s entry (sorted, variable width), open value
@@ -309,24 +354,17 @@ fn open_dim(
     if entries.is_empty() {
         return None;
     }
-    let mut offset = 0usize;
+    let mut offset = HEADER_FIELDS;
     let mut flat_idx = None;
     for (k, vals) in entries {
         if k == key {
-            flat_idx = Some(offset + 4 + value_col);
+            if value_col >= vals.len() {
+                return None;
+            }
+            flat_idx = Some(offset + KEY_FIELDS + value_col);
             break;
         }
-        offset += 4 + vals.len();
+        offset += KEY_FIELDS + vals.len();
     }
     open_cell_from_entries(entries, flat_idx?)
-}
-
-/// Decode the first 8 bytes of `value_bytes` as a little-endian u64 Goldilocks element.
-fn eval_value_from_bytes(bytes: &[u8]) -> Goldilocks {
-    if bytes.len() < 8 {
-        return Goldilocks::ZERO;
-    }
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&bytes[..8]);
-    Goldilocks::new(u64::from_le_bytes(buf))
 }

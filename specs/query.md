@@ -5,129 +5,87 @@ crystal-domain: cyber
 ---
 # query
 
-verifiable queries over [[BBG]] polynomial state. any query against BBG_poly produces a cryptographic proof that the result is correct and complete.
+BBG queries address cells in versioned dimension tables. Namespace 0..9 selects
+particles, outgoing axons, incoming axons, neurons, locations, coins, cards,
+files, time or signals. Balances is dimension 10 and has an entity-keyed API;
+current nox `look` accepts only 0..9.
 
-## the mechanism
+## Cell layout
 
-BBG_poly(index, key, t) is committed via [[Brakedown]] Lens. a query IS a polynomial evaluation. the proof IS a Lens opening. verification IS O(1) field operations.
+The canonical layout is defined in [state-certificate](state-certificate.md).
+Version 2 begins each unpadded table with three metadata fields, then entries
+with eight u32 key limbs and injectively encoded record values. Arbitrary u64
+values occupy two u32 cells. A cell key is a flat index, not an entity hash.
+Padding cells are unavailable. Root commitments, native reads and proof reads
+all use the same serializer, including the Signals network field.
 
-```
-query:    Q applied to BBG_poly
-result:   R = Q(BBG_poly)
-proof:    Lens opening proving R = Q(BBG_poly) against BBG_root
-verify:   Brakedown.verify(BBG_root, query_point, R, proof) → accept/reject
-cost:     ~5 μs, independent of query complexity or graph size
-```
+`cell_value(state,dimension,index)` reads the exact field. `open_cell` commits
+that same padded table and opens its multilinear polynomial at the Boolean
+corner corresponding to the index. `prove_*` helpers locate an entity's primary
+value cell. Reading full u64 scalars or records requires all constituent cells.
 
-## simple queries (single opening)
+## Public execution authentication
 
-```
-"energy of particle P"
-= BBG_poly(particles, P, t_now)
-= one Lens opening, ~200 bytes proof
+`StateCertificate::from_state` discloses the complete consumed tables and all
+root leaves. Verification recomputes each table's versioned commitment and the
+state root. It is linear in the disclosed table sizes and makes no query-hiding
+claim. After `certificate.verify(expected_root)`, individual `cell` reads cost
+at most ten namespace comparisons and one indexed lookup.
 
-"all outgoing axons from P"
-= BBG_poly(axons_out, P, t_now)
-= one Lens batch opening, ~200 bytes proof
+Zheng's state execution statement derives its CCS relation from the actual
+program, then binds each active namespace, key, value and four state-root limbs.
+Its lookup callback must use a certificate already verified against that exact
+root. Verification also authenticates the complete public execution witness and
+checks the relation. The certificate and execution proof together establish the
+requested public computation under the caller-supplied state root.
 
-"neuron N's focus, karma, stake"
-= BBG_poly(neurons, N, t_now)
-= one Lens opening, ~200 bytes proof
+## Legacy sampled openings
 
-"state at time T"
-= BBG_poly(index, key, T)
-= one Lens opening at historical time dimension
-```
+Legacy contextless `QueryProof` values are low-level dimension openings only.
+They are explicitly refused by root/entity verification. Public queries now
+carry authenticated context as specified below.
 
-every simple query: ~200 bytes proof, O(√N) field operations to verify.
+The old recursive `zheng::commit` path rejects these unsupported openings. Empty
+or multi-point Brakedown batches also fail closed. No fixed proof-size or
+constant verification-time claim applies to these implementations. Relational
+query compilation, hidden reads and compact recursive state authentication
+require separate protocols and are outside this current public-table contract.
 
-## complex queries (compiled)
+## Authenticated query format, version 3
 
-queries beyond single-point evaluation are compiled from relational algebra into CCS constraints, then proved via [[zheng]]:
+Public `open_cell` and entity `prove_*` queries carry an optional version-3
+context: a `StateCertificate` for exactly the consumed namespace 0..9 and the
+unpadded cell index. This discloses the full public dimension, once. Verifiers
+recompute its commitment and root, read the exact canonical cell and require
+the opening's point and value to match that index. The sampled opening is
+checked for consistency only; complete-table authentication establishes the
+claim. `verify_particle` additionally locates the exact injective eight-limb
+particle key and requires its primary energy cell. Caller-pinned cell and entity
+verification APIs bind the requested root, namespace and index/key.
 
-```
-CozoDB query
-    ↓
-relational algebra (logical plan)
-    ↓
-circuit plan (arithmetic operations over BBG_poly)
-    ↓
-CCS instance (zheng constraint system)
-    ↓
-proof via SuperSpartan + sumcheck
-    ↓
-verifiable result + proof
-```
+`verify_query` verifies the self-described context only; callers comparing a
+particular state or query use `verify_query_at` or `verify_entity`. Legacy queries
+without context cannot establish root/entity claims. Existing `prove_balances`
+and A queries remain contextless low-level openings; they never implicitly
+disclose a full balance table. A legacy `LookOpening` also lacks complete-table context and
+is refused by `verify_opening`; `verify_opening_with_context` requires the
+corresponding public query, a trusted root and cell index.
 
-### relational operations → constraints
+Standalone public query generation is bounded to 4096 unpadded fields; larger
+public tables use the state-certificate execution API (limit 2^20 fields).
+The query decoder accepts only current TensorMerkle openings, canonical points
+of at most 20 coordinates, exactly eight value bytes, bounded paths/columns
+and at most 16 MiB of opening payload. Unsupported old opening variants fail
+closed on decoding; contextless current openings may decode but fail root claims.
 
-| CozoDB operation | circuit encoding | constraints |
-|---|---|---|
-| select (filter) | range check | ~64 per comparison |
-| project | polynomial evaluation at subset | ~100 per field |
-| join | LogUp lookup argument | ~500 per lookup |
-| sort | permutation argument | ~N per element |
-| aggregate (sum, max) | running accumulator | ~10 per element |
-| limit (top-k) | comparison chain + truncation | ~64 per comparison |
+## Explicit public balance disclosure
 
-### examples
-
-**top 100 particles by φ*:**
-
-```
-SELECT particle_id, pi FROM particles ORDER BY pi DESC LIMIT 100
-
-compilation:
-  1. batch opening of particles polynomial               (Lens opening)
-  2. permutation argument proving sort                    (~N constraints)
-  3. truncation proof: output[100].pi ≤ output[99].pi    (1 comparison)
-  4. completeness: no particle with φ* > output[100].pi   (range check)
-
-proof: ~5 KiB, verify: ~5 μs
-```
-
-**multi-hop path (A to B, max 3 hops):**
-
-```
-compilation:
-  1. open axons_out for A → neighbors N₁                 (Lens opening)
-  2. open axons_out for each n ∈ N₁ → N₂                 (batch Lens opening)
-  3. open axons_out for each n ∈ N₂ → N₃                 (batch Lens opening)
-  4. check B ∈ N₁ ∪ N₂ ∪ N₃                              (membership)
-
-each hop folds into accumulator via HyperNova (~30 field ops).
-proof: ~3 KiB, verify: ~5 μs regardless of path length
-```
-
-**temporal range (all cyberlinks from neuron N between t₁ and t₂):**
-
-```
-compilation:
-  1. open BBG_poly(neurons, N, t₁) and BBG_poly(neurons, N, t₂)    (2 temporal openings)
-  2. diff: Δ = state(t₂) - state(t₁)                               (field subtraction)
-  3. prove Δ decomposes into individual cyberlinks                   (batch opening)
-
-proof: ~3 KiB, verify: ~5 μs
-```
-
-## cost model
-
-```
-query type              constraints    proof size    verification
-────────────────────    ───────────    ──────────    ────────────
-single point opening    ~100           ~200 bytes    O(√N) field ops
-namespace range         ~100 × range   ~1-3 KiB     ~5 μs
-top-k                   ~N + 64k       ~5 KiB       ~5 μs
-multi-hop (d hops)      ~100 × d       ~3 KiB       ~5 μs
-join (2 indexes)        ~500           ~2 KiB       ~5 μs
-temporal range          ~200           ~3 KiB       ~5 μs
-arbitrary CozoDB        varies         ~5-10 KiB    ~5 μs
-```
-
-verification is ALWAYS ~5 μs (one zheng decider). proof size is always < 10 KiB. query complexity affects PROVER cost, not verifier cost.
-
-## query cost optimization
-
-query cost optimization via polynomial layering is a roadmap item (see roadmap/).
-
-see [[architecture]] for BBG_poly structure, [[state]] for evaluation dimensions, [[foculus]] for namespace query protocol, [[data-availability]] for algebraic DAS queries
+`prove_public_balance(state,owner,token)` explicitly discloses the complete
+opt-in plaintext balance dimension 10 (state.md), within the 4096-field bound.
+It never reads or discloses private A/N contents. Existing `prove_balances`,
+`open_cell` and nox look behavior is unchanged; callers choose the disclosure API.
+`verify_public_balance(proof,root,owner,token)` pins the caller's trusted root,
+the exact H(owner||token) key, namespace 10 and the primary cell. It reconstructs
+the u64 amount from both authenticated u32 cells of the complete table. A single
+sampled low limb is insufficient. Wrong keys, roots, modified high limbs and
+contextless proofs fail. Absent entries require a separate absence API.

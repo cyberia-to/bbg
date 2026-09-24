@@ -149,7 +149,7 @@ impl BbgState {
             let cb = c.as_bytes();
             let len = cb.len().min(32);
             b[..len].copy_from_slice(&cb[..len]);
-            crate::dim::goldilocks_from_bytes32(&b)
+            crate::dim::digest_limbs(&b)
         };
         zheng::RootLeaves {
             dims: [
@@ -167,7 +167,7 @@ impl BbgState {
             ],
             a: limbs(&self.commit_a()),
             n: limbs(&self.commit_n()),
-            stats: crate::dim::goldilocks_from_bytes32(&self.statistics().commit()),
+            stats: crate::dim::digest_limbs(&self.statistics().commit()),
         }
     }
 

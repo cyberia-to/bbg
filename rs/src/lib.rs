@@ -11,7 +11,11 @@
 //! BBG only enforces the structural double-spend invariant via N(x).
 
 pub mod checkpoint;
+pub mod certificate;
 pub mod dim;
+pub mod query_auth;
+#[cfg(feature = "serde")]
+mod query_wire;
 pub mod proof;
 pub mod prune;
 pub mod query;
@@ -19,6 +23,7 @@ pub mod signal;
 pub mod state;
 pub mod stats;
 pub mod storage;
+pub mod transition;
 pub mod types;
 
 pub use checkpoint::Checkpoint;
@@ -30,7 +35,7 @@ pub use proof::{
 pub use prune::{PruneConfig, PruneState};
 pub use query::{
     BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
-    verify_query,
+    verify_query, verify_query_at, verify_entity, verify_opening_with_context,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use state::{BbgState, balance_key};
