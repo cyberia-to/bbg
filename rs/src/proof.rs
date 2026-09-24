@@ -184,8 +184,38 @@ pub fn prove_particle(state: &BbgState, particle: &Particle) -> Option<QueryProo
     open_dim(&dim_entries(state, Dim::Particles), particle, 0)
 }
 
-/// Verify a query proof: the opening proves `value` at `point` under `commitment`.
+/// Verify a query proof's opening: `value_bytes` decodes to the value at
+/// `point` under `commitment`.
+///
+/// Despite taking `root` and `particle`, this does **not** check the proof
+/// against either: `open_cell_from_entries` opens one value cell, never the
+/// four key cells the entry's particle lives in, so nothing here ties
+/// `commitment` to `root` or the opened value to `particle`. A `QueryProof`
+/// built for one particle under one state verifies against any other root
+/// and any other claimed particle. Closing that needs `QueryProof` to also
+/// carry a key-cell opening (or a root-inclusion proof) — a structural
+/// change, tracked as row 40's open half. Until then:
+/// - a caller holding the trusted `BbgState` should call
+///   [`verify_particle_bound`] instead, which checks `commitment` against
+///   the state's actual particles-dimension commitment;
+/// - a light client holding only `root` cannot safely trust this function's
+///   `particle` argument at all.
 pub fn verify_particle(proof: &QueryProof, _root: &Particle, _particle: &Particle) -> bool {
+    let value = eval_value_from_bytes(&proof.value_bytes);
+    let mut tx = LensTx::new(b"bbg-dim-open");
+    Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)
+}
+
+/// Verify a particle query proof AND that it opens the particles dimension
+/// commitment actually committed in `state` — the commitment half of row 40
+/// that a caller holding the trusted state can close today.
+///
+/// Still does not bind the opened value to a specific `particle` key: see
+/// [`verify_particle`]'s doc for why that half stays open.
+pub fn verify_particle_bound(state: &BbgState, proof: &QueryProof) -> bool {
+    if proof.commitment != state.commit_particles() {
+        return false;
+    }
     let value = eval_value_from_bytes(&proof.value_bytes);
     let mut tx = LensTx::new(b"bbg-dim-open");
     Brakedown::verify(&proof.commitment, &proof.point, value, &proof.opening, &mut tx)

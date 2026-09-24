@@ -25,7 +25,7 @@ pub use checkpoint::Checkpoint;
 pub use proof::{
     QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
     prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,
-    prove_time, verify_particle,
+    prove_time, verify_particle, verify_particle_bound,
 };
 pub use prune::{PruneConfig, PruneState};
 pub use query::{
@@ -283,6 +283,52 @@ mod tests {
     #[test]
     fn prove_particle_returns_none_for_unknown_cid() {
         assert!(Bbg::new().prove_particle(&particle(255)).is_none());
+    }
+
+    #[test]
+    fn verify_particle_bound_accepts_genuine_proof() {
+        let mut bbg = Bbg::new();
+        seed_neuron(&mut bbg, neuron_id(1), 100);
+        bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
+
+        let proof = bbg
+            .prove_particle(&particle(3))
+            .expect("particle proof must exist");
+        assert!(verify_particle_bound(&bbg.state, &proof));
+    }
+
+    #[test]
+    fn verify_particle_bound_rejects_proof_from_a_different_state() {
+        // Two BBG states with different particle sets: a proof built for one
+        // must not verify as "bound" to the other, even though bare
+        // `verify_particle` (row 40's open half) still accepts it, since it
+        // never checks `commitment` at all.
+        let mut bbg_a = Bbg::new();
+        seed_neuron(&mut bbg_a, neuron_id(1), 100);
+        bbg_a
+            .insert(&one_link(neuron_id(1), particle(2), particle(3)))
+            .unwrap();
+        let proof = bbg_a
+            .prove_particle(&particle(3))
+            .expect("particle proof must exist");
+
+        let mut bbg_b = Bbg::new();
+        seed_neuron(&mut bbg_b, neuron_id(9), 100);
+        bbg_b
+            .insert(&one_link(neuron_id(9), particle(20), particle(30)))
+            .unwrap();
+
+        assert!(
+            verify_particle(&proof, &bbg_b.state.root(), &particle(3)),
+            "documents the open half: bare verify_particle ignores root and \
+             particle, so it still accepts a proof from an unrelated state"
+        );
+        assert!(
+            !verify_particle_bound(&bbg_b.state, &proof),
+            "verify_particle_bound must reject a commitment that is not \
+             bbg_b's actual particles-dimension commitment"
+        );
     }
 
     #[test]

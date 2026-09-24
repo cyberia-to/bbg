@@ -18,7 +18,10 @@ use crate::types::Particle;
 use super::BbgState;
 
 impl BbgState {
-    pub(super) fn commit_particles(&self) -> Commitment {
+    /// `pub(crate)`, not `pub(super)`: `proof::verify_particle_bound` needs it
+    /// to check a `QueryProof`'s commitment against the trusted dimension
+    /// commitment (row 40 / launch #40 (2)).
+    pub(crate) fn commit_particles(&self) -> Commitment {
         let entries: Vec<(Particle, Vec<Goldilocks>)> = self
             .particles
             .iter()
