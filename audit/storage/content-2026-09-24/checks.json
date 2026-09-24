@@ -5,7 +5,7 @@
     "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
     "exit_code": 0,
     "log": "logs/bbg-storage-unit.log",
-    "sha256": "7834e9d4b58d4917612fc540b7fdcfd667469dbd3a17ed54fa5a44c8b9269396",
+    "sha256": "7e59bce8159c3bdee723f79920b8b69cea9ffb90cb93206005d5e3b62f2d1d3a",
     "test_summaries": [
       {
         "passed": 45,
@@ -13,7 +13,9 @@
       }
     ],
     "passed_total": 45,
-    "warnings": 0
+    "warnings": 0,
+    "raw_sha256": "7834e9d4b58d4917612fc540b7fdcfd667469dbd3a17ed54fa5a44c8b9269396",
+    "normalization": "Trailing empty lines removed; test output unchanged."
   },
   {
     "command": "CARGO_TARGET_DIR=/tmp/cyber-content-storage-20260924/target cargo test --release --manifest-path rs/Cargo.toml --features backend-ssd,backend-hdd --test content_storage --test application_storage --test shared_application --test application_migration --test storage_persistence --test storage_contract --test native_records --offline",
@@ -21,7 +23,7 @@
     "revision": "36cc420b48c5af8be5afaa3679d271c7b90155e3",
     "exit_code": 0,
     "log": "logs/bbg-storage-integration.log",
-    "sha256": "ce422a640d995c5d901fb8f2807270a751d35965f21198436e7404b88e43d907",
+    "sha256": "c944b7fba0dd4a3a17f7050251c08dfe38e35907031b178479e381eb07fc25d6",
     "test_summaries": [
       {
         "passed": 13,
@@ -53,7 +55,9 @@
       }
     ],
     "passed_total": 55,
-    "warnings": 0
+    "warnings": 0,
+    "raw_sha256": "ce422a640d995c5d901fb8f2807270a751d35965f21198436e7404b88e43d907",
+    "normalization": "Trailing empty lines removed; test output unchanged."
   },
   {
     "command": "CARGO_TARGET_DIR=/tmp/cyber-content-storage-20260924/target cargo check --manifest-path rs/Cargo.toml --no-default-features --offline",
