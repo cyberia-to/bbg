@@ -18,7 +18,7 @@ BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 - **A(x)**: commitment polynomial — every private record ever created
 - **N(x)**: nullifier polynomial — every spent record
 
-one hash, three commitments, 32 bytes. a 240-byte checkpoint (root + universal accumulator + height) proves all history from genesis in ~5 microseconds.
+one hash, three commitments, 32 bytes. a checkpoint (root + universal accumulator + height) proves all history from genesis with one decider. the checkpoint size and verify time of the retired zheng design do not hold; the measured numbers live in [[soft3/proposals/proof-system-repair|the proof-system repair]].
 
 ## 10 public dimensions + 2 private commitments
 
@@ -54,29 +54,29 @@ opening A is zero-knowledge. opening N is zero-knowledge. the privacy boundary i
 NEURON                          NETWORK                         CLIENT
 ──────                          ───────                         ──────
 1. create cyberlinks            4. apply to BBG polynomial      6. download checkpoint
-   ↓ nox execution                ↓ ~3.2K constraints/link        ↓ ~240 bytes
+   ↓ nox execution                ↓ ~3.2K constraints/link        ↓ root + acc + height
    ↓ proof-carrying               ↓                               ↓
 2. hemera identity              5. fold into epoch accumulator  7. sync + verify
    ↓ folded sponge                ↓ universal accumulator          ↓ Lens openings
-   ↓                               ↓ ~200 byte checkpoint          ↓ algebraic DAS
+   ↓                               ↓ checkpoint                    ↓ algebraic DAS
 3. build + sync signal
    ↓ structural sync (5 layers)
    ↓ foculus pi convergence
 ```
 
-**stage 1: nox execution.** every reduce() call computes the result and folds one trace row into a running proof accumulator (~30 field ops per step). at computation end, the accumulator IS the proof. zero separate proving latency.
+**stage 1: nox execution.** every reduce() call computes the result and folds one trace row into a running proof accumulator. at computation end, one decider over the accumulator yields the proof; there is no separate proving pass.
 
-**stage 2: hemera identity.** hemera wraps Lens commitments with domain tags: particle_id = hemera(Lens.commit(content) ‖ PARTICLE). ~3 hemera calls per execution: one for noun identity (domain separation), one for Fiat-Shamir seed, one internal to Brakedown binding. the heavy work is polynomial commitment; hemera is the thin trust layer. ~164 constraints per hash (folded sponge), down from ~736 (independent permutation).
+**stage 2: hemera identity.** hemera wraps Lens commitments with domain tags: particle_id = hemera(Lens.commit(content) ‖ PARTICLE). hemera serves noun identity (domain separation), Fiat-Shamir, and the Merkle trees that authenticate commitment openings. the heavy work is polynomial commitment; hemera is the trust layer.
 
 **stage 3: signal creation + sync.** the signal bundles cyberlinks, focus shifts (pi_delta), and the proof accumulator (sigma). local neurons sync via structural sync: Merkle clock comparison (32 bytes), signal exchange, CRDT merge. then submit to network via foculus pi convergence.
 
 **stage 4: block processing.** the block processor applies each signal to BBG_poly. per cyberlink: ~3,200 constraints (polynomial update) + ~5,000 constraints (polynomial mutator set for private state). hemera calls for state verification: zero. LogUp: zero.
 
-**stage 5: epoch finalization.** 1000 blocks fold into one epoch accumulator via HyperNova folding (~30 field ops per fold + one decider = ~100K constraints total). the universal accumulator covers all five structural sync layers in one ~200 byte object.
+**stage 5: epoch finalization.** 1000 blocks fold into one epoch accumulator, settled by one decider. the universal accumulator covers all five structural sync layers in one object. the fold of the retired design was unsound; its per-fold cost and accumulator size do not hold.
 
-**stage 6: light client join.** download checkpoint (~240 bytes). verify accumulator (~5 microseconds). one proof verifies ALL history from genesis. no sync committee, no header chain, no trust assumption beyond mathematics.
+**stage 6: light client join.** download checkpoint. verify accumulator with one decider. one proof verifies ALL history from genesis. no sync committee, no header chain, no trust assumption beyond mathematics.
 
-**stage 7: query + maintain.** sync namespaces of interest via Lens openings (~200 bytes each). DAS sample for availability (~1.5 KiB batch opening for 20 samples, 99.9999% confidence). fold each new block into local accumulator (~30 field ops/block). total join cost: < 10 KiB.
+**stage 7: query + maintain.** sync namespaces of interest via Lens openings. DAS sample for availability (one batch opening for 20 samples, 99.9999% confidence). fold each new block into the local accumulator.
 
 ## signal-first
 
@@ -86,7 +86,7 @@ BBG_poly is derived data. the signal log is the source of truth:
 BBG_state(h) = fold(genesis, signals[0..h])
 ```
 
-crash recovery: download checkpoint (240 bytes) + replay signals since checkpoint. no separate storage proofs for state — prove signal availability, derive everything. see [[why-signal-first]].
+crash recovery: download checkpoint + replay signals since checkpoint. no separate storage proofs for state — prove signal availability, derive everything. see [[why-signal-first]].
 
 ## pi-weighted everything
 
@@ -104,18 +104,17 @@ one distribution governs the entire stack.
 
 ```
 BBG_root:                32 bytes (one hash of three commitments)
-checkpoint:              ~240 bytes (root + accumulator + height)
-verification:            ~5 μs (one zheng decider, recursive Brakedown)
-per-cyberlink:           ~8,400 constraints total
+checkpoint:              root + accumulator + height (size: soft3 proposals/proof-system-repair)
+verification:            one zheng decider (time: same)
+per-cyberlink:           ~8,200 constraints + hemera identity
   public state update:   ~3,200 constraints (polynomial)
   private state update:  ~5,000 constraints (polynomial mutator set)
-  identity:              ~164 constraints (folded hemera sponge)
+  identity:              hemera sponge
 per-block (1000 tx):     ~8.3M constraints
-epoch (1000 blocks):     ~100K constraints (HyperNova folding)
-inclusion proof:         ~200 bytes (Lens opening)
-DAS (20 samples):        ~1.5 KiB bandwidth (batch opening), ~3K constraints
-light client join:       < 10 KiB total
-hemera calls/execution:  ~3 (domain separation + Fiat-Shamir + Lens binding)
+epoch (1000 blocks):     — (accumulation)
+inclusion proof:         — (Lens opening)
+DAS (20 samples):        — (batch opening)
+light client join:       —
 hemera calls/block:      0 for state verification
 NMT internal nodes:      0 (polynomial replaces tree structure)
 ```

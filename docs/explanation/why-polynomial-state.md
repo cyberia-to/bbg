@@ -87,7 +87,7 @@ every query is an evaluation:
 "supply of denomination D"               = BBG_poly(coins, D, h)
 ```
 
-one Lens opening per query. one verification. 10-50 microseconds. ~200 bytes proof.
+one Lens opening per query. one verification.
 
 the temporal dimension means historical state is queryable without separate snapshots. BBG_poly at height h-1000 returns the state 1000 blocks ago — same mechanism, same proof size, same verification cost.
 
@@ -108,7 +108,7 @@ BBG_root = Lens.commit(BBG_poly)    32 bytes
 
 one polynomial. all public dimensions. all time.
 every query: one opening.
-every verification: ~5 μs.
+every verification: one decider.
 cross-index consistency: structural.
 completeness: algebraic (Lens binding).
 ```
