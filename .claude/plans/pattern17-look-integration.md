@@ -19,8 +19,10 @@ BBG_verify(root = r5, key = r4, value = r6, proof = r7/r10/r11)
 | C_17a | `r5_t - BBG_root_instance = 0` | r5 must equal the BBG root declared in the Statement |
 | C_17b | `eval_point_t - f(r4_t) = 0` | evaluation point is derived from lookup key r4 |
 
-The actual Brakedown opening (~825 constraints) is a folded sub-instance handled via the
-same mechanism as pattern 0 (axis); see `lens/.claude/plans/pattern0-axis-folded-opening.md`.
+The actual opening was planned as a folded sub-instance handled via the same mechanism as
+pattern 0 (axis); see `lens/.claude/plans/pattern0-axis-folded-opening.md`. That plan is
+retired: the in-circuit cost of an opening on the phase-2 PCS is not measured, and the
+fold it relied on is replaced by hash-based accumulation (phase 3).
 
 ---
 
