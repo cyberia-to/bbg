@@ -297,3 +297,28 @@ fn native_record_reads_and_scans_enforce_bounds_without_cross_domain_leaks() {
         assert!(!db.is_poisoned());
     }
 }
+
+#[test]
+fn native_persistence_refuses_a_checkpoint_carrying_a_proof() {
+    let mut graph = bbg::Bbg::new();
+    graph.checkpoint.acc = Some(bbg::CheckpointProof {
+        profile: 1,
+        bytes: vec![1, 2, 3],
+    });
+    assert!(matches!(
+        bbg::transition::records(&graph),
+        Err(bbg::transition::Error::CheckpointProof)
+    ));
+    let intent = bbg::IntentRecord {
+        neuron: [1; 32],
+        h0: 0,
+        scope_hash: [2; 32],
+        signature: [3; 64],
+    };
+    assert!(matches!(
+        graph.prepare_native(None, None, Some(&intent)),
+        Err(bbg::transition::Error::CheckpointProof)
+    ));
+    graph.checkpoint.acc = None;
+    assert!(bbg::transition::records(&graph).is_ok());
+}
