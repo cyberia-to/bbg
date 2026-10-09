@@ -197,7 +197,7 @@ pub fn verify_public_balance(proof: &QueryProof, root: &[u8; 32], owner: &[u8; 3
 /// A legacy LookOpening alone cannot establish a root/cell claim. Supply the
 /// corresponding complete public query and trusted root through this API.
 pub fn verify_opening_with_context(
-    lo: &zheng::LookOpening,
+    lo: &crate::query::LookOpening,
     proof: &QueryProof,
     root: &[u8; 32],
     index: u64,

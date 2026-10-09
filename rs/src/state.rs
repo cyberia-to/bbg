@@ -140,10 +140,9 @@ impl BbgState {
     /// The 14 leaves of the root preimage: the 11 dimension commitments (in
     /// `Dim` order), A (private commitments), N (nullifiers), stats.
     ///
-    /// This is the exact structure zheng's look argument recomputes in-circuit
-    /// (`zheng::root_from_leaves`), so a look opening can bind its dimension
-    /// commitment to the root a nox program declares.
-    pub fn root_leaves(&self) -> zheng::RootLeaves {
+    /// [`crate::root::root_from_leaves`] folds them into the root; a state
+    /// certificate carries them so a verifier can recompute it.
+    pub fn root_leaves(&self) -> crate::root::RootLeaves {
         let limbs = |c: &lens::Commitment| -> [Goldilocks; 4] {
             let mut b = [0u8; 32];
             let cb = c.as_bytes();
@@ -151,7 +150,7 @@ impl BbgState {
             b[..len].copy_from_slice(&cb[..len]);
             crate::dim::digest_limbs(&b)
         };
-        zheng::RootLeaves {
+        crate::root::RootLeaves {
             dims: [
                 limbs(&self.commit_particles()),
                 limbs(&self.commit_axons_out()),
@@ -176,7 +175,7 @@ impl BbgState {
     /// Field-native — the same limbs, permutation, and order as the in-circuit
     /// replay, so the root a program declares is the root the proof recomputes.
     pub fn compute_root(&self) -> Particle {
-        let root = zheng::root_from_leaves(&self.root_leaves());
+        let root = crate::root::root_from_leaves(&self.root_leaves());
         let mut out = [0u8; 32];
         for (i, limb) in root.iter().enumerate() {
             out[i * 8..(i + 1) * 8].copy_from_slice(&limb.as_u64().to_le_bytes());

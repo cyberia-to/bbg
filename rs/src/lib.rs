@@ -19,6 +19,7 @@ mod query_wire;
 pub mod proof;
 pub mod prune;
 pub mod query;
+pub mod root;
 pub mod signal;
 pub mod state;
 pub mod stats;
@@ -33,8 +34,9 @@ pub use proof::{
     prove_time, verify_particle,
 };
 pub use prune::{PruneConfig, PruneState};
+pub use root::{RootLeaves, root_from_leaves, root_to_bytes};
 pub use query::{
-    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
+    BbgLookProvider, Dim, LookOpening, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
     verify_query, verify_query_at, verify_entity, verify_opening_with_context,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
