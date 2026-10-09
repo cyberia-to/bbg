@@ -5,10 +5,11 @@
 // ---
 //! End-to-end state read against real BBG state, zheng state profile v3.
 //!
-//! A nox program reads a committed cell via pattern 17. The state certificate
-//! authenticates the complete table under the BBG root; the zheng v3
-//! certificate checks every CCS row with the read coordinates pinned to the
-//! certified value. A prover cannot read state the root does not commit to.
+//! A nox program reads a committed cell via pattern 17. zheng authenticates
+//! the certificate's evidence (complete tables, root leaves) under the
+//! statement's own root and checks every CCS row with the read coordinates
+//! pinned to the certified value. A prover cannot read state the root does
+//! not commit to, and no caller-side check is needed for that.
 
 use bbg::BbgState;
 use bbg::certificate::StateCertificate;
@@ -54,20 +55,33 @@ fn read_first_energy() -> N {
     )
 }
 
-/// The verifier's whole pipeline: authenticate the state certificate under
-/// the root it trusts, require the statement to name that root, then check
-/// the execution certificate with reads answered from the state certificate.
+/// The verifier's pipeline: require the statement to name the root it
+/// trusts; zheng authenticates the evidence under that root and every read.
 fn verify_against(
     trusted_root: [u64; 4],
     state: &StateCertificate,
     statement: &StateStatement,
     certificate: &Certificate,
 ) -> Result<(), String> {
-    state.verify(trusted_root)?;
     if statement.state_root != trusted_root {
         return Err("statement names another state root".into());
     }
-    statement.verify_certificate(certificate, &mut |ns, key| state.cell(ns, key))
+    statement.verify_certificate(certificate, &state.evidence()?)
+}
+
+#[test]
+fn zheng_and_bbg_agree_on_the_root() {
+    let state = sample_state();
+    let cert = StateCertificate::from_state(&state, &[0, 3]).unwrap();
+    let evidence = cert.evidence().unwrap();
+    assert_eq!(evidence.root().unwrap(), cert.root().unwrap());
+    assert_eq!(
+        evidence.root().unwrap().iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>(),
+        state.root().to_vec()
+    );
+    let mut tampered = evidence.clone();
+    tampered.tables[0].fields[11] += 1;
+    assert!(tampered.authenticate(cert.root().unwrap()).is_err());
 }
 
 #[test]
@@ -75,16 +89,10 @@ fn certified_state_read_binds_value_key_root_and_witness() {
     let state = sample_state();
     let cert = StateCertificate::from_state(&state, &[0]).unwrap();
     let root = cert.root().unwrap();
-    let (statement, certificate) = certify_state_execution(
-        &read_first_energy(),
-        &[],
-        1000,
-        root,
-        true,
-        [0; 32],
-        &mut |ns, key| cert.cell(ns, key),
-    )
-    .unwrap();
+    let (statement, certificate) =
+        certify_state_execution(&read_first_energy(), &[], 1000, true, &cert.evidence().unwrap())
+            .unwrap();
+    assert_eq!(statement.state_root, root);
     assert_eq!(statement.execution.public_output, vec![77]);
     verify_against(root, &cert, &statement, &certificate).unwrap();
 
@@ -133,12 +141,11 @@ fn read_against_a_stale_root_is_rejected() {
         &read_first_energy(),
         &[],
         1000,
-        stale_root,
         true,
-        [0; 32],
-        &mut |ns, key| stale_cert.cell(ns, key),
+        &stale_cert.evidence().unwrap(),
     )
     .unwrap();
+    assert_eq!(statement.state_root, stale_root);
 
     // The state advances: a particle sorting before [1; 32] moves into the
     // first entry, so cell 11 now holds 99 and the root the statement names
