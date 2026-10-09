@@ -26,7 +26,7 @@ pub mod storage;
 pub mod transition;
 pub mod types;
 
-pub use checkpoint::Checkpoint;
+pub use checkpoint::{Checkpoint, CheckpointProof};
 pub use proof::{
     QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
     prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,

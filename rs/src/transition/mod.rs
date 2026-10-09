@@ -15,7 +15,7 @@ pub const MAX_EVENTS: usize = 64;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     Arguments,
-    Accumulator,
+    CheckpointProof,
     DoubleSpend,
     Overflow(&'static str),
     Limit(&'static str),
@@ -28,8 +28,8 @@ impl std::fmt::Display for Error {
             Self::Arguments => {
                 f.write_str("native transition requires a signal/header or an intent")
             }
-            Self::Accumulator => {
-                f.write_str("native persistence does not encode checkpoint accumulators")
+            Self::CheckpointProof => {
+                f.write_str("native persistence does not encode checkpoint proofs")
             }
             Self::DoubleSpend => f.write_str("duplicate or already spent nullifier"),
             Self::Overflow(field) => write!(f, "native transition overflow: {field}"),
@@ -95,7 +95,7 @@ impl Bbg {
             return Err(Error::Limit("event count"));
         }
         if self.checkpoint.acc.is_some() {
-            return Err(Error::Accumulator);
+            return Err(Error::CheckpointProof);
         }
         if self.prune_config.rank_floor_pct > 100 {
             return Err(Error::Limit("pruning rank floor"));
