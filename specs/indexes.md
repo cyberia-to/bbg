@@ -17,8 +17,7 @@ BBG_poly(index, key, t) = value
 query:  Lens.open(BBG_root, (index, key, t)) → (value, proof)
 verify: Lens.verify(BBG_root, (index, key, t), value, proof)
 
-verification cost: O(λ log log N) field operations, ~5 μs
-proof size: ~200 bytes per opening (vs ~1 KiB NMT path)
+verification cost and proof size: set by soft3 proposals/proof-system-repair (openings carry hemera Merkle paths)
 ```
 
 ## completeness proofs

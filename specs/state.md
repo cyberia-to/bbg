@@ -67,8 +67,8 @@ CHECKPOINT = (
 
 checkpoint size: O(1) — ~232 bytes
 contains: proof that ALL history from genesis is valid
-updated: O(1) per block via folding
-proof size: ~2 KiB, verification: ~5 μs
+updated: O(1) per block via accumulation
+proof size and verification: set by soft3 proposals/proof-system-repair
 ```
 
 ## state transitions

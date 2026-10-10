@@ -149,8 +149,8 @@ the same erasure coding, the same 2D Reed-Solomon, the same Lens commitment sche
 ```
                         algebraic DAS
 commitment:             32 bytes (one Lens)
-per-sample proof:       ~200 bytes (Lens opening)
-per-sample verify:      O(1) field operations
+per-sample proof:       one Lens opening (hemera Merkle paths; size set by soft3 proposals/proof-system-repair)
+per-sample verify:      —
 20-sample verification: ~9 KiB bandwidth, ~3K constraints
 fraud proof (k=64):     ~30 KiB
 namespace completeness: O(range) field operations
