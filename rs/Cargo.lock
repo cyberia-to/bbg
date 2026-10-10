@@ -883,7 +883,7 @@ checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "zheng"
-version = "0.3.0"
+version = "0.3.3"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
