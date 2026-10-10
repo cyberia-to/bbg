@@ -10,13 +10,12 @@
 //!   2. `bbg_query` — dispatch to the appropriate `prove_*` function
 //!   3. `BbgLookProvider` — implements `nox::LookProvider` for VM look pattern (fast, no proofs)
 //!   4. `ProofLookProvider` — like BbgLookProvider but also accumulates `LookOpening`s
-//!      for explicit context-backed inspection (recursive commit remains unsupported)
+//!      for explicit context-backed inspection; an opening alone proves nothing
 //!
 //! Key encoding for look providers:
 //!   namespace = Dim index (0–9; the look pattern rejects > 9 before calling).
 //!   key = flat cell index into the dimension polynomial → returns `evals[key]`.
-//! This is the index-addressed convention nox's `BrakedownLookProvider` and
-//! zheng's `look_openings_from_provider` already use. Entity → (index, record)
+//! This is the index-addressed convention nox's `BrakedownLookProvider` uses. Entity → (index, record)
 //! navigation is composed ABOVE this in inf (locate by reading key cells + `eq`);
 //! `bbg_query` / `prove_*` are entity-keyed conveniences for light clients.
 
@@ -24,7 +23,6 @@ use std::sync::Mutex;
 
 use nebu::Goldilocks;
 use nox::{CallProvider, LookProvider, Reduction, Order};
-use zheng::LookOpening;
 
 use crate::proof::{
     prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_file, prove_location,
@@ -128,12 +126,35 @@ impl<'a> LookProvider for BbgLookProvider<'a> {
 
 // ── ProofLookProvider ─────────────────────────────────────────────────────────
 
-/// nox `LookProvider` that generates `LookOpening` proofs alongside the value.
+/// A sampled opening of one BBG cell recorded by [`ProofLookProvider`].
 ///
-/// During `look()`, opens the selected cell and appends a legacy `LookOpening`.
-/// Retrieve these for context-backed inspection with `verify_opening_with_context`.
-/// Current `zheng::commit()` rejects recursive openings; execution proofs use
-/// authenticated state certificates instead.
+/// Not a proof: a sampled Brakedown opening without its complete table
+/// authenticates nothing ([`verify_opening`] returns `false`). Compare it
+/// against a complete public query with `verify_opening_with_context`.
+/// Execution over state is proven with a `StateCertificate` and zheng's
+/// state profile v3. Field layout matches the retired `zheng::LookOpening`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LookOpening {
+    /// Brakedown commitment to the BBG dimension polynomial.
+    pub commitment: lens::Commitment,
+    /// Evaluation point: the cell's corner.
+    pub point: Vec<Goldilocks>,
+    /// Claimed polynomial value at that point.
+    pub value: Goldilocks,
+    /// Brakedown tensor opening.
+    pub opening: lens::Opening,
+    /// Bytes passed to the lens transcript when the opening was made.
+    pub transcript_seed: Vec<u8>,
+    /// The 14 leaves of the BBG root preimage.
+    pub leaves: crate::root::RootLeaves,
+    /// BBG namespace of this opening: an index into `leaves.dims`.
+    pub namespace: Goldilocks,
+}
+
+/// nox `LookProvider` that records a [`LookOpening`] alongside each value.
+///
+/// Retrieve them for context-backed inspection with `verify_opening_with_context`.
+/// Execution over state is proven with state certificates, not these.
 ///
 /// Uses `Mutex` (not `RefCell`) so the provider is `Sync` — satisfying the
 /// `CallProvider<N>` bound when wrapped in a `ProofCallProvider`.
@@ -141,7 +162,7 @@ pub struct ProofLookProvider<'a> {
     pub state: &'a BbgState,
     /// The root-preimage leaves, computed once — every opening carries a clone
     /// for comparison with a separately authenticated complete public query.
-    leaves: zheng::RootLeaves,
+    leaves: crate::root::RootLeaves,
     openings: Mutex<Vec<LookOpening>>,
 }
 

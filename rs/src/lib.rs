@@ -19,6 +19,7 @@ mod query_wire;
 pub mod proof;
 pub mod prune;
 pub mod query;
+pub mod root;
 pub mod signal;
 pub mod state;
 pub mod stats;
@@ -26,15 +27,16 @@ pub mod storage;
 pub mod transition;
 pub mod types;
 
-pub use checkpoint::Checkpoint;
+pub use checkpoint::{Checkpoint, CheckpointProof};
 pub use proof::{
     QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
     prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,
     prove_time, verify_particle,
 };
 pub use prune::{PruneConfig, PruneState};
+pub use root::{RootLeaves, root_from_leaves, root_to_bytes};
 pub use query::{
-    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
+    BbgLookProvider, Dim, LookOpening, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
     verify_query, verify_query_at, verify_entity, verify_opening_with_context,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};

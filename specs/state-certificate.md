@@ -50,6 +50,16 @@ returns an in-range canonical field value from a structurally valid certificate;
 callers must verify the certificate against their expected root before trusting
 that value. Missing namespaces and padded/out-of-range indices return None.
 
+`evidence()` converts the certificate into zheng's `StateEvidence` (the same
+leaves and tables). zheng's state verifiers (`verify_certificate`,
+`succinct::verify_state`, `Envelope::verify`) take that evidence and
+authenticate it themselves — the leaves fold to the statement's own root, every
+table matches its leaf — before pinning any read, so a consumer of a state
+proof has no authentication step of its own. zheng restates this layout
+(`zheng/rs/src/execution/state_evidence.rs`) and pins the frozen root vectors;
+`tests/look_e2e.rs::zheng_and_bbg_agree_on_the_root` checks the two agree on a
+real state.
+
 A certificate may omit unconsumed dimensions but never replace a consumed table
 with a sampled opening. The execution proof must bind each actual namespace,
 key, value and all four expected-root limbs. Root-only validation establishes

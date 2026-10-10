@@ -74,10 +74,10 @@ pub(crate) fn metadata(bbg: &Bbg) -> Vec<u8> {
     bytes
 }
 
-/// Exact persisted state, ordered by byte key. Native profiles have no accumulator.
+/// Exact persisted state, ordered by byte key. Native profiles carry no checkpoint proof.
 pub fn records(bbg: &Bbg) -> Result<impl Iterator<Item = Record> + '_, Error> {
     if bbg.checkpoint.acc.is_some() {
-        return Err(Error::Accumulator);
+        return Err(Error::CheckpointProof);
     }
     let s = &bbg.state;
     type Stream<'a> = Box<dyn Iterator<Item = Record> + 'a>;

@@ -106,13 +106,13 @@ impl StateCertificate {
             }
         }
         let field_leaves = self.leaves.map(|leaf| leaf.map(Goldilocks::new));
-        let leaves = zheng::RootLeaves {
+        let leaves = crate::root::RootLeaves {
             dims: field_leaves[..11].try_into().unwrap(),
             a: field_leaves[11],
             n: field_leaves[12],
             stats: field_leaves[13],
         };
-        Ok(zheng::root_from_leaves(&leaves).map(|v| v.as_u64()))
+        Ok(crate::root::root_from_leaves(&leaves).map(|v| v.as_u64()))
     }
 
     pub fn verify(&self, expected_root: [u64; 4]) -> Result<(), String> {
@@ -123,6 +123,24 @@ impl StateCertificate {
             return Err("state certificate root mismatch".into());
         }
         Ok(())
+    }
+
+    /// The evidence zheng's state verifiers authenticate themselves: the
+    /// same 14 leaves and tables. zheng recomputes the root and every
+    /// table commitment; nothing here is trusted.
+    pub fn evidence(&self) -> Result<zheng::execution::state_evidence::StateEvidence, String> {
+        self.validate_shape()?;
+        Ok(zheng::execution::state_evidence::StateEvidence {
+            leaves: self.leaves,
+            tables: self
+                .dimensions
+                .iter()
+                .map(|t| zheng::execution::state_evidence::StateTable {
+                    namespace: t.namespace,
+                    fields: t.fields.clone(),
+                })
+                .collect(),
+        })
     }
 
     /// Read an unpadded cell. Verify against the trusted root before use.

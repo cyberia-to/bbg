@@ -215,11 +215,7 @@ fn legacy_look_needs_matching_complete_context_and_rejects_each_substitution() {
     assert!(verify_opening_with_context(&lo, &proof, &root, 11));
     assert!(!verify_opening_with_context(&lo, &proof, &root, 12));
     for change in 0..6 {
-        let mut bad = zheng::LookOpening {
-            commitment: lo.commitment, point: lo.point.clone(), value: lo.value,
-            opening: lo.opening.clone(), transcript_seed: lo.transcript_seed.clone(),
-            leaves: lo.leaves.clone(), namespace: lo.namespace,
-        };
+        let mut bad = lo.clone();
         match change {
             0 => bad.namespace = F::ONE,
             1 => bad.value += F::ONE,
