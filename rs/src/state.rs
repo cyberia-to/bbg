@@ -56,11 +56,13 @@ pub fn balance_key(owner: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum RootVersion {
     /// Flat sorted Brakedown polynomial per dimension (`dim::commit_dim`).
-    /// O(state) per recompute; the derivation the zheng look argument binds.
-    #[default]
+    /// O(state) per recompute, at most 2^20 field elements per dimension
+    /// (lens `MAX_VARIABLES`); the derivation the zheng look argument binds.
     V1,
     /// Keyed trie per dimension ([`crate::trie`]). O(changes · log n) per
-    /// block; the derivation launch row 43 requires.
+    /// block, no size cap. The default since dimension version 2 — the
+    /// derivation the fresh chain starts on.
+    #[default]
     V2,
 }
 
@@ -307,28 +309,28 @@ impl BbgState {
         for link in &signal.links {
             let axon_id = axon_id(&link.from, &link.to);
 
-            // particles[H(p,q)]: weight += a
-            {
-                let new_weight = self.particles.get(&axon_id)
-                    .map_or(link.amount, |p| p.weight.saturating_add(link.amount));
-                self.particles.entry(axon_id).or_insert(ParticleRecord::zero()).weight = new_weight;
-            }
-
-            // particles[q]: energy += a
-            {
-                let new_energy = self.particles.get(&link.to)
-                    .map_or(link.amount, |p| p.energy.saturating_add(link.amount));
-                self.particles.entry(link.to).or_insert(ParticleRecord::zero()).energy = new_energy;
-            }
-
-            // axons_out[p]: insert H(p,q)
+            // axons_out[p] / axons_in[q]: insert H(p,q) — the topology, always
             self.axons_out.add(link.from, axon_id);
-
-            // axons_in[q]: insert H(p,q)
             self.axons_in.add(link.to, axon_id);
 
             // record reverse mapping for pruning
             self.axon_edges.entry(axon_id).or_insert((link.from, link.to));
+
+            // A link without conviction moves nothing: no axon-particle, no
+            // energy, no focus, no balance row. (Genesis replays are all such
+            // links; writing zero records would double the particles
+            // dimension and add a balance row per endpoint.)
+            if link.amount == 0 {
+                continue;
+            }
+
+            // particles[H(p,q)]: weight += a
+            self.particles.entry(axon_id).or_insert(ParticleRecord::zero()).weight =
+                self.particles.get(&axon_id).map_or(link.amount, |p| p.weight.saturating_add(link.amount));
+
+            // particles[q]: energy += a
+            self.particles.entry(link.to).or_insert(ParticleRecord::zero()).energy =
+                self.particles.get(&link.to).map_or(link.amount, |p| p.energy.saturating_add(link.amount));
 
             // neurons[ν]: focus -= cost (cost = amount; cybergraph already verified sufficiency)
             if let Some(mut nr) = self.neurons.get_mut(&signal.neuron) {
@@ -339,10 +341,15 @@ impl BbgState {
             let to_key = balance_key(&link.to, &link.token);
             *self.balances.entry(to_key).or_insert(0) += link.amount;
 
-            // balances[H(from || token)] -= a  (public input)
+            // balances[H(from || token)] -= a  (public input); a zero balance
+            // is an absent row, so the state has one representation.
             let from_key = balance_key(&link.from, &link.token);
-            let mut bal = self.balances.entry(from_key).or_insert(0);
-            *bal = bal.saturating_sub(link.amount);
+            let next = self.balances.get(&from_key).map_or(0, |b| b.saturating_sub(link.amount));
+            if next == 0 {
+                self.balances.remove(&from_key);
+            } else {
+                self.balances.insert(from_key, next);
+            }
         }
 
         Ok(())

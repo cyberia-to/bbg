@@ -5,11 +5,13 @@
 // ---
 //! Root derivation vectors and properties.
 //!
-//! v1 roots are pinned to the values the pre-incremental code produced
-//! (bbg `441e3c9`, 2026-10-15), so the per-dimension caches cannot drift the
-//! legacy derivation. v2 roots are checked against from-scratch rebuilds
-//! after random batches, pruning and replay — the property the incremental
-//! path exists to preserve.
+//! Dimension version 2 (2026-10-15): v2 (keyed trie) is the default, a link
+//! without conviction writes only topology, a zero balance is an absent row.
+//! The pinned roots below are the v1 and v2 derivations of this engine; the
+//! empty v1 root is the one the pre-incremental code (`441e3c9`) produced,
+//! the others moved with the zero-row rule. v2 roots are also checked against
+//! from-scratch rebuilds after random batches, pruning and replay — the
+//! property the incremental path exists to preserve.
 
 use bbg::types::{
     CardRecord, CoinRecord, FileRecord, LocationRecord, NeuronRecord, ParticleRecord, SignalRecord,
@@ -68,30 +70,30 @@ fn all_dims(version: RootVersion) -> Bbg {
 
 #[test]
 fn v1_empty_root_is_pinned() {
-    assert_eq!(hex(&Bbg::new().state.root()), "6778e49e73d2935c3e1c397783a44a421b86f8181f51115601ea9cf0112fdfa2");
+    assert_eq!(hex(&Bbg::new().with_root_version(RootVersion::V1).state.root()), "6778e49e73d2935c3e1c397783a44a421b86f8181f51115601ea9cf0112fdfa2");
 }
 
 #[test]
 fn v1_one_link_roots_are_pinned() {
-    let mut b = Bbg::new();
+    let mut b = Bbg::new().with_root_version(RootVersion::V1);
     b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3 });
     b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
-    assert_eq!(hex(&b.state.root()), "387298caa2d77c723697a61b2d0f8b29c696050781667271d5cc87ae64abbe46");
+    assert_eq!(hex(&b.state.root()), "6eeb0ad30ad23592590d72bd3006b51d6cec5b518db988d1dc6050e5b5172470");
     b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "496832a5608df264c76fde84774c2b60236b1f745f27d6240729d48e8894e7cf");
+    assert_eq!(hex(&b.state.root()), "d72a5197406d989f44e7deed0929e6132268b3573dd7cb17ee008508c0964cc4");
 }
 
 #[test]
 fn v1_all_dimension_roots_are_pinned() {
     let mut b = all_dims(RootVersion::V1);
-    assert_eq!(hex(&b.state.root()), "0639b2f70cf6e735899a2f38d006eccdc84cbc93d34f18ac81dcc2ad8dbc55db");
+    assert_eq!(hex(&b.state.root()), "da927ca5289bbabe76e04e21fa3ecdc6eea8ae4b9b1d6c9b73763e0c65218cdf");
     b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "ea9a1f882b3c8dc75b12543bb13e291068a1b7ae652f572bb5b72589cb6760d5");
+    assert_eq!(hex(&b.state.root()), "c430a3b01a233d12e4b3491fe9113af92184015b35bdddbfe04b6cd6331e2592");
 }
 
 #[test]
-fn v1_is_the_default_and_v2_differs() {
-    assert_eq!(BbgState::new().root_version(), RootVersion::V1);
+fn v2_is_the_default_and_v1_differs() {
+    assert_eq!(BbgState::new().root_version(), RootVersion::V2);
     assert_ne!(all_dims(RootVersion::V1).state.root(), all_dims(RootVersion::V2).state.root());
     // The version is a view of the records: flipping it flips the root, and
     // the flipped root is the root a state built under that version carries.
@@ -264,10 +266,50 @@ fn v2_root_is_pinned() {
     let before = hex(&b.state.root());
     b.finalize_block();
     let after = hex(&b.state.root());
-    assert_eq!(before, "7461bb8f3e39458e1e9af283c815eeb4eec75a08471f1237b934f2fec71e3f9d");
-    assert_eq!(after, "2e0a2a28fe99abc6c81b4e09670ecb3d80f758ef2499ad6dae0304be4287910c");
+    assert_eq!(before, "b6535a3fc70c53fc7446d17aaf8dff12491bf2d755f3681718cb4f108153c480");
+    assert_eq!(after, "7f3b9fac9b941831e5c35f704ba6fdba15ebb43a267da5e81e5665729cbb39aa");
     let empty = Bbg::new().with_root_version(RootVersion::V2);
     assert_eq!(hex(&empty.state.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
+}
+
+// ── dimension version 2 engine rules ─────────────────────────────────────────
+
+#[test]
+fn a_link_without_conviction_writes_only_topology() {
+    let mut b = Bbg::new();
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0 });
+    b.state.particles.insert(p(3), ParticleRecord::zero());
+    b.insert(&one_link(p(1), p(2), p(3), 0)).unwrap();
+    let axon = bbg::state::axon_id(&p(2), &p(3));
+    assert_eq!(b.state.axons_out.get(&p(2)).unwrap(), &vec![axon]);
+    assert_eq!(b.state.axons_in.get(&p(3)).unwrap(), &vec![axon]);
+    assert_eq!(b.state.axon_edges.get(&axon), Some(&(p(2), p(3))));
+    assert!(!b.state.particles.contains_key(&axon), "no axon-particle");
+    assert_eq!(b.state.particles.len(), 1, "no target record created");
+    assert!(b.state.balances.is_empty(), "no balance rows");
+    assert_eq!(b.state.neurons.get(&p(1)).unwrap().focus, 100);
+    // with conviction the same link writes the full effect
+    b.insert(&one_link(p(1), p(2), p(3), 5)).unwrap();
+    assert_eq!(b.state.particles.get(&axon).unwrap().weight, 5);
+    assert_eq!(b.state.particles.get(&p(3)).unwrap().energy, 5);
+    assert_eq!(b.state.neurons.get(&p(1)).unwrap().focus, 95);
+}
+
+#[test]
+fn a_zero_balance_is_an_absent_row() {
+    let mut b = Bbg::new();
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0 });
+    b.insert(&one_link(p(1), p(2), p(3), 5)).unwrap();
+    let from = bbg::balance_key(&p(2), &p(0));
+    let to = bbg::balance_key(&p(3), &p(0));
+    assert!(!b.state.balances.contains_key(&from), "spending from nothing leaves no row");
+    assert_eq!(b.state.balances.get(&to), Some(&5));
+    // spend it all back: the row disappears, the root equals a state that never had it
+    b.insert(&one_link(p(1), p(3), p(2), 5)).unwrap();
+    assert!(!b.state.balances.contains_key(&to));
+    assert_eq!(b.state.balances.get(&from), Some(&5));
+    let fresh = rebuild(&b.state);
+    assert_eq!(b.state.root(), fresh.root());
 }
 
 // ── v2 proofs against dimension commitments ───────────────────────────────────

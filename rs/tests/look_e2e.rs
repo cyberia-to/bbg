@@ -24,8 +24,14 @@ fn g(v: u64) -> Goldilocks {
 }
 
 /// A state with two particles — enough for a non-trivial particles dimension.
+///
+/// Root version 1: the look argument opens a Brakedown cell of the dimension
+/// polynomial and binds that commitment to `leaves.dims[ns]`; under v2 the
+/// leaf is a trie root. zheng opens trie paths next (specs/state.md § root
+/// versions); until then proofs pin v1.
 fn sample_state() -> BbgState {
     let mut state = BbgState::new();
+    state.set_root_version(bbg::RootVersion::V1);
     state.particles.insert(
         [1u8; 32],
         ParticleRecord { energy: 77, pi_star: 0, weight: 0, s_yes: 0, s_no: 0, meta_score: 0 },
