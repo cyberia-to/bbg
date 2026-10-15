@@ -77,6 +77,7 @@ impl BbgState {
                     goldilocks_from_u64(v.focus),
                     goldilocks_from_u64(v.karma),
                     goldilocks_from_u64(v.stake),
+                    goldilocks_from_u64(v.nonce),
                 ];
                 (*k, vals)
             })

@@ -19,7 +19,7 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
   particles     all particles: content + axons
   axons_out     directional index by source
   axons_in      directional index by target
-  neurons       focus, karma, stake per neuron
+  neurons       focus, karma, stake, nonce per neuron (nonce: the root-chain replay counter, soft3/specs/chain.md §2.5)
   locations     proof of location
   coins         fungible token denominations
   cards         names and knowledge assets

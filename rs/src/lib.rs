@@ -193,6 +193,7 @@ mod tests {
                 focus,
                 karma: 0,
                 stake: 0,
+                nonce: 0,
             },
         );
     }

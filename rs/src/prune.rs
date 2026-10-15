@@ -173,7 +173,7 @@ mod tests {
 
     fn make_state() -> BbgState {
         let mut s = BbgState::new();
-        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0 });
+        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0, nonce: 0 });
         s
     }
 

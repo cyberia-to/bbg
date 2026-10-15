@@ -269,7 +269,7 @@ mod tests {
 
     fn seeded_state() -> BbgState {
         let mut s = BbgState::new();
-        s.neurons.insert(particle(1), NeuronRecord { focus: 50_000, karma: 0, stake: 0 });
+        s.neurons.insert(particle(1), NeuronRecord { focus: 50_000, karma: 0, stake: 0, nonce: 0 });
         let sig = Signal {
             neuron: particle(1),
             links: vec![Cyberlink {
@@ -380,7 +380,7 @@ mod tests {
         let mut state = BbgState::new();
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
-        state.neurons.insert(key, crate::types::NeuronRecord { focus: 777, karma: 0, stake: 0 });
+        state.neurons.insert(key, crate::types::NeuronRecord { focus: 777, karma: 0, stake: 0, nonce: 0 });
 
         let prov = BbgLookProvider { state: &state };
         let ns   = Goldilocks::new(Dim::Neurons as u64);
@@ -455,7 +455,7 @@ mod tests {
         let mut state = BbgState::new();
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
-        state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0 });
+        state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0, nonce: 0 });
 
         let fast  = BbgLookProvider { state: &state };
         let proof = ProofLookProvider::new(&state);

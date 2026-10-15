@@ -45,6 +45,9 @@ pub struct NeuronRecord {
     pub karma: u64,
     /// total committed conviction
     pub stake: u64,
+    /// transactions this neuron has authored on the root chain
+    /// (soft3/specs/chain.md §2.5, §3.2): the replay counter, under the root
+    pub nonce: u64,
 }
 
 /// A geolocation record.
