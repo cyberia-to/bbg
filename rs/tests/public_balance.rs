@@ -6,6 +6,7 @@ use bbg::query_auth::verify_public_balance;
 fn full_u64_balance_requires_exact_root_key_and_both_limbs() {
     let (owner, token) = ([7; 32], [8; 32]);
     let mut state = BbgState::new();
+    state.set_root_version(bbg::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
     state.balances.insert(balance_key(&owner, &token), u64::MAX);
     state.commitments.insert([9; 32], nebu::Goldilocks::new(42));
     state.refresh_root();
@@ -29,7 +30,8 @@ fn full_u64_balance_requires_exact_root_key_and_both_limbs() {
         assert_eq!(verify_public_balance(&legacy, &root, &owner, &token), None);
     }
     state.balances.insert(balance_key(&owner, &token), 1);
-    assert!(prove_public_balance(&state, &owner, &token).is_none(), "stale cache");
-    state.refresh_root();
+    // the root is never stale: a fresh proof binds the new root, the old proof does not
+    let fresh = prove_public_balance(&state, &owner, &token).unwrap();
+    assert_eq!(verify_public_balance(&fresh, &state.root(), &owner, &token), Some(1));
     assert_eq!(verify_public_balance(&proof, &state.root(), &owner, &token), None);
 }

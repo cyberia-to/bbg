@@ -41,15 +41,15 @@ the fold is deterministic. same input state + same signal = same output state. t
 a node that crashes needs two things to resume:
 
 ```
-1. latest checkpoint     ~240 bytes (BBG_root + universal accumulator + height)
+1. latest checkpoint     BBG_root + universal accumulator + height
 2. signals since checkpoint    fetched from any peer via DAS
 ```
 
 recovery procedure:
 
 ```
-1. fetch checkpoint from any peer                         ~240 bytes
-2. verify checkpoint (one zheng accumulator verification)  ~5 μs
+1. fetch checkpoint from any peer
+2. verify checkpoint (one zheng accumulator verification)
 3. fetch signals since checkpoint (DAS guarantees availability)
 4. replay: fold(checkpoint_state, signals[checkpoint_h..now])
 5. result: identical BBG_root as every other correct node
@@ -79,7 +79,7 @@ what a node must store:
 ```
 irreducible:
   signal log        append-only, DAS-protected, Lens-complete
-  latest checkpoint ~240 bytes (universal accumulator)
+  latest checkpoint (universal accumulator)
 
 derivable (can be reconstructed from signals):
   NMT indexes       → rebuild by replaying cyberlink signals
@@ -97,16 +97,15 @@ a node that stores only the signal log and a checkpoint can reconstruct the enti
 full replay from genesis:
 
 ```
-h signals × ~2 KiB each = O(h) data
-verification: one zheng proof per signal = O(h × ~5 μs)
-at 10^9 signals: ~2 TB data, ~5 seconds verification (parallelizable)
+h signals × one proof each = O(h) data
+verification: one zheng proof per signal = O(h) verifications (parallelizable)
 ```
 
 incremental replay from checkpoint:
 
 ```
-download checkpoint: 240 bytes
-verify: ~5 μs
+download checkpoint: root + accumulator + height
+verify: one decider
 replay signals since checkpoint: O(delta_h) data
 ```
 

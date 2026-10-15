@@ -175,8 +175,8 @@ verification against BBG_root:
 ```
 verify(zheng_π, epoch_index_root, Ikat.commit(P_out), commit(O)) → accept/reject
 
-cost:  ~5 μs (one zheng decider)
-size:  ~2 KiB
+cost:  one zheng decider
+size:  set by soft3 proposals/proof-system-repair
 ```
 
 the zheng proof certifies completeness. the GCD proof certifies unspentness. together:
@@ -189,7 +189,7 @@ owned_outputs = O such that:
 
 ## recursive scan folding
 
-a full history scan across K epochs produces K independent proofs. fold them into a single constant-size accumulator via zheng/HyperNova:
+a full history scan across K epochs produces K independent proofs. fold them into a single constant-size accumulator via zheng accumulation:
 
 ```
 scan_acc_0 = zheng.init()
@@ -198,7 +198,7 @@ for each epoch k from 0 to K:
   (O_k, π_k) = scan_exec result for epoch k
   scan_acc_k = zheng.fold(scan_acc_{k-1}, π_k)
 
-scan_acc_K:  ~240 bytes (constant, independent of K)
+scan_acc_K:  constant size, independent of K
              encodes: "from genesis to epoch K, owned outputs are ∪ O_k"
              carries: aggregate unspentness + completeness for all epochs
 ```
@@ -206,13 +206,13 @@ scan_acc_K:  ~240 bytes (constant, independent of K)
 a light client syncing for the first time:
 
 ```
-1. fetch BBG_root + scan_acc_K                        (~280 bytes)
+1. fetch BBG_root + scan_acc_K
 2. fetch owned output values: {A_live[c] : c ∈ ∪ O_k} (only owned entries, ~4 KB each)
-3. verify scan_acc_K against BBG_root                  (~5 μs, O(1))
+3. verify scan_acc_K against BBG_root                  (one decider, O(1))
 4. decrypt A_live[c] entries locally with ρ            (stored at wallet creation)
 ```
 
-no full block download required. no O(N) scan on the light client. the scan accumulator is produced by a scan service or the client's always-on device; a new device receives it and verifies in microseconds.
+no full block download required. no O(N) scan on the light client. the scan accumulator is produced by a scan service or the client's always-on device; a new device receives it and verifies it with one decider.
 
 ## value retrieval
 
@@ -231,7 +231,7 @@ decrypt locally:
 
 the Ikat opening proves the server returned the correct RLWE ciphertext. decryption requires `sk_spend` (never leaves the device). the server proves correctness without knowing `ρ` or `v`.
 
-batch retrieval: all owned outputs from a single epoch in one Ikat batch opening (~200 bytes proof regardless of batch size).
+batch retrieval: all owned outputs from a single epoch in one Ikat batch opening.
 
 ## oblivious value retrieval (maximum privacy)
 
@@ -295,7 +295,7 @@ not yet implemented:
 3. **P_out epoch polynomial** — `bbg::state::OutputAccumulator` — maintained alongside A_live
 4. **GCD service** — `bbg::scan::gcd_query(commit_Q, epoch) → (commit_G, π₁, π₂)` — polynomial Euclidean algorithm over Goldilocks + Ikat division proofs
 5. **scan_exec circuit** — zheng proof over the scanning loop — sk_view as private witness
-6. **zheng scan folding** — `bbg::scan::fold_epoch(scan_acc, π_scan) → scan_acc'` — HyperNova accumulator step
+6. **zheng scan folding** — `bbg::scan::fold_epoch(scan_acc, π_scan) → scan_acc'` — accumulation step
 7. **PIR retrieval** — `bbg::scan::pir_retrieve(c_set, server_a, server_b)` — two-server linear PIR over Goldilocks
 
 see [[privacy]] for the commitment scheme and A_live structure, [[state]] for BBG_root composition, [[query]] for Ikat opening protocol

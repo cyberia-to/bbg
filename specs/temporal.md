@@ -40,7 +40,7 @@ BBG_poly(index, key, t) — t is a native variable
 historical query:
   "what was φ* of particle P at block 1000?"
   → Lens.open(BBG_root, (particles, P, 1000))
-  → one evaluation proof, ~5 μs verification
+  → one evaluation proof
 
 range query:
   "all focus changes for neuron N between t₁ and t₂"

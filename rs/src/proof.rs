@@ -9,6 +9,8 @@
 //! query context. A cell is addressed by its unpadded flat index; entity helpers
 //! locate the primary value cell and `verify_entity` checks the exact key layout.
 //! Full u64 values occupy two u32 cells; one cell proof does not claim a record.
+//! These cell openings bind to the v1 dimension leaf; under `RootVersion::V2`
+//! a record read is a trie path (`Keyed::prove`).
 //!
 //! Private balance/A openings stay contextless and disclose no additional table.
 //! They cannot establish a state-root/entity claim through the public query API.

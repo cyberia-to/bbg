@@ -88,7 +88,7 @@ compilation:
   4. prove completeness: no particle with φ* > output[100].pi  (range check)
 
 proof: batch Lens opening + permutation argument + range check
-verify: one zheng verification (~5 μs)
+verify: one zheng verification
 result: 100 (particle_id, φ*) pairs with cryptographic guarantee of correctness
 ```
 
@@ -139,7 +139,7 @@ aggregation        ~10 constraints    per-element accumulation
 
 simple queries (single opening): ~3K constraints, ~1 KiB proof.
 complex queries (join + sort + filter): ~100K constraints, ~5 KiB proof.
-all verify in ~5 μs regardless of query complexity (zheng-2).
+all verify at a cost independent of query complexity (zheng-2).
 
 ## interaction with gravity commitment
 

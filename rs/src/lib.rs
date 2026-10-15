@@ -16,6 +16,7 @@ pub mod dim;
 pub mod query_auth;
 #[cfg(feature = "serde")]
 mod query_wire;
+pub mod keyed;
 pub mod proof;
 pub mod prune;
 pub mod query;
@@ -24,6 +25,7 @@ pub mod state;
 pub mod stats;
 pub mod storage;
 pub mod transition;
+pub mod trie;
 pub mod types;
 
 pub use checkpoint::Checkpoint;
@@ -38,7 +40,9 @@ pub use query::{
     verify_query, verify_query_at, verify_entity, verify_opening_with_context,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
-pub use state::{BbgState, balance_key};
+pub use keyed::{AxonIndex, Keyed, KeyedSet};
+pub use state::{BbgState, RootVersion, balance_key};
+pub use trie::{Trie, TrieProof};
 pub use stats::{GraphStats, STAT_RELATIONS};
 pub use types::{IntentRecord, NeuronId, NeuronRecord, Particle, SignalRecord};
 
@@ -64,6 +68,12 @@ impl Bbg {
 
     pub fn with_prune_config(mut self, config: PruneConfig) -> Self {
         self.prune_config = config;
+        self
+    }
+
+    /// Select the root derivation (see [`RootVersion`]).
+    pub fn with_root_version(mut self, version: RootVersion) -> Self {
+        self.state.set_root_version(version);
         self
     }
 
@@ -274,7 +284,8 @@ mod tests {
 
     #[test]
     fn prove_and_verify_particle_roundtrip() {
-        let mut bbg = Bbg::new();
+        // Brakedown cell proofs bind the v1 dimension leaf.
+        let mut bbg = Bbg::new().with_root_version(RootVersion::V1);
         seed_neuron(&mut bbg, neuron_id(1), 100);
         bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
             .unwrap();

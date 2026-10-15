@@ -259,6 +259,7 @@ mod tests {
 
     fn seeded_state() -> BbgState {
         let mut s = BbgState::new();
+        s.set_root_version(crate::state::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
         s.neurons.insert(particle(1), NeuronRecord { focus: 50_000, karma: 0, stake: 0 });
         let sig = Signal {
             neuron: particle(1),
@@ -369,6 +370,7 @@ mod tests {
     #[test]
     fn look_provider_neuron_focus_cell_by_index() {
         let mut state = BbgState::new();
+        state.set_root_version(crate::state::RootVersion::V1);
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
         state.neurons.insert(key, crate::types::NeuronRecord { focus: 777, karma: 0, stake: 0 });
@@ -447,6 +449,7 @@ mod tests {
     #[test]
     fn proof_provider_value_matches_fast_provider_neuron() {
         let mut state = BbgState::new();
+        state.set_root_version(crate::state::RootVersion::V1);
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
         state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0 });
