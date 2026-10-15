@@ -1,8 +1,9 @@
 //! Replay a cyberlinks CSV (`particle_from,particle_to,neuron,height,…`) into
 //! bbg, one block per source height, and report the commit cost per link.
 //!
-//! `replay_pussy CSV [v1|v2]` — the CSV is the decompressed
-//! `cyberlinks_indexed.csv` of a chain snapshot.
+//! `replay_pussy CSV [v1|v2] [amount]` — the CSV is the decompressed
+//! `cyberlinks_indexed.csv` of a chain snapshot; `amount` is the conviction
+//! per link (default 1; 0 = genesis semantics, topology only).
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
@@ -24,6 +25,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).expect("CSV path");
     let mode = args.get(2).map(String::as_str).unwrap_or("v2");
+    let amount: u64 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1);
     let file = std::fs::File::open(path).expect("open csv");
     let mut rows: Vec<Row> = Vec::new();
     for line in BufReader::new(file).lines().skip(1) {
@@ -60,7 +62,7 @@ fn main() {
         last_height = Some(height);
         let sig = Signal {
             neuron,
-            links: vec![Cyberlink { from, to, token: h("pussy"), amount: 1, valence: 1 }],
+            links: vec![Cyberlink { from, to, token: h("pussy"), amount, valence: 1 }],
             box_moves: vec![],
             height: bbg.state.height,
         };
@@ -81,7 +83,7 @@ fn main() {
     blocks += 1;
     let total = start.elapsed();
     println!(
-        "mode={mode} links={total_links} blocks={blocks} neurons={} particles={} max_degree={} total={:.3}s per_link={:.1}us root={}",
+        "mode={mode} amount={amount} links={total_links} blocks={blocks} neurons={} particles={} max_degree={} total={:.3}s per_link={:.1}us root={}",
         neurons.len(),
         bbg.state.particles.len(),
         bbg.state.statistics().max_degree,
