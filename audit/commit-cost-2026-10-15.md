@@ -42,7 +42,7 @@ Wall time is the whole run including state construction.
 | links | v1 (before) wall | v1 µs/link | v2 (after) wall | v2 µs/link | v2 peak memory |
 |---|---|---|---|---|---|
 | 10,000 | 39.6 s | 3,964 | 5.7 s | 572 | 20 MB |
-| 100,000 | stopped at 50,000 links after 1,175 s (next 10k would cost ≈ 500 s; the curve below extrapolates the full run to ≈ 1.7 h) | 42,358 at 50k | 69.6 s | 696 | 182 MB |
+| 100,000 | stopped at 60,000 links after 1,661 s (the curve below extrapolates the full run to ≈ 1.6 h) | 48,594 at 60k | 69.6 s | 696 | 182 MB |
 | 1,000,000 | not run (the curve below extrapolates to > 1 day) | — | 847.8 s | 848 | 1.94 GB |
 
 Per-10k-link cost along the run (the curve, not the average):
@@ -54,6 +54,7 @@ Per-10k-link cost along the run (the curve, not the average):
 | 30,000 | 24,216 | 819 |
 | 40,000 | 30,138 | 813 |
 | 50,000 | 42,358 | 830 |
+| 60,000 | 48,594 | 846 |
 | 100,000 | — (stopped) | 757 |
 | 500,000 | — | 837 |
 | 1,000,000 | — | 874 |
