@@ -6,7 +6,10 @@
 //! Reads over committed BBG dimensions.
 //!
 //! bbg is unified polynomial state: each dimension is a sorted polynomial
-//! committed via Brakedown (see `dim.rs`). The one read primitive is an
+//! committed via Brakedown (see `dim.rs`) — the v1 dimension leaf. Under
+//! `RootVersion::V2` the leaf is the keyed-trie root and a record read is a
+//! trie path (`Keyed::prove`); the cell openings below bind to the v1 leaf
+//! only. The one read primitive here is an
 //! **index-addressed cell open** — `open_cell(dim, idx)` opens the dimension
 //! polynomial at the hypercube corner of cell `idx`, so the opened value IS
 //! `evals[idx]`, bound to the dimension commitment (and thus the BBG root). This

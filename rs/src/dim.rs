@@ -3,10 +3,11 @@
 // crystal-type: source
 // crystal-domain: cyber
 // ---
-//! Dimension commitment helpers for BBG authenticated state.
+//! Dimension commitment helpers for BBG authenticated state — root version v1.
 //!
 //! A dimension is a sorted map of `(key: Particle, value: &[u8])` entries
-//! committed via Brakedown over a MultilinearPoly.
+//! committed via Brakedown over a MultilinearPoly. Under `RootVersion::V2`
+//! the dimension leaf is a keyed-trie root instead (see [`crate::trie`]).
 
 use lens::{brakedown::Brakedown, Commitment, Lens, MultilinearPoly};
 use nebu::Goldilocks;

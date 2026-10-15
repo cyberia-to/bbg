@@ -5,8 +5,7 @@
 // ---
 //! BBG state: the 11-dimensional authenticated state of the cybergraph.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
 
 mod commits;
 
@@ -16,8 +15,10 @@ pub const EPOCH_BLOCKS: u64 = 100;
 use hemera::hash as hemera_hash;
 use nebu::Goldilocks;
 
+use crate::keyed::{AxonIndex, Keyed, KeyedSet};
 use crate::signal::{InsertError, Signal};
 use crate::stats::{GraphStats, STAT_RELATIONS};
+use crate::trie::Digest;
 use crate::types::{
     CardRecord, Particle, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId,
     NeuronRecord, ParticleRecord, SignalRecord,
@@ -47,26 +48,47 @@ pub fn balance_key(owner: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
     out
 }
 
+/// Which derivation of the 13 commitment leaves the root folds over.
+///
+/// The 14-leaf fold itself (`zheng::root_from_leaves`) and the stats leaf are
+/// the same in both; only the dimension commitments differ. See
+/// `specs/state.md` § root versions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum RootVersion {
+    /// Flat sorted Brakedown polynomial per dimension (`dim::commit_dim`).
+    /// O(state) per recompute; the derivation the zheng look argument binds.
+    #[default]
+    V1,
+    /// Keyed trie per dimension ([`crate::trie`]). O(changes · log n) per
+    /// block; the derivation launch row 43 requires.
+    V2,
+}
+
 /// The full BBG state: 11 dimensions + private commitment sets.
+///
+/// Every committed dimension is a [`Keyed`] map (or [`KeyedSet`] /
+/// [`AxonIndex`]): reads go through `Deref` to the underlying `BTreeMap`,
+/// mutations go through the wrapper so the dimension's trie and commitment
+/// cache stay current. The root is never stale.
 pub struct BbgState {
-    pub particles: BTreeMap<Particle, ParticleRecord>,
-    pub axons_out: BTreeMap<Particle, Vec<Particle>>,
-    pub axons_in: BTreeMap<Particle, Vec<Particle>>,
-    pub neurons: BTreeMap<NeuronId, NeuronRecord>,
-    pub locations: BTreeMap<Particle, LocationRecord>,
-    pub coins: BTreeMap<Particle, CoinRecord>,
-    pub cards: BTreeMap<Particle, CardRecord>,
-    pub files: BTreeMap<Particle, FileRecord>,
+    pub particles: Keyed<Particle, ParticleRecord>,
+    pub axons_out: AxonIndex,
+    pub axons_in: AxonIndex,
+    pub neurons: Keyed<NeuronId, NeuronRecord>,
+    pub locations: Keyed<Particle, LocationRecord>,
+    pub coins: Keyed<Particle, CoinRecord>,
+    pub cards: Keyed<Particle, CardRecord>,
+    pub files: Keyed<Particle, FileRecord>,
     /// height → BBG_root snapshot
-    pub time: BTreeMap<u64, Particle>,
+    pub time: Keyed<u64, Particle>,
     /// step → signal record
-    pub signals: BTreeMap<u64, SignalRecord>,
+    pub signals: Keyed<u64, SignalRecord>,
     /// A(x): commit_point → value (private polynomial commitments)
-    pub commitments: BTreeMap<[u8; 32], Goldilocks>,
+    pub commitments: Keyed<[u8; 32], Goldilocks>,
     /// N(x): spent nullifiers
-    pub nullifiers: BTreeSet<[u8; 32]>,
+    pub nullifiers: KeyedSet<[u8; 32]>,
     /// balances: H(owner_id || token_id) → u64  (public opt-in balances)
-    pub balances: BTreeMap<[u8; 32], u64>,
+    pub balances: Keyed<[u8; 32], u64>,
     /// intents: H(ν || h0 || scope_hash) → IntentRecord (unsealed declarations)
     pub intents: BTreeMap<Particle, IntentRecord>,
     /// Reverse map: axon_id → (from, to). Not committed; used for pruning.
@@ -75,66 +97,61 @@ pub struct BbgState {
     /// node_count−1 bound. Always an upper bound on the true diameter.
     pub diameter_override: Option<u64>,
     pub height: u64,
-    /// Cached BBG_root. Empty ⇒ dirty: recomputed on the next [`Self::root`]
-    /// read. `OnceLock` (not `Cell`) so `&BbgState` stays `Sync` — the
-    /// `ProofLookProvider` in [[query]] requires it.
-    root_cache: OnceLock<Particle>,
-}
-
-/// A pre-filled root cache holding `root`.
-fn filled_cache(root: Particle) -> OnceLock<Particle> {
-    let cache = OnceLock::new();
-    let _ = cache.set(root);
-    cache
+    root_version: RootVersion,
 }
 
 impl BbgState {
-    /// Create empty state. The root computes lazily through the same
+    /// Create empty state. The root computes through the same
     /// [`Self::compute_root`] path as every other state — no special constant.
     pub fn new() -> Self {
         Self {
-            particles: BTreeMap::new(),
-            axons_out: BTreeMap::new(),
-            axons_in: BTreeMap::new(),
-            neurons: BTreeMap::new(),
-            locations: BTreeMap::new(),
-            coins: BTreeMap::new(),
-            cards: BTreeMap::new(),
-            files: BTreeMap::new(),
-            time: BTreeMap::new(),
-            signals: BTreeMap::new(),
-            commitments: BTreeMap::new(),
-            nullifiers: BTreeSet::new(),
-            balances: BTreeMap::new(),
+            particles: Keyed::new(),
+            axons_out: AxonIndex::new(),
+            axons_in: AxonIndex::new(),
+            neurons: Keyed::new(),
+            locations: Keyed::new(),
+            coins: Keyed::new(),
+            cards: Keyed::new(),
+            files: Keyed::new(),
+            time: Keyed::new(),
+            signals: Keyed::new(),
+            commitments: Keyed::new(),
+            nullifiers: KeyedSet::new(),
+            balances: Keyed::new(),
             intents: BTreeMap::new(),
             axon_edges: BTreeMap::new(),
             diameter_override: None,
             height: 0,
-            root_cache: OnceLock::new(),
+            root_version: RootVersion::default(),
         }
+    }
+
+    /// The root derivation in force.
+    pub fn root_version(&self) -> RootVersion {
+        self.root_version
+    }
+
+    /// Select the root derivation. Takes effect on the next root read. The
+    /// records are version-independent, with one consequence: block
+    /// finalization stores the root in force into `time`, so switch before
+    /// the first block, not between blocks.
+    pub fn set_root_version(&mut self, version: RootVersion) {
+        self.root_version = version;
     }
 
     /// The current BBG_root.
     ///
-    /// Lazily recomputed on the first read after a mutation, then cached
-    /// until the next mutation. N inserts followed by one read cost one
-    /// `compute_root`, and the value equals the root the eager per-insert
-    /// path would have produced.
+    /// Always current: every dimension keeps its commitment up to date (v2) or
+    /// cached until its next mutation (v1), so a read after N mutations costs
+    /// the 14-leaf fold plus, under v1, one recompute per dimension touched.
     pub fn root(&self) -> Particle {
-        *self.root_cache.get_or_init(|| self.compute_root())
+        self.compute_root()
     }
 
-    /// Recompute the root now and cache it. Eager equivalent of marking the
-    /// cache dirty and immediately reading [`Self::root`].
+    /// The root, after a mutation. Kept for callers that materialize the root
+    /// at block edges; [`Self::root`] is never stale.
     pub fn refresh_root(&mut self) -> Particle {
-        let root = self.compute_root();
-        self.root_cache = filled_cache(root);
-        root
-    }
-
-    /// Invalidate the cached root after a mutation of a committed dimension.
-    fn mark_root_dirty(&mut self) {
-        self.root_cache = OnceLock::new();
+        self.compute_root()
     }
 
     /// The 14 leaves of the root preimage: the 11 dimension commitments (in
@@ -144,31 +161,66 @@ impl BbgState {
     /// (`zheng::root_from_leaves`), so a look opening can bind its dimension
     /// commitment to the root a nox program declares.
     pub fn root_leaves(&self) -> zheng::RootLeaves {
-        let limbs = |c: &lens::Commitment| -> [Goldilocks; 4] {
+        let (dims, a, n) = match self.root_version {
+            RootVersion::V1 => self.v1_leaves(),
+            RootVersion::V2 => self.v2_leaves(),
+        };
+        zheng::RootLeaves {
+            dims,
+            a,
+            n,
+            stats: crate::dim::goldilocks_from_bytes32(&self.statistics().commit()),
+        }
+    }
+
+    /// v2: every dimension leaf is its trie root.
+    fn v2_leaves(&self) -> ([Digest; 11], Digest, Digest) {
+        (
+            [
+                self.particles.commitment(),
+                self.axons_out.commitment(),
+                self.axons_in.commitment(),
+                self.neurons.commitment(),
+                self.locations.commitment(),
+                self.coins.commitment(),
+                self.cards.commitment(),
+                self.files.commitment(),
+                self.time.commitment(),
+                self.signals.commitment(),
+                self.balances.commitment(),
+            ],
+            self.commitments.commitment(),
+            self.nullifiers.commitment(),
+        )
+    }
+
+    /// v1: every dimension leaf is the limbs of its Brakedown commitment,
+    /// each cached by its dimension until that dimension mutates.
+    fn v1_leaves(&self) -> ([Digest; 11], Digest, Digest) {
+        let limbs = |c: lens::Commitment| -> Digest {
             let mut b = [0u8; 32];
             let cb = c.as_bytes();
             let len = cb.len().min(32);
             b[..len].copy_from_slice(&cb[..len]);
             crate::dim::goldilocks_from_bytes32(&b)
         };
-        zheng::RootLeaves {
-            dims: [
-                limbs(&self.commit_particles()),
-                limbs(&self.commit_axons_out()),
-                limbs(&self.commit_axons_in()),
-                limbs(&self.commit_neurons()),
-                limbs(&self.commit_locations()),
-                limbs(&self.commit_coins()),
-                limbs(&self.commit_cards()),
-                limbs(&self.commit_files()),
-                limbs(&self.commit_time()),
-                limbs(&self.commit_signals()),
-                limbs(&self.commit_balances()),
+        (
+            [
+                limbs(self.commit_particles()),
+                limbs(self.commit_axons_out()),
+                limbs(self.commit_axons_in()),
+                limbs(self.commit_neurons()),
+                limbs(self.commit_locations()),
+                limbs(self.commit_coins()),
+                limbs(self.commit_cards()),
+                limbs(self.commit_files()),
+                limbs(self.commit_time()),
+                limbs(self.commit_signals()),
+                limbs(self.commit_balances()),
             ],
-            a: limbs(&self.commit_a()),
-            n: limbs(&self.commit_n()),
-            stats: crate::dim::goldilocks_from_bytes32(&self.statistics().commit()),
-        }
+            limbs(self.commit_a()),
+            limbs(self.commit_n()),
+        )
     }
 
     /// Compute BBG_root: the hemera compression chain over [`Self::root_leaves`].
@@ -208,9 +260,7 @@ impl BbgState {
             self.balances.len()   as u64,
         ];
 
-        let max_out = self.axons_out.values().map(|v| v.len()).max().unwrap_or(0);
-        let max_in  = self.axons_in.values().map(|v| v.len()).max().unwrap_or(0);
-        let max_degree = max_out.max(max_in) as u64;
+        let max_degree = self.axons_out.max_degree().max(self.axons_in.max_degree()) as u64;
 
         let diameter_bound = self
             .diameter_override
@@ -226,7 +276,6 @@ impl BbgState {
     /// the next `compute_root`.
     pub fn set_diameter_bound(&mut self, bound: u64) {
         self.diameter_override = Some(bound);
-        self.mark_root_dirty();
     }
 
     // Dimension serializers live in [`commits`] (state/commits.rs).
@@ -273,22 +322,16 @@ impl BbgState {
             }
 
             // axons_out[p]: insert H(p,q)
-            let out_list = self.axons_out.entry(link.from).or_default();
-            if !out_list.contains(&axon_id) {
-                out_list.push(axon_id);
-            }
+            self.axons_out.add(link.from, axon_id);
 
             // axons_in[q]: insert H(p,q)
-            let in_list = self.axons_in.entry(link.to).or_default();
-            if !in_list.contains(&axon_id) {
-                in_list.push(axon_id);
-            }
+            self.axons_in.add(link.to, axon_id);
 
             // record reverse mapping for pruning
             self.axon_edges.entry(axon_id).or_insert((link.from, link.to));
 
             // neurons[ν]: focus -= cost (cost = amount; cybergraph already verified sufficiency)
-            if let Some(nr) = self.neurons.get_mut(&signal.neuron) {
+            if let Some(mut nr) = self.neurons.get_mut(&signal.neuron) {
                 nr.focus = nr.focus.saturating_sub(link.amount);
             }
 
@@ -298,11 +341,10 @@ impl BbgState {
 
             // balances[H(from || token)] -= a  (public input)
             let from_key = balance_key(&link.from, &link.token);
-            let bal = self.balances.entry(from_key).or_insert(0);
+            let mut bal = self.balances.entry(from_key).or_insert(0);
             *bal = bal.saturating_sub(link.amount);
         }
 
-        self.mark_root_dirty();
         Ok(())
     }
 
@@ -331,7 +373,6 @@ impl BbgState {
     /// a previously-declared intent).
     pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
         self.signals.insert(step, record);
-        self.mark_root_dirty();
     }
 
 }
