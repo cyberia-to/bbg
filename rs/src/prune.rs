@@ -144,8 +144,8 @@ fn remove_axon(state: &mut BbgState, ps: &mut PruneState, axon_id: &Particle) {
     state.particles.remove(axon_id);
     ps.last_touched.remove(axon_id);
     if let Some((from, to)) = state.axon_edges.remove(axon_id) {
-        state.axons_out.remove(&from, axon_id);
-        state.axons_in.remove(&to, axon_id);
+        state.axons_out.remove_axon(&from, axon_id);
+        state.axons_in.remove_axon(&to, axon_id);
     }
 }
 

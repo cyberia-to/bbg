@@ -325,9 +325,35 @@ impl AxonIndex {
         true
     }
 
+    /// Replace `particle`'s whole list (duplicates dropped from the set).
+    /// Returns the previous list. The map-shaped mutator undo/restore uses.
+    pub fn insert(&mut self, particle: Particle, list: Vec<Particle>) -> Option<Vec<Particle>> {
+        let old = self.remove(&particle);
+        if list.is_empty() {
+            return old;
+        }
+        let set = Trie::from_entries(list.iter().map(|a| (*a, Self::member_digest(a))));
+        self.max_len = self.max_len.max(list.len());
+        self.map.insert(particle, list);
+        self.sets.insert(particle, set);
+        self.touched(&particle);
+        old
+    }
+
+    /// Remove `particle`'s whole list. Returns it.
+    pub fn remove(&mut self, particle: &Particle) -> Option<Vec<Particle>> {
+        let old = self.map.remove(particle)?;
+        self.sets.remove(particle);
+        if old.len() == self.max_len {
+            self.max_len = self.map.values().map(Vec::len).max().unwrap_or(0);
+        }
+        self.touched(particle);
+        Some(old)
+    }
+
     /// Remove `axon` from `particle`'s list, dropping the list when it empties.
     /// Returns `true` if it was present.
-    pub fn remove(&mut self, particle: &Particle, axon: &Particle) -> bool {
+    pub fn remove_axon(&mut self, particle: &Particle, axon: &Particle) -> bool {
         let Some(set) = self.sets.get_mut(particle) else { return false };
         if !set.remove(axon) {
             return false;
@@ -445,12 +471,18 @@ mod tests {
         other.add(p(1), p(10));
         assert_eq!(ix.commitment(), other.commitment());
         // removal collapses the list and the max degree
-        assert!(ix.remove(&p(1), &p(11)));
-        assert!(!ix.remove(&p(1), &p(11)));
+        assert!(ix.remove_axon(&p(1), &p(11)));
+        assert!(!ix.remove_axon(&p(1), &p(11)));
         assert_eq!(ix.max_degree(), 1);
-        assert!(ix.remove(&p(1), &p(10)));
+        assert!(ix.remove_axon(&p(1), &p(10)));
         assert!(ix.get(&p(1)).is_none());
         assert_eq!(ix.max_degree(), 0);
+        assert_eq!(ix.commitment(), EMPTY);
+        // whole-list insert/remove (the undo/restore shape) commits the same set
+        ix.insert(p(1), vec![p(11), p(10)]);
+        assert_eq!(ix.commitment(), other.commitment());
+        assert_eq!(ix.max_degree(), 2);
+        assert_eq!(ix.remove(&p(1)).map(|l| l.len()), Some(2));
         assert_eq!(ix.commitment(), EMPTY);
     }
 
