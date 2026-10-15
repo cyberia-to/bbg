@@ -124,6 +124,12 @@ impl<K: TrieKey, V: LeafValue> Keyed<K, V> {
         Some(old)
     }
 
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.trie = Trie::new();
+        self.legacy = OnceLock::new();
+    }
+
     /// Mutable access to `key`'s record; the leaf is re-hashed when the guard
     /// drops.
     pub fn get_mut(&mut self, key: &K) -> Option<ValueMut<'_, K, V>> {
@@ -372,6 +378,14 @@ impl AxonIndex {
         true
     }
 
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.sets.clear();
+        self.trie = Trie::new();
+        self.max_len = 0;
+        self.legacy = OnceLock::new();
+    }
+
     /// The longest list — O(1); maintained across adds and removes.
     pub fn max_degree(&self) -> usize {
         self.max_len
@@ -433,6 +447,10 @@ mod tests {
         m.remove(&p(1));
         assert_eq!(m.commitment(), EMPTY);
         assert!(m.get_mut(&p(3)).is_none());
+        m.insert(p(4), 4);
+        m.clear();
+        assert_eq!(m.commitment(), EMPTY);
+        assert!(m.is_empty());
     }
 
     #[test]
