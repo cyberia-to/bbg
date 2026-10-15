@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use lens::Commitment;
 use nebu::Goldilocks;
 
-use crate::dim::{goldilocks_from_bytes32, goldilocks_from_u64};
+use crate::dim::{bytes32_limbs, u64_limbs};
 use crate::trie::{leaf_digest, Digest, Trie, TrieProof};
 use crate::types::Particle;
 
@@ -45,14 +45,15 @@ impl TrieKey for u64 {
     }
 }
 
-/// A committed record: its leaf value fields, in frozen order.
+/// A committed record: its v2 leaf value fields, in frozen order, in the
+/// injective encoding (`u64` → two 32-bit limbs, 32 bytes → eight).
 pub trait LeafValue {
     fn leaf_vals(&self) -> Vec<Goldilocks>;
 }
 
 impl LeafValue for u64 {
     fn leaf_vals(&self) -> Vec<Goldilocks> {
-        vec![goldilocks_from_u64(*self)]
+        u64_limbs(*self).to_vec()
     }
 }
 
@@ -64,7 +65,7 @@ impl LeafValue for Goldilocks {
 
 impl LeafValue for [u8; 32] {
     fn leaf_vals(&self) -> Vec<Goldilocks> {
-        goldilocks_from_bytes32(self).to_vec()
+        bytes32_limbs(self).to_vec()
     }
 }
 
@@ -291,9 +292,9 @@ impl AxonIndex {
         leaf_digest(axon, &[])
     }
 
-    /// The outer leaf of `particle`: `[degree, root(set)]`.
+    /// The outer leaf of `particle`: `[degree (2 limbs), root(set) (4 limbs)]`.
     pub fn leaf(particle: &Particle, degree: u64, set_root: &Digest) -> Digest {
-        let mut vals = vec![goldilocks_from_u64(degree)];
+        let mut vals = u64_limbs(degree).to_vec();
         vals.extend_from_slice(set_root);
         leaf_digest(particle, &vals)
     }

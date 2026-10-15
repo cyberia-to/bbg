@@ -22,8 +22,8 @@
 //!
 //! ```text
 //! EMPTY            = [0, 0, 0, 0]
-//! leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [limbs(k), chunk₁(v), …])
-//!                    chunks are 4 limbs, zero-padded
+//! leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [k₀..₃, k₄..₇, chunk₁(v), …])
+//!                    k as eight 32-bit limbs, chunks of 4 limbs, zero-padded
 //! branch(i, l, r)  = compress4(compress4([BRANCH_TAG, i, 0, 0], l), r)
 //! node(S)          = EMPTY                          if S = ∅
 //!                  = leaf(k, v)                     if S = {(k, v)}
@@ -36,7 +36,7 @@
 use nebu::Goldilocks;
 use zheng::ccs::compress4;
 
-use crate::dim::goldilocks_from_bytes32;
+use crate::dim::bytes32_limbs;
 
 /// A 4-limb hemera digest — one root-fold leaf.
 pub type Digest = [Goldilocks; 4];
@@ -67,9 +67,18 @@ fn first_diff_bit(a: &[u8; 32], b: &[u8; 32]) -> u16 {
 }
 
 /// `leaf(k, v)` — the digest of one `(key, values)` entry.
+///
+/// The key enters as eight 32-bit limbs and every value field is expected in
+/// an injective encoding ([`crate::dim::u64_limbs`], [`bytes32_limbs`]), so
+/// two distinct records never share a preimage.
 pub fn leaf_digest(key: &[u8; 32], vals: &[Goldilocks]) -> Digest {
     let mut acc = [Goldilocks::new(LEAF_TAG), Goldilocks::new(vals.len() as u64), Goldilocks::ZERO, Goldilocks::ZERO];
-    acc = compress4(&acc, &goldilocks_from_bytes32(key));
+    let k = bytes32_limbs(key);
+    for half in k.chunks(4) {
+        let mut block = [Goldilocks::ZERO; 4];
+        block.copy_from_slice(half);
+        acc = compress4(&acc, &block);
+    }
     for chunk in vals.chunks(4) {
         let mut block = [Goldilocks::ZERO; 4];
         block[..chunk.len()].copy_from_slice(chunk);

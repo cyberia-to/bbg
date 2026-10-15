@@ -266,8 +266,8 @@ fn v2_root_is_pinned() {
     let before = hex(&b.state.root());
     b.finalize_block();
     let after = hex(&b.state.root());
-    assert_eq!(before, "b6535a3fc70c53fc7446d17aaf8dff12491bf2d755f3681718cb4f108153c480");
-    assert_eq!(after, "7f3b9fac9b941831e5c35f704ba6fdba15ebb43a267da5e81e5665729cbb39aa");
+    assert_eq!(before, "937bc9a053d97c13da898ef4551148531b4fc308ad18308829cb261284b8442f");
+    assert_eq!(after, "5c76c557fd36ddcc5dc4b3971e3f7b24dd4b4c9dbdde57974814fb7d6b664d38");
     let empty = Bbg::new().with_root_version(RootVersion::V2);
     assert_eq!(hex(&empty.state.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
 }

@@ -47,21 +47,28 @@ versions differ in how a dimension's leaf is derived from its records.
 
 | version | dimension leaf | cost of a block touching c records | status |
 |---|---|---|---|
-| v1 | Brakedown commitment of the flat sorted `[key(4) ‖ fields]` polynomial (`dim::commit_dim`), limbs of the 32-byte digest | O(state): every touched dimension is re-encoded and re-hashed in full | default; the derivation the zheng look argument binds (`LookOpening.commitment` = the Brakedown commitment, bound to `leaves.dims[ns]` in-circuit) |
-| v2 | root of the keyed trie below | O(c · log n) | implemented (`RootVersion::V2`), proposed for adoption by the chain spec — launch row 43 |
+| v1 | Brakedown commitment of the flat sorted `[key(4) ‖ fields]` polynomial (`dim::commit_dim`), limbs of the 32-byte digest | O(state): every touched dimension is re-encoded and re-hashed in full; at most 2^20 field elements per dimension (lens `MAX_VARIABLES`) | kept for the zheng look argument, which binds `LookOpening.commitment` (a Brakedown cell opening) to `leaves.dims[ns]` in-circuit; opt-in (`RootVersion::V1`) |
+| v2 | root of the keyed trie below | O(c · log n), no size cap | default since dimension version 2 (2026-10-15, the fresh chain) — launch rows 43 and 14 |
 
 a v1 root recompute is linear in the state, so a chain's cost is quadratic in its length (measured: cybergraph `audit/import-commit-cost-2026-09-27.md`, bbg `audit/commit-cost-2026-10-15.md`). v2 makes a block cost proportional to what it changes. the version is selected per state (`BbgState::set_root_version`); the records are version-independent, with one consequence: `time[h]` stores the root in force at finalization, so a state that finalized blocks under v1 and the same operations replayed under v2 hold different `time` records.
 
-adopting v2 is a consensus change: every node derives the same root only under the same version, and the zheng look argument must open a trie path (leaf chain + branch chain, all `compress4`) instead of a Brakedown cell before v2 can be the default. until then v2 is opt-in and v1 roots stay bit-exact.
+**dimension version 2** (the fresh chain starts here; every node derives the same root only under the same version):
+
+1. the dimension leaf is the keyed-trie root (v2);
+2. field encoding is injective: a `u64` is two 32-bit limbs (low first), 32 bytes are eight 32-bit limbs — one Goldilocks limb per `u64` would make `v` and `v − p` collide;
+3. a cyberlink without conviction (`a = 0`) writes topology only: `axons_out`, `axons_in` and the reverse edge map. no axon-particle, no energy, no focus, no balance row. (a genesis replay is all such links; writing zero records doubled the particles dimension and added a balance row per endpoint.)
+4. a zero balance is an absent row: `balances[k]` reaching 0 is removed, so a state has one representation.
+
+the zheng look argument still opens v1 Brakedown cells; it moves to trie paths (leaf chain + branch chain, all `compress4`) to prove reads against a v2 root. until then proofs pin `RootVersion::V1` on states small enough for it.
 
 ### dimension commitment v2 — keyed trie
 
-every committed dimension is a set of `(key, fields)` records: `key` is 32 bytes (a particle, neuron, nullifier or commitment point; heights and steps little-endian in the first 8 bytes), `fields` is the record's Goldilocks vector in the frozen per-dimension layout (`state/commits.rs` — identical to the v1 polynomial layout). the commitment is the root of a canonical binary Merkle-Patricia trie over the keys:
+every committed dimension is a set of `(key, fields)` records: `key` is 32 bytes (a particle, neuron, nullifier or commitment point; heights and steps little-endian in the first 8 bytes), `fields` is the record's Goldilocks vector in the frozen per-dimension order (`state/commits.rs`, same field order as the v1 polynomial) in the injective encoding: `u64` → two 32-bit limbs, 32 bytes → eight 32-bit limbs, a field element → itself. the commitment is the root of a canonical binary Merkle-Patricia trie over the keys:
 
 ```
 EMPTY            = [0, 0, 0, 0]
-leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [limbs(k), chunk₁(v), chunk₂(v), …])
-                   chunks of 4 limbs, the last zero-padded
+leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [k₀..k₃, k₄..k₇, chunk₁(v), chunk₂(v), …])
+                   k as eight 32-bit limbs; chunks of 4 limbs, the last zero-padded
 branch(i, l, r)  = compress4(compress4([BRANCH_TAG, i, 0, 0], l), r)
 node(S)          = EMPTY                          if S = ∅
                  = leaf(k, v)                     if S = {(k, v)}
@@ -77,9 +84,9 @@ BRANCH_TAG = "bbg-node" as a little-endian u64
 
 the shape is a function of the key set alone (a branch exists exactly where two keys first differ), so the root is a function of the record set: insertion order, deletions and reinsertions leave no trace. depth is ≈ log₂ n for hashed keys, bounded by 256. a record update re-hashes its leaf and its path: O(depth) compressions, two per branch.
 
-adjacency dimensions (`axons_out`, `axons_in`) are sets of sets: the leaf of particle p is `leaf(p, [degree, node(axons of p)])` where the inner trie has leaves `leaf(axon_id, [])`. appending to a hub costs O(log degree); the committed value is the set of axon ids (the v1 polynomial committed the list in insertion order).
+adjacency dimensions (`axons_out`, `axons_in`) are sets of sets: the leaf of particle p is `leaf(p, [degree (2 limbs), node(axons of p) (4 limbs)])` where the inner trie has leaves `leaf(axon_id, [])`. appending to a hub costs O(log degree); the committed value is the set of axon ids (the v1 polynomial committed the list in insertion order).
 
-the private sets: `A` has leaves `leaf(point, [value])`, `N` has leaves `leaf(nullifier, [])`.
+the private sets: `A` has leaves `leaf(point, [value])` (one field element), `N` has leaves `leaf(nullifier, [])`.
 
 a read against a v2 leaf is a trie path: `(bit, sibling)` pairs root-to-leaf plus the terminal leaf (`trie::TrieProof`). inclusion = the terminal is the key's leaf with the claimed digest; non-inclusion = the terminal is another key's leaf or `EMPTY` — the canonical trie has exactly one node at the end of every key's path. verification is the same `compress4` chain the root fold uses, so the look argument can bind a path to the root with the primitive it already replays.
 
