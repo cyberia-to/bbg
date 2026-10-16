@@ -426,3 +426,29 @@ fn v2_record_proofs_verify_against_the_dimension_leaf() {
         Some(&bbg::trie::leaf_digest(&axon, &[]))
     ));
 }
+
+/// A bulk load (one root read after 20k touched records: the dimensions hash
+/// on parallel threads) commits exactly what the same writes commit when the
+/// root is read every 97 writes (single thread, partial flushes).
+#[test]
+fn bulk_and_incremental_commitment_reads_agree() {
+    let script = |b: &mut Bbg, every: Option<usize>| {
+        let mut rng = Rng(0xB01C);
+        for i in 0..12_000usize {
+            let key = rng.key(4_000, 0xE0);
+            let to = rng.key(4_000, 0xF0);
+            let amount = rng.next() % 3;
+            b.state.neurons.insert(key, NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: i as u64 });
+            b.insert(&one_link(key, key, to, amount)).unwrap();
+            if every.is_some_and(|e| i % e == 0) {
+                b.state.root();
+            }
+        }
+    };
+    let mut bulk = Bbg::new();
+    script(&mut bulk, None);
+    let mut steady = Bbg::new();
+    script(&mut steady, Some(97));
+    assert_eq!(bulk.state.root(), steady.state.root());
+    assert_eq!(bulk.state.root(), rebuild(&steady.state).root());
+}

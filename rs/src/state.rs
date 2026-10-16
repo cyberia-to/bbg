@@ -9,6 +9,10 @@ use std::collections::BTreeMap;
 
 mod commits;
 
+/// Touched records above which a root read hashes the dimensions on separate
+/// threads (a bulk load); below it, one thread (a block).
+const PARALLEL_FLUSH: usize = 1 << 14;
+
 /// Number of blocks per epoch. Pruning runs at epoch boundaries.
 pub const EPOCH_BLOCKS: u64 = 100;
 
@@ -174,25 +178,74 @@ impl BbgState {
         }
     }
 
-    /// v2: every dimension leaf is its trie root.
+    /// v2: every dimension leaf is its trie root. Each dimension brings its
+    /// trie up to date with the records touched since the last read; after a
+    /// bulk load (genesis, recovery) the dimensions hash in parallel.
     fn v2_leaves(&self) -> ([Digest; 11], Digest, Digest) {
-        (
-            [
-                self.particles.commitment(),
-                self.axons_out.commitment(),
-                self.axons_in.commitment(),
-                self.neurons.commitment(),
-                self.locations.commitment(),
-                self.coins.commitment(),
-                self.cards.commitment(),
-                self.files.commitment(),
-                self.time.commitment(),
-                self.signals.commitment(),
-                self.balances.commitment(),
-            ],
-            self.commitments.commitment(),
-            self.nullifiers.commitment(),
-        )
+        let pending = self.particles.pending()
+            + self.axons_out.pending()
+            + self.axons_in.pending()
+            + self.neurons.pending()
+            + self.balances.pending()
+            + self.time.pending()
+            + self.signals.pending();
+        if pending >= PARALLEL_FLUSH {
+            std::thread::scope(|s| {
+                let particles = s.spawn(|| self.particles.commitment());
+                let out = s.spawn(|| self.axons_out.commitment());
+                let inn = s.spawn(|| self.axons_in.commitment());
+                let neurons = s.spawn(|| self.neurons.commitment());
+                let balances = s.spawn(|| self.balances.commitment());
+                let rest = s.spawn(|| {
+                    (
+                        self.locations.commitment(),
+                        self.coins.commitment(),
+                        self.cards.commitment(),
+                        self.files.commitment(),
+                        self.time.commitment(),
+                        self.signals.commitment(),
+                        self.commitments.commitment(),
+                        self.nullifiers.commitment(),
+                    )
+                });
+                let (locations, coins, cards, files, time, signals, a, n) = rest.join().expect("flush");
+                (
+                    [
+                        particles.join().expect("flush"),
+                        out.join().expect("flush"),
+                        inn.join().expect("flush"),
+                        neurons.join().expect("flush"),
+                        locations,
+                        coins,
+                        cards,
+                        files,
+                        time,
+                        signals,
+                        balances.join().expect("flush"),
+                    ],
+                    a,
+                    n,
+                )
+            })
+        } else {
+            (
+                [
+                    self.particles.commitment(),
+                    self.axons_out.commitment(),
+                    self.axons_in.commitment(),
+                    self.neurons.commitment(),
+                    self.locations.commitment(),
+                    self.coins.commitment(),
+                    self.cards.commitment(),
+                    self.files.commitment(),
+                    self.time.commitment(),
+                    self.signals.commitment(),
+                    self.balances.commitment(),
+                ],
+                self.commitments.commitment(),
+                self.nullifiers.commitment(),
+            )
+        }
     }
 
     /// v1: every dimension leaf is the limbs of its Brakedown commitment,
