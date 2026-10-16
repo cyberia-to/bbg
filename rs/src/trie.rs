@@ -550,7 +550,7 @@ mod tests {
         let mut model = std::collections::BTreeMap::new();
         for step in 0..1500u64 {
             let key = keys[(rng.next() % keys.len() as u64) as usize];
-            if rng.next() % 3 == 0 {
+            if rng.next().is_multiple_of(3) {
                 assert_eq!(t.remove(&key), model.remove(&key).is_some());
             } else {
                 let digest = leaf_digest(&key, &[g(step)]);
@@ -575,7 +575,6 @@ mod tests {
         assert_eq!(proof.steps.len(), 256, "all-zero key sits under every single-bit branch");
         assert!(proof.verify(&t.root(), &zero, Some(&leaf_digest(&zero, &[]))));
         // removing down to empty returns to EMPTY
-        let mut t = t;
         for k in &chain {
             assert!(t.remove(k));
         }

@@ -100,7 +100,7 @@ mod reference {
 
     /// `node(S)` — the recursive definition, no incremental state.
     pub fn trie(mut leaves: Vec<([u8; 32], Digest)>) -> Digest {
-        leaves.sort_by(|a, b| a.0.cmp(&b.0));
+        leaves.sort_by_key(|l| l.0);
         fn node(s: &[([u8; 32], Digest)]) -> Digest {
             match s.len() {
                 0 => EMPTY,
