@@ -23,6 +23,7 @@ pub struct Stats {
 }
 
 impl Stats {
+    #[allow(dead_code)] // upstream API, unused by bbg
     pub fn outstanding_flushes(&self) -> usize {
         self.flushes_enqueued
             .load(std::sync::atomic::Ordering::Relaxed)
