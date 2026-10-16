@@ -96,6 +96,7 @@ dependencies = [
  "cyber-lens-core",
  "cyber-lens-ikat",
  "cyber-lens-porphyry",
+ "cyber-lens-rspcs",
 ]
 
 [[package]]
@@ -154,6 +155,16 @@ dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
  "strata-genies",
+]
+
+[[package]]
+name = "cyber-lens-rspcs"
+version = "0.1.0"
+dependencies = [
+ "cyber-hemera",
+ "cyber-lens-core",
+ "serde",
+ "strata-nebu",
 ]
 
 [[package]]
