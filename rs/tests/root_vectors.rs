@@ -5,11 +5,20 @@
 // ---
 //! Root derivation vectors and properties.
 //!
-//! v1 roots are pinned to the values the pre-incremental code produced
-//! (bbg `441e3c9`, 2026-10-15), so the per-dimension caches cannot drift the
-//! legacy derivation. v2 roots are checked against from-scratch rebuilds
-//! after random batches, pruning and replay — the property the incremental
-//! path exists to preserve.
+//! Dimension version 3 (2026-10-16): v2 (keyed trie) is the default, every
+//! trie leaf carries `DIMENSION_VERSION`, `NeuronRecord` carries the chain
+//! `nonce`, a link without conviction writes only topology, a zero balance is
+//! an absent row.
+//!
+//! Hash-agnostic: no digest is pinned by hand. Every expected root is
+//! recomputed here by an independent reference of specs/state.md — records
+//! laid out in the spec's field order, the trie built recursively from
+//! `node(S)`, the flat tables serialized by hand, the 14 leaves folded with
+//! hemera's permutation directly — so the vectors follow hemera (0.3 now,
+//! 0.4 next) without re-pinning, and a derivation change still fails them.
+//! v2 roots are also checked against from-scratch rebuilds after random
+//! batches, pruning and replay — the property the incremental path exists to
+//! preserve.
 
 use bbg::types::{
     CardRecord, CoinRecord, FileRecord, LocationRecord, NeuronRecord, ParticleRecord, SignalRecord,
@@ -37,7 +46,7 @@ fn one_link(neuron: [u8; 32], from: [u8; 32], to: [u8; 32], amount: u64) -> Sign
 fn all_dims(version: RootVersion) -> Bbg {
     let mut b = Bbg::new().with_root_version(version);
     for i in 1..4u8 {
-        b.state.neurons.insert(p(i), NeuronRecord { focus: 10_000, karma: i as u64, stake: 0 });
+        b.state.neurons.insert(p(i), NeuronRecord { focus: 10_000, karma: i as u64, stake: 0, nonce: 7 * i as u64 });
     }
     for i in 0..6u8 {
         let s = Signal {
@@ -64,34 +73,215 @@ fn all_dims(version: RootVersion) -> Bbg {
     b
 }
 
-// ── v1: bit-exact with the pre-incremental derivation ─────────────────────────
+// ── the reference derivation (specs/state.md), independent of the engine ───
+
+mod reference {
+    use bbg::dim::{bytes32_limbs, u64_limbs, TABLE_VERSION};
+    use bbg::state::BbgState;
+    use bbg::trie::{branch_digest, leaf_digest, Digest, EMPTY};
+    use hemera::field::Goldilocks as H;
+    use nebu::Goldilocks as G;
+
+    type Rec = ([u8; 32], Vec<G>);
+
+    fn u(vals: &[u64]) -> Vec<G> {
+        vals.iter().flat_map(|&v| u64_limbs(v)).collect()
+    }
+
+    fn pos(v: u64) -> [u8; 32] {
+        let mut k = [0u8; 32];
+        k[..8].copy_from_slice(&v.to_le_bytes());
+        k
+    }
+
+    fn bit(k: &[u8; 32], i: usize) -> bool {
+        (k[i / 8] >> (7 - i % 8)) & 1 == 1
+    }
+
+    /// `node(S)` — the recursive definition, no incremental state.
+    pub fn trie(mut leaves: Vec<([u8; 32], Digest)>) -> Digest {
+        leaves.sort_by_key(|l| l.0);
+        fn node(s: &[([u8; 32], Digest)]) -> Digest {
+            match s.len() {
+                0 => EMPTY,
+                1 => s[0].1,
+                _ => {
+                    let (lo, hi) = (&s[0].0, &s[s.len() - 1].0);
+                    let i = (0..256).find(|&i| bit(lo, i) != bit(hi, i)).expect("distinct keys");
+                    let split = s.iter().position(|(k, _)| bit(k, i)).expect("both sides");
+                    branch_digest(i as u16, &node(&s[..split]), &node(&s[split..]))
+                }
+            }
+        }
+        node(&leaves)
+    }
+
+    fn trie_of(recs: Vec<Rec>) -> Digest {
+        trie(recs.into_iter().map(|(k, v)| (k, leaf_digest(&k, &v))).collect())
+    }
+
+    /// The 13 dimension records in spec field order: (v2 leaf values, v1 values).
+    fn records(s: &BbgState) -> [(Vec<Rec>, Vec<Rec>); 13] {
+        let same = |r: Vec<Rec>| (r.clone(), r);
+        let axons = |m: &std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>| {
+            let v2 = m
+                .iter()
+                .map(|(p, list)| {
+                    let set = trie(list.iter().map(|a| (*a, leaf_digest(a, &[]))).collect());
+                    let mut vals = u(&[list.len() as u64]);
+                    vals.extend_from_slice(&set);
+                    (*p, vals)
+                })
+                .collect();
+            let v1 = m
+                .iter()
+                .map(|(p, list)| {
+                    let mut vals = u(&[list.len() as u64]);
+                    for a in list {
+                        vals.extend_from_slice(&bytes32_limbs(a));
+                    }
+                    (*p, vals)
+                })
+                .collect();
+            (v2, v1)
+        };
+        let cat = |parts: &[&[G]]| parts.concat();
+        [
+            same(s.particles.iter().map(|(k, r)| (*k, u(&[r.energy, r.pi_star, r.weight, r.s_yes, r.s_no, r.meta_score]))).collect()),
+            axons(&s.axons_out),
+            axons(&s.axons_in),
+            same(s.neurons.iter().map(|(k, r)| (*k, u(&[r.focus, r.karma, r.stake, r.nonce]))).collect()),
+            same(s.locations.iter().map(|(k, r)| (*k, u(&[r.lat as u32 as u64, r.lon as u32 as u64]))).collect()),
+            same(s.coins.iter().map(|(k, r)| (*k, u(&[r.total_supply]))).collect()),
+            same(s.cards.iter().map(|(k, r)| (*k, cat(&[&bytes32_limbs(&r.owner), &bytes32_limbs(&r.particle)]))).collect()),
+            same(s.files.iter().map(|(k, r)| (*k, u(&[r.available as u64, r.chunk_count as u64]))).collect()),
+            same(s.time.iter().map(|(h, root)| (pos(*h), bytes32_limbs(root).to_vec())).collect()),
+            same(
+                s.signals
+                    .iter()
+                    .map(|(st, r)| {
+                        (
+                            pos(*st),
+                            cat(&[
+                                &bytes32_limbs(&r.neuron),
+                                &bytes32_limbs(&r.network),
+                                &u(&[r.link_count as u64, r.block_height]),
+                                &bytes32_limbs(&r.proof_hash),
+                            ]),
+                        )
+                    })
+                    .collect(),
+            ),
+            same(s.balances.iter().map(|(k, v)| (*k, u(&[*v]))).collect()),
+            same(s.commitments.iter().map(|(k, v)| (*k, vec![*v])).collect()),
+            (
+                s.nullifiers.iter().map(|k| (*k, vec![])).collect(),
+                s.nullifiers.iter().map(|k| (*k, vec![G::ONE])).collect(),
+            ),
+        ]
+    }
+
+    /// v1 dimension leaf: Brakedown over the hand-serialized flat table.
+    fn flat(recs: Vec<Rec>) -> Digest {
+        let count = 3 + recs.iter().map(|(_, v)| 8 + v.len()).sum::<usize>();
+        let mut fields = vec![G::new(TABLE_VERSION), G::new(count as u64), G::new(recs.len() as u64)];
+        for (k, v) in &recs {
+            fields.extend(bytes32_limbs(k));
+            fields.extend_from_slice(v);
+        }
+        fields.resize(fields.len().next_power_of_two(), G::ZERO);
+        use lens::Lens;
+        let c = lens::brakedown::Brakedown::commit(&lens::MultilinearPoly::new(fields));
+        let mut b = [0u8; 32];
+        b.copy_from_slice(&c.as_bytes()[..32]);
+        bbg::dim::goldilocks_from_bytes32(&b)
+    }
+
+    /// compress4 from hemera's permutation: the first 4 limbs of P([a ‖ b ‖ 0⁸]).
+    fn compress(a: &Digest, b: &Digest) -> Digest {
+        let mut st = [H::ZERO; 16];
+        for i in 0..4 {
+            st[i] = H::new(a[i].as_u64());
+            st[4 + i] = H::new(b[i].as_u64());
+        }
+        hemera::permutation::permute(&mut st);
+        std::array::from_fn(|i| G::new(st[i].as_canonical_u64()))
+    }
+
+    /// The root of `s` under `trie` (v2) or flat (v1) dimension leaves.
+    pub fn root(s: &BbgState, trie_leaves: bool) -> [u8; 32] {
+        let leaves: Vec<Digest> = records(s)
+            .into_iter()
+            .map(|(v2, v1)| if trie_leaves { trie_of(v2) } else { flat(v1) })
+            .collect();
+        let stats = bbg::dim::goldilocks_from_bytes32(&s.statistics().commit());
+        let iv = [G::new(u64::from_le_bytes(*b"bbg-root")), G::ZERO, G::ZERO, G::ZERO];
+        let acc = leaves.iter().chain(std::iter::once(&stats)).fold(iv, |acc, l| compress(&acc, l));
+        let mut out = [0u8; 32];
+        for (i, l) in acc.iter().enumerate() {
+            out[i * 8..i * 8 + 8].copy_from_slice(&l.as_u64().to_le_bytes());
+        }
+        out
+    }
+}
+
+fn check(b: &Bbg) {
+    let trie = b.state.root_version() == RootVersion::V2;
+    assert_eq!(hex(&b.state.root()), hex(&reference::root(&b.state, trie)), "{:?}", b.state.root_version());
+}
+
+// ── both root versions against the reference ─────────────────────────────────
 
 #[test]
-fn v1_empty_root_is_pinned() {
-    assert_eq!(hex(&Bbg::new().state.root()), "6778e49e73d2935c3e1c397783a44a421b86f8181f51115601ea9cf0112fdfa2");
+fn empty_roots_match_the_reference() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        check(&Bbg::new().with_root_version(version));
+    }
 }
 
 #[test]
-fn v1_one_link_roots_are_pinned() {
-    let mut b = Bbg::new();
-    b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3 });
-    b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
-    assert_eq!(hex(&b.state.root()), "387298caa2d77c723697a61b2d0f8b29c696050781667271d5cc87ae64abbe46");
-    b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "496832a5608df264c76fde84774c2b60236b1f745f27d6240729d48e8894e7cf");
+fn one_link_roots_match_the_reference() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        let mut b = Bbg::new().with_root_version(version);
+        b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3, nonce: 4 });
+        b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
+        check(&b);
+        b.finalize_block();
+        check(&b);
+    }
 }
 
 #[test]
-fn v1_all_dimension_roots_are_pinned() {
-    let mut b = all_dims(RootVersion::V1);
-    assert_eq!(hex(&b.state.root()), "0639b2f70cf6e735899a2f38d006eccdc84cbc93d34f18ac81dcc2ad8dbc55db");
-    b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "ea9a1f882b3c8dc75b12543bb13e291068a1b7ae652f572bb5b72589cb6760d5");
+fn all_dimension_roots_match_the_reference() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        let mut b = all_dims(version);
+        check(&b);
+        b.finalize_block();
+        check(&b);
+    }
 }
 
 #[test]
-fn v1_is_the_default_and_v2_differs() {
-    assert_eq!(BbgState::new().root_version(), RootVersion::V1);
+fn the_reference_trie_is_the_engine_trie_on_boundary_and_random_keys() {
+    let mut rng = Rng(0xF00D);
+    let mut keys: Vec<[u8; 32]> = (0..300).map(|_| rng.key(1 << 40, 0x11)).collect();
+    keys.extend([[0u8; 32], [0xFF; 32]]);
+    for b in 0..256usize {
+        let mut k = [0u8; 32];
+        k[b / 8] = 0x80 >> (b % 8);
+        keys.push(k);
+    }
+    keys.sort();
+    keys.dedup();
+    let entries: Vec<([u8; 32], bbg::trie::Digest)> =
+        keys.iter().map(|k| (*k, bbg::trie::leaf_digest(k, &[]))).collect();
+    let mut t = bbg::Trie::from_entries(entries.iter().rev().copied());
+    assert_eq!(t.root(), reference::trie(entries));
+}
+
+#[test]
+fn v2_is_the_default_and_v1_differs() {
+    assert_eq!(BbgState::new().root_version(), RootVersion::V2);
     assert_ne!(all_dims(RootVersion::V1).state.root(), all_dims(RootVersion::V2).state.root());
     // The version is a view of the records: flipping it flips the root, and
     // the flipped root is the root a state built under that version carries.
@@ -100,7 +290,7 @@ fn v1_is_the_default_and_v2_differs() {
     // any block is finalized.)
     let build = |version| {
         let mut b = Bbg::new().with_root_version(version);
-        b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3 });
+        b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3, nonce: 0 });
         b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
         b
     };
@@ -170,6 +360,18 @@ fn rebuild(src: &BbgState) -> BbgState {
     for (k, v) in src.balances.iter() {
         s.balances.insert(*k, *v);
     }
+    for (k, v) in src.locations.iter() {
+        s.locations.insert(*k, LocationRecord { ..*v });
+    }
+    for (k, v) in src.coins.iter() {
+        s.coins.insert(*k, CoinRecord { ..*v });
+    }
+    for (k, v) in src.cards.iter() {
+        s.cards.insert(*k, CardRecord { ..*v });
+    }
+    for (k, v) in src.files.iter() {
+        s.files.insert(*k, FileRecord { ..*v });
+    }
     s.diameter_override = src.diameter_override;
     s.height = src.height;
     s
@@ -180,7 +382,7 @@ fn v2_incremental_root_matches_from_scratch_after_random_batches() {
     let mut rng = Rng(0x5EED);
     let mut b = Bbg::new().with_root_version(RootVersion::V2);
     for i in 0..8u8 {
-        b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0 });
+        b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: 0 });
     }
     for round in 0..40u64 {
         for _ in 0..25 {
@@ -214,7 +416,7 @@ fn v2_incremental_root_matches_from_scratch_after_random_batches() {
 fn v2_pruning_and_reinsertion_leave_no_trace() {
     let config = PruneConfig { max_bytes: u64::MAX, rank_floor_pct: 0, half_life_epochs: 0 };
     let mut pruned = Bbg::new().with_root_version(RootVersion::V2).with_prune_config(config);
-    pruned.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 40, karma: 0, stake: 0 });
+    pruned.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 40, karma: 0, stake: 0, nonce: 0 });
     // link A survives (refreshed every epoch), link B goes stale and is pruned
     pruned.insert(&one_link(p(1), p(2), p(3), 10)).unwrap();
     pruned.insert(&one_link(p(1), p(4), p(5), 10)).unwrap();
@@ -236,7 +438,7 @@ fn v2_pruning_and_reinsertion_leave_no_trace() {
 #[test]
 fn v2_replay_reproduces_every_block_root() {
     let script = |b: &mut Bbg| {
-        b.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 30, karma: 0, stake: 0 });
+        b.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 30, karma: 0, stake: 0, nonce: 0 });
         for i in 0..30u8 {
             b.insert(&one_link(p(1), p(10 + i % 7), p(50 + i % 5), 2 + i as u64)).unwrap();
             if i % 3 == 2 {
@@ -257,17 +459,108 @@ fn v2_replay_reproduces_every_block_root() {
     assert_eq!(a.checkpoint.root, b.checkpoint.root);
 }
 
+// ── dimension version 3 engine rules ─────────────────────────────────────────
+
 #[test]
-fn v2_root_is_pinned() {
-    // The v2 derivation is frozen by specs/state.md; this vector pins it.
-    let mut b = all_dims(RootVersion::V2);
-    let before = hex(&b.state.root());
-    b.finalize_block();
-    let after = hex(&b.state.root());
-    assert_eq!(before, "7461bb8f3e39458e1e9af283c815eeb4eec75a08471f1237b934f2fec71e3f9d");
-    assert_eq!(after, "2e0a2a28fe99abc6c81b4e09670ecb3d80f758ef2499ad6dae0304be4287910c");
-    let empty = Bbg::new().with_root_version(RootVersion::V2);
-    assert_eq!(hex(&empty.state.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
+fn the_nonce_is_under_the_root() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        let build = |nonce| {
+            let mut s = BbgState::new();
+            s.set_root_version(version);
+            s.neurons.insert(p(1), NeuronRecord { focus: 0, karma: 0, stake: 0, nonce });
+            s.root()
+        };
+        assert_ne!(build(0), build(1), "{version:?}");
+        let mut s = BbgState::new();
+        s.set_root_version(version);
+        s.neurons.insert(p(1), NeuronRecord { focus: 0, karma: 0, stake: 0, nonce: 0 });
+        s.neurons.get_mut(&p(1)).unwrap().nonce += 1;
+        assert_eq!(s.root(), build(1), "{version:?}: the guard re-hashes the nonce");
+    }
+}
+
+/// Recovery: a node replays committed blocks from scratch and checks every
+/// stored block root (`time[h]`) before readiness. A long random run with
+/// removals (pruning off, zero balances dropped, conviction-free links) must
+/// reproduce every stored root bit for bit.
+#[test]
+fn recovery_replay_reproduces_every_stored_root() {
+    let run = |b: &mut Bbg| {
+        let mut rng = Rng(0xC0FFEE);
+        for i in 0..6u8 {
+            b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: 0 });
+        }
+        for _block in 0..60 {
+            for _ in 0..(1 + rng.next() % 30) {
+                let neuron = p((rng.next() % 6) as u8);
+                b.state.neurons.get_mut(&neuron).unwrap().nonce += 1;
+                let sig = Signal {
+                    neuron,
+                    links: vec![Cyberlink {
+                        from: rng.key(80, 0xA0),
+                        to: rng.key(80, 0xB0),
+                        token: p((rng.next() % 2) as u8),
+                        amount: if rng.next().is_multiple_of(2) { 0 } else { 1 + rng.next() % 9 },
+                        valence: 1,
+                    }],
+                    box_moves: vec![],
+                    height: b.state.height,
+                };
+                b.insert(&sig).unwrap();
+            }
+            b.finalize_block();
+        }
+    };
+    let mut live = Bbg::new();
+    run(&mut live);
+    let mut recovered = Bbg::new();
+    run(&mut recovered);
+    assert_eq!(live.state.time.len(), 60);
+    for (h, root) in live.state.time.iter() {
+        assert_eq!(recovered.state.time.get(h), Some(root), "stored root at {h}");
+    }
+    assert_eq!(live.state.root(), recovered.state.root());
+    assert_eq!(rebuild(&live.state).root(), live.state.root(), "and a from-scratch rebuild agrees");
+}
+
+// ── conviction-free links and zero rows (since dimension version 2) ──────────
+
+#[test]
+fn a_link_without_conviction_writes_only_topology() {
+    let mut b = Bbg::new();
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0, nonce: 0 });
+    b.state.particles.insert(p(3), ParticleRecord::zero());
+    b.insert(&one_link(p(1), p(2), p(3), 0)).unwrap();
+    let axon = bbg::state::axon_id(&p(2), &p(3));
+    assert_eq!(b.state.axons_out.get(&p(2)).unwrap(), &vec![axon]);
+    assert_eq!(b.state.axons_in.get(&p(3)).unwrap(), &vec![axon]);
+    assert_eq!(b.state.axon_edges.get(&axon), Some(&(p(2), p(3))));
+    assert!(!b.state.particles.contains_key(&axon), "no axon-particle");
+    assert_eq!(b.state.particles.len(), 1, "no target record created");
+    assert!(b.state.balances.is_empty(), "no balance rows");
+    assert_eq!(b.state.neurons.get(&p(1)).unwrap().focus, 100);
+    // with conviction the same link writes the full effect
+    b.insert(&one_link(p(1), p(2), p(3), 5)).unwrap();
+    assert_eq!(b.state.particles.get(&axon).unwrap().weight, 5);
+    assert_eq!(b.state.particles.get(&p(3)).unwrap().energy, 5);
+    assert_eq!(b.state.neurons.get(&p(1)).unwrap().focus, 95);
+}
+
+#[test]
+fn a_zero_balance_is_an_absent_row() {
+    let mut b = Bbg::new();
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0, nonce: 0 });
+    b.insert(&one_link(p(1), p(2), p(3), 5)).unwrap();
+    let from = bbg::balance_key(&p(2), &p(0));
+    let to = bbg::balance_key(&p(3), &p(0));
+    assert!(!b.state.balances.contains_key(&from), "spending from nothing leaves no row");
+    assert_eq!(b.state.balances.get(&to), Some(&5));
+    // spend it all back: the row disappears, the root equals a state that never had it
+    b.insert(&one_link(p(1), p(3), p(2), 5)).unwrap();
+    assert!(!b.state.balances.contains_key(&to));
+    assert_eq!(b.state.balances.get(&from), Some(&5));
+    let fresh = rebuild(&b.state);
+    assert_eq!(b.state.root(), fresh.root());
 }
 
 // ── v2 proofs against dimension commitments ───────────────────────────────────
@@ -302,4 +595,30 @@ fn v2_record_proofs_verify_against_the_dimension_leaf() {
         &axon,
         Some(&bbg::trie::leaf_digest(&axon, &[]))
     ));
+}
+
+/// A bulk load (one root read after 20k touched records: the dimensions hash
+/// on parallel threads) commits exactly what the same writes commit when the
+/// root is read every 97 writes (single thread, partial flushes).
+#[test]
+fn bulk_and_incremental_commitment_reads_agree() {
+    let script = |b: &mut Bbg, every: Option<usize>| {
+        let mut rng = Rng(0xB01C);
+        for i in 0..12_000usize {
+            let key = rng.key(4_000, 0xE0);
+            let to = rng.key(4_000, 0xF0);
+            let amount = rng.next() % 3;
+            b.state.neurons.insert(key, NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: i as u64 });
+            b.insert(&one_link(key, key, to, amount)).unwrap();
+            if every.is_some_and(|e| i % e == 0) {
+                b.state.root();
+            }
+        }
+    };
+    let mut bulk = Bbg::new();
+    script(&mut bulk, None);
+    let mut steady = Bbg::new();
+    script(&mut steady, Some(97));
+    assert_eq!(bulk.state.root(), steady.state.root());
+    assert_eq!(bulk.state.root(), rebuild(&steady.state).root());
 }

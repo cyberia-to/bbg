@@ -15,12 +15,13 @@
 
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
-use std::sync::OnceLock;
+use std::collections::BTreeSet;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use lens::Commitment;
 use nebu::Goldilocks;
 
-use crate::dim::{goldilocks_from_bytes32, goldilocks_from_u64};
+use crate::dim::{bytes32_limbs, u64_limbs};
 use crate::trie::{leaf_digest, Digest, Trie, TrieProof};
 use crate::types::Particle;
 
@@ -45,14 +46,15 @@ impl TrieKey for u64 {
     }
 }
 
-/// A committed record: its leaf value fields, in frozen order.
+/// A committed record: its v2 leaf value fields, in frozen order, in the
+/// injective encoding (`u64` → two 32-bit limbs, 32 bytes → eight).
 pub trait LeafValue {
     fn leaf_vals(&self) -> Vec<Goldilocks>;
 }
 
 impl LeafValue for u64 {
     fn leaf_vals(&self) -> Vec<Goldilocks> {
-        vec![goldilocks_from_u64(*self)]
+        u64_limbs(*self).to_vec()
     }
 }
 
@@ -64,7 +66,7 @@ impl LeafValue for Goldilocks {
 
 impl LeafValue for [u8; 32] {
     fn leaf_vals(&self) -> Vec<Goldilocks> {
-        goldilocks_from_bytes32(self).to_vec()
+        bytes32_limbs(self).to_vec()
     }
 }
 
@@ -75,15 +77,31 @@ impl LeafValue for () {
 }
 
 /// A committed `K → V` dimension.
+///
+/// Mutations record the touched key; the next commitment read re-hashes each
+/// touched leaf once and its trie path once ([`Trie::root`]), so a block, or a
+/// bulk load, pays per distinct record, not per write.
 pub struct Keyed<K, V> {
     map: BTreeMap<K, V>,
-    trie: Trie,
+    commit: Mutex<Pending<K>>,
     legacy: OnceLock<Commitment>,
+}
+
+/// The trie and the keys whose leaves it has not seen yet.
+struct Pending<K> {
+    trie: Trie,
+    dirty: BTreeSet<K>,
+}
+
+impl<K> Default for Pending<K> {
+    fn default() -> Self {
+        Self { trie: Trie::new(), dirty: BTreeSet::new() }
+    }
 }
 
 impl<K: TrieKey, V: LeafValue> Default for Keyed<K, V> {
     fn default() -> Self {
-        Self { map: BTreeMap::new(), trie: Trie::new(), legacy: OnceLock::new() }
+        Self { map: BTreeMap::new(), commit: Mutex::new(Pending::default()), legacy: OnceLock::new() }
     }
 }
 
@@ -101,14 +119,29 @@ impl<K: TrieKey, V: LeafValue> Keyed<K, V> {
 
     fn touched(&mut self, key: &K) {
         self.legacy = OnceLock::new();
-        match self.map.get(key) {
-            Some(v) => {
-                self.trie.set(key.key_bytes(), leaf_digest(&key.key_bytes(), &v.leaf_vals()));
-            }
-            None => {
-                self.trie.remove(&key.key_bytes());
+        self.commit.get_mut().expect("commitment lock").dirty.insert(*key);
+    }
+
+    /// Bring the trie up to date with every touched record.
+    fn flush(&self) -> MutexGuard<'_, Pending<K>> {
+        let mut pending = self.commit.lock().expect("commitment lock");
+        let Pending { trie, dirty } = &mut *pending;
+        for key in std::mem::take(dirty) {
+            match self.map.get(&key) {
+                Some(v) => {
+                    trie.set(key.key_bytes(), leaf_digest(&key.key_bytes(), &v.leaf_vals()));
+                }
+                None => {
+                    trie.remove(&key.key_bytes());
+                }
             }
         }
+        pending
+    }
+
+    /// Records touched since the last commitment read.
+    pub fn pending(&self) -> usize {
+        self.commit.lock().expect("commitment lock").dirty.len()
     }
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
@@ -121,6 +154,12 @@ impl<K: TrieKey, V: LeafValue> Keyed<K, V> {
         let old = self.map.remove(key)?;
         self.touched(key);
         Some(old)
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        *self.commit.get_mut().expect("commitment lock") = Pending::default();
+        self.legacy = OnceLock::new();
     }
 
     /// Mutable access to `key`'s record; the leaf is re-hashed when the guard
@@ -138,7 +177,7 @@ impl<K: TrieKey, V: LeafValue> Keyed<K, V> {
 
     /// The v2 commitment: the trie root.
     pub fn commitment(&self) -> Digest {
-        self.trie.root()
+        self.flush().trie.root()
     }
 
     /// The v1 commitment, computed by `f` over the map and cached until the
@@ -149,7 +188,7 @@ impl<K: TrieKey, V: LeafValue> Keyed<K, V> {
 
     /// Inclusion / non-inclusion proof against [`Self::commitment`].
     pub fn prove(&self, key: &K) -> TrieProof {
-        self.trie.prove(&key.key_bytes())
+        self.flush().trie.prove(&key.key_bytes())
     }
 
     /// The leaf digest a record carries under its key.
@@ -250,6 +289,10 @@ impl<K: TrieKey> KeyedSet<K> {
         self.inner.commitment()
     }
 
+    pub fn pending(&self) -> usize {
+        self.inner.pending()
+    }
+
     pub fn legacy_commitment(&self, f: impl FnOnce(&BTreeMap<K, ()>) -> Commitment) -> Commitment {
         self.inner.legacy_commitment(f)
     }
@@ -266,13 +309,32 @@ impl<K: TrieKey> KeyedSet<K> {
 /// trie of leaves `(particle, [degree, root(set)])` where `set` is itself a
 /// trie over the axon ids with empty leaf values — appending to a hub costs
 /// O(log degree), never O(degree).
-#[derive(Default)]
 pub struct AxonIndex {
     map: BTreeMap<Particle, Vec<Particle>>,
+    /// degree → how many particles have it; the last key is the max degree.
+    degrees: BTreeMap<usize, usize>,
+    commit: Mutex<AxonPending>,
+    legacy: OnceLock<Commitment>,
+}
+
+/// The member sets, the outer trie, and the particles whose outer leaf it has
+/// not seen yet.
+#[derive(Default)]
+struct AxonPending {
     sets: BTreeMap<Particle, Trie>,
     trie: Trie,
-    max_len: usize,
-    legacy: OnceLock<Commitment>,
+    dirty: BTreeSet<Particle>,
+}
+
+impl Default for AxonIndex {
+    fn default() -> Self {
+        Self {
+            map: BTreeMap::new(),
+            degrees: BTreeMap::new(),
+            commit: Mutex::new(AxonPending::default()),
+            legacy: OnceLock::new(),
+        }
+    }
 }
 
 impl Deref for AxonIndex {
@@ -291,73 +353,169 @@ impl AxonIndex {
         leaf_digest(axon, &[])
     }
 
-    /// The outer leaf of `particle`: `[degree, root(set)]`.
+    /// The outer leaf of `particle`: `[degree (2 limbs), root(set) (4 limbs)]`.
     pub fn leaf(particle: &Particle, degree: u64, set_root: &Digest) -> Digest {
-        let mut vals = vec![goldilocks_from_u64(degree)];
+        let mut vals = u64_limbs(degree).to_vec();
         vals.extend_from_slice(set_root);
         leaf_digest(particle, &vals)
     }
 
-    fn touched(&mut self, particle: &Particle) {
-        self.legacy = OnceLock::new();
-        match (self.map.get(particle), self.sets.get(particle)) {
-            (Some(list), Some(set)) => {
-                let digest = Self::leaf(particle, list.len() as u64, &set.root());
-                self.trie.set(*particle, digest);
-            }
-            _ => {
-                self.trie.remove(particle);
+    /// Move one particle from degree `old` to degree `new` in the histogram.
+    fn degree_moved(&mut self, old: usize, new: usize) {
+        if old == new {
+            return;
+        }
+        if old > 0 {
+            let n = self.degrees.get_mut(&old).expect("histogram tracks every list");
+            *n -= 1;
+            if *n == 0 {
+                self.degrees.remove(&old);
             }
         }
+        if new > 0 {
+            *self.degrees.entry(new).or_insert(0) += 1;
+        }
+    }
+
+    fn degree(&self, particle: &Particle) -> usize {
+        self.map.get(particle).map_or(0, Vec::len)
+    }
+
+    fn pending_mut(&mut self) -> &mut AxonPending {
+        self.commit.get_mut().expect("commitment lock")
+    }
+
+    fn touched(&mut self, particle: &Particle) {
+        self.legacy = OnceLock::new();
+        self.pending_mut().dirty.insert(*particle);
+    }
+
+    /// Bring the outer trie up to date with every touched particle.
+    fn flush(&self) -> MutexGuard<'_, AxonPending> {
+        let mut pending = self.commit.lock().expect("commitment lock");
+        let AxonPending { sets, trie, dirty } = &mut *pending;
+        for particle in std::mem::take(dirty) {
+            match (self.map.get(&particle), sets.get_mut(&particle)) {
+                (Some(list), Some(set)) => {
+                    let digest = Self::leaf(&particle, list.len() as u64, &set.root());
+                    trie.set(particle, digest);
+                }
+                _ => {
+                    trie.remove(&particle);
+                }
+            }
+        }
+        pending
+    }
+
+    /// Particles touched since the last commitment read.
+    pub fn pending(&self) -> usize {
+        self.commit.lock().expect("commitment lock").dirty.len()
     }
 
     /// Add `axon` to `particle`'s list. Returns `true` if it was new.
     pub fn add(&mut self, particle: Particle, axon: Particle) -> bool {
-        let set = self.sets.entry(particle).or_default();
+        let set = self.pending_mut().sets.entry(particle).or_default();
         if !set.set(axon, Self::member_digest(&axon)) {
             return false;
         }
         let list = self.map.entry(particle).or_default();
         list.push(axon);
-        self.max_len = self.max_len.max(list.len());
+        let len = list.len();
+        self.degree_moved(len - 1, len);
         self.touched(&particle);
         true
     }
 
+    /// Replace `particle`'s whole list; a repeated axon keeps its first
+    /// position (the list mirrors the set). Returns the previous list. The
+    /// map-shaped mutator undo/restore uses.
+    pub fn insert(&mut self, particle: Particle, list: Vec<Particle>) -> Option<Vec<Particle>> {
+        let old = self.remove(&particle);
+        let mut set = Trie::new();
+        let list: Vec<Particle> = list.into_iter().filter(|a| set.set(*a, Self::member_digest(a))).collect();
+        if list.is_empty() {
+            return old;
+        }
+        self.degree_moved(0, list.len());
+        self.map.insert(particle, list);
+        self.pending_mut().sets.insert(particle, set);
+        self.touched(&particle);
+        old
+    }
+
+    /// Remove `particle`'s whole list. Returns it.
+    pub fn remove(&mut self, particle: &Particle) -> Option<Vec<Particle>> {
+        let old = self.map.remove(particle)?;
+        self.pending_mut().sets.remove(particle);
+        self.degree_moved(old.len(), 0);
+        self.touched(particle);
+        Some(old)
+    }
+
     /// Remove `axon` from `particle`'s list, dropping the list when it empties.
     /// Returns `true` if it was present.
-    pub fn remove(&mut self, particle: &Particle, axon: &Particle) -> bool {
-        let Some(set) = self.sets.get_mut(particle) else { return false };
+    pub fn remove_axon(&mut self, particle: &Particle, axon: &Particle) -> bool {
+        let Some(set) = self.pending_mut().sets.get_mut(particle) else { return false };
         if !set.remove(axon) {
             return false;
         }
         let list = self.map.get_mut(particle).expect("list mirrors set");
-        let was_max = list.len() == self.max_len;
+        let before = list.len();
         list.retain(|a| a != axon);
-        if list.is_empty() {
+        let after = list.len();
+        if after == 0 {
             self.map.remove(particle);
-            self.sets.remove(particle);
+            self.pending_mut().sets.remove(particle);
         }
-        if was_max {
-            self.max_len = self.map.values().map(Vec::len).max().unwrap_or(0);
-        }
+        self.degree_moved(before, after);
         self.touched(particle);
         true
     }
 
-    /// The longest list — O(1); maintained across adds and removes.
+    /// Keep the first `len` axons of `particle`'s list, dropping the rest from
+    /// the list and the set — the undo of the appends a reverted block made
+    /// (lists are append-only). `len = 0` removes the list. Returns how many
+    /// axons were dropped.
+    pub fn truncate(&mut self, particle: &Particle, len: usize) -> usize {
+        let before = self.degree(particle);
+        if before <= len {
+            return 0;
+        }
+        if len == 0 {
+            return self.remove(particle).map_or(0, |l| l.len());
+        }
+        let dropped = self.map.get_mut(particle).expect("degree > 0").split_off(len);
+        let set = self.pending_mut().sets.get_mut(particle).expect("list mirrors set");
+        for axon in &dropped {
+            set.remove(axon);
+        }
+        self.degree_moved(before, len);
+        self.touched(particle);
+        dropped.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        *self.pending_mut() = AxonPending::default();
+        self.degrees.clear();
+        self.legacy = OnceLock::new();
+    }
+
+    /// The longest list — O(log) from the degree histogram, maintained across
+    /// every mutation.
     pub fn max_degree(&self) -> usize {
-        self.max_len
+        self.degrees.last_key_value().map_or(0, |(d, _)| *d)
     }
 
     /// The v2 commitment: the outer trie root.
     pub fn commitment(&self) -> Digest {
-        self.trie.root()
+        self.flush().trie.root()
     }
 
     /// The set root of `particle`'s axon ids.
     pub fn set_root(&self, particle: &Particle) -> Option<Digest> {
-        self.sets.get(particle).map(Trie::root)
+        self.commit.lock().expect("commitment lock").sets.get_mut(particle).map(Trie::root)
     }
 
     pub fn legacy_commitment(
@@ -369,12 +527,12 @@ impl AxonIndex {
 
     /// Proof of `particle`'s outer leaf against [`Self::commitment`].
     pub fn prove(&self, particle: &Particle) -> TrieProof {
-        self.trie.prove(particle)
+        self.flush().trie.prove(particle)
     }
 
     /// Proof of `axon` against `particle`'s set root.
     pub fn prove_member(&self, particle: &Particle, axon: &Particle) -> Option<TrieProof> {
-        self.sets.get(particle).map(|s| s.prove(axon))
+        self.commit.lock().expect("commitment lock").sets.get_mut(particle).map(|s| s.prove(axon))
     }
 }
 
@@ -406,6 +564,10 @@ mod tests {
         m.remove(&p(1));
         assert_eq!(m.commitment(), EMPTY);
         assert!(m.get_mut(&p(3)).is_none());
+        m.insert(p(4), 4);
+        m.clear();
+        assert_eq!(m.commitment(), EMPTY);
+        assert!(m.is_empty());
     }
 
     #[test]
@@ -444,13 +606,90 @@ mod tests {
         other.add(p(1), p(10));
         assert_eq!(ix.commitment(), other.commitment());
         // removal collapses the list and the max degree
-        assert!(ix.remove(&p(1), &p(11)));
-        assert!(!ix.remove(&p(1), &p(11)));
+        assert!(ix.remove_axon(&p(1), &p(11)));
+        assert!(!ix.remove_axon(&p(1), &p(11)));
         assert_eq!(ix.max_degree(), 1);
-        assert!(ix.remove(&p(1), &p(10)));
+        assert!(ix.remove_axon(&p(1), &p(10)));
         assert!(ix.get(&p(1)).is_none());
         assert_eq!(ix.max_degree(), 0);
         assert_eq!(ix.commitment(), EMPTY);
+        // whole-list insert/remove (the undo/restore shape) commits the same set
+        ix.insert(p(1), vec![p(11), p(10)]);
+        assert_eq!(ix.commitment(), other.commitment());
+        assert_eq!(ix.max_degree(), 2);
+        assert_eq!(ix.remove(&p(1)).map(|l| l.len()), Some(2));
+        assert_eq!(ix.commitment(), EMPTY);
+    }
+
+    /// Random add / remove_axon / truncate / remove / insert against a model
+    /// list map: after every operation the index commits exactly what an index
+    /// built fresh from the model commits, and the max degree is the model's.
+    #[test]
+    fn axon_index_matches_a_fresh_build_under_random_operations() {
+        let mut x: u64 = 0xA11CE;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let mut ix = AxonIndex::new();
+        let mut model: BTreeMap<Particle, Vec<Particle>> = BTreeMap::new();
+        for step in 0..2000u32 {
+            let particle = p((next() % 6) as u8);
+            let mut axon = [0u8; 32];
+            axon[..8].copy_from_slice(&(next() % 40).to_le_bytes());
+            match next() % 10 {
+                0..=5 => {
+                    let list = model.entry(particle).or_default();
+                    let new = !list.contains(&axon);
+                    if new {
+                        list.push(axon);
+                    }
+                    assert_eq!(ix.add(particle, axon), new);
+                }
+                6 => {
+                    let had = model.get(&particle).is_some_and(|l| l.contains(&axon));
+                    if let Some(l) = model.get_mut(&particle) {
+                        l.retain(|a| a != &axon);
+                    }
+                    assert_eq!(ix.remove_axon(&particle, &axon), had);
+                }
+                7 => {
+                    let len = (next() % 8) as usize;
+                    let before = model.get(&particle).map_or(0, Vec::len);
+                    if let Some(l) = model.get_mut(&particle) {
+                        l.truncate(len);
+                    }
+                    assert_eq!(ix.truncate(&particle, len), before.saturating_sub(len));
+                }
+                8 => {
+                    assert_eq!(ix.remove(&particle), model.remove(&particle).filter(|l| !l.is_empty()));
+                }
+                _ => {
+                    // whole-list restore, with a repeated axon the list drops
+                    let list: Vec<Particle> = (0..(next() % 5)).map(|i| p(100 + (i % 3) as u8)).collect();
+                    let mut dedup: Vec<Particle> = Vec::new();
+                    for a in &list {
+                        if !dedup.contains(a) {
+                            dedup.push(*a);
+                        }
+                    }
+                    ix.insert(particle, list);
+                    model.insert(particle, dedup);
+                }
+            }
+            model.retain(|_, l| !l.is_empty());
+            let mut fresh = AxonIndex::new();
+            for (k, list) in &model {
+                for a in list {
+                    fresh.add(*k, *a);
+                }
+            }
+            assert_eq!(ix.commitment(), fresh.commitment(), "step {step}");
+            assert_eq!(&*ix, &model, "step {step}");
+            assert_eq!(ix.max_degree(), model.values().map(Vec::len).max().unwrap_or(0), "step {step}");
+        }
     }
 
     #[test]

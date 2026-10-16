@@ -11,28 +11,35 @@
 //! BBG only enforces the structural double-spend invariant via N(x).
 
 pub mod checkpoint;
+pub mod certificate;
 pub mod dim;
+pub mod query_auth;
+#[cfg(feature = "serde")]
+mod query_wire;
 pub mod keyed;
 pub mod proof;
 pub mod prune;
 pub mod query;
+pub mod root;
 pub mod signal;
 pub mod state;
 pub mod stats;
 pub mod storage;
+pub mod transition;
 pub mod trie;
 pub mod types;
 
-pub use checkpoint::Checkpoint;
+pub use checkpoint::{Checkpoint, CheckpointProof};
 pub use proof::{
     QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
     prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,
     prove_time, verify_particle,
 };
 pub use prune::{PruneConfig, PruneState};
+pub use root::{RootLeaves, root_from_leaves, root_to_bytes};
 pub use query::{
-    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
-    verify_query,
+    BbgLookProvider, Dim, LookOpening, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
+    verify_query, verify_query_at, verify_entity, verify_opening_with_context,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use keyed::{AxonIndex, Keyed, KeyedSet};
@@ -203,6 +210,7 @@ mod tests {
                 focus,
                 karma: 0,
                 stake: 0,
+                nonce: 0,
             },
         );
     }
@@ -279,7 +287,8 @@ mod tests {
 
     #[test]
     fn prove_and_verify_particle_roundtrip() {
-        let mut bbg = Bbg::new();
+        // Brakedown cell proofs bind the v1 dimension leaf.
+        let mut bbg = Bbg::new().with_root_version(RootVersion::V1);
         seed_neuron(&mut bbg, neuron_id(1), 100);
         bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
             .unwrap();

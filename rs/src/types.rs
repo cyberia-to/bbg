@@ -9,7 +9,7 @@
 pub type Particle = [u8; 32];
 
 /// Neuron identifier: 32-byte hemera hash.
-pub type NeuronId = [u8; 32];
+pub use neuron_id::NeuronId;
 
 /// A particle in the cybergraph.
 ///
@@ -45,6 +45,10 @@ pub struct NeuronRecord {
     pub karma: u64,
     /// total committed conviction
     pub stake: u64,
+    /// transactions this neuron has authored on the root chain
+    /// (soft3/specs/chain.md §2.5, §3.2): the replay counter, under the root
+    /// since dimension version 3
+    pub nonce: u64,
 }
 
 /// A geolocation record.

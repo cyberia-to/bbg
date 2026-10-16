@@ -9,6 +9,10 @@ use std::collections::BTreeMap;
 
 mod commits;
 
+/// Touched records above which a root read hashes the dimensions on separate
+/// threads (a bulk load); below it, one thread (a block).
+const PARALLEL_FLUSH: usize = 1 << 14;
+
 /// Number of blocks per epoch. Pruning runs at epoch boundaries.
 pub const EPOCH_BLOCKS: u64 = 100;
 
@@ -50,17 +54,19 @@ pub fn balance_key(owner: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
 
 /// Which derivation of the 13 commitment leaves the root folds over.
 ///
-/// The 14-leaf fold itself (`zheng::root_from_leaves`) and the stats leaf are
+/// The 14-leaf fold itself (`crate::root::root_from_leaves`) and the stats leaf are
 /// the same in both; only the dimension commitments differ. See
 /// `specs/state.md` § root versions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum RootVersion {
     /// Flat sorted Brakedown polynomial per dimension (`dim::commit_dim`).
-    /// O(state) per recompute; the derivation the zheng look argument binds.
-    #[default]
+    /// O(state) per recompute, at most 2^20 field elements per dimension
+    /// (lens `MAX_VARIABLES`); the derivation the zheng look argument binds.
     V1,
     /// Keyed trie per dimension ([`crate::trie`]). O(changes · log n) per
-    /// block; the derivation launch row 43 requires.
+    /// block, no size cap. The default since dimension version 2 — the
+    /// derivation the fresh chain starts on.
+    #[default]
     V2,
 }
 
@@ -157,41 +163,89 @@ impl BbgState {
     /// The 14 leaves of the root preimage: the 11 dimension commitments (in
     /// `Dim` order), A (private commitments), N (nullifiers), stats.
     ///
-    /// This is the exact structure zheng's look argument recomputes in-circuit
-    /// (`zheng::root_from_leaves`), so a look opening can bind its dimension
-    /// commitment to the root a nox program declares.
-    pub fn root_leaves(&self) -> zheng::RootLeaves {
+    /// [`crate::root::root_from_leaves`] folds them into the root; a state
+    /// certificate carries them so a verifier can recompute it.
+    pub fn root_leaves(&self) -> crate::root::RootLeaves {
         let (dims, a, n) = match self.root_version {
             RootVersion::V1 => self.v1_leaves(),
             RootVersion::V2 => self.v2_leaves(),
         };
-        zheng::RootLeaves {
+        crate::root::RootLeaves {
             dims,
             a,
             n,
-            stats: crate::dim::goldilocks_from_bytes32(&self.statistics().commit()),
+            stats: crate::dim::digest_limbs(&self.statistics().commit()),
         }
     }
 
-    /// v2: every dimension leaf is its trie root.
+    /// v2: every dimension leaf is its trie root. Each dimension brings its
+    /// trie up to date with the records touched since the last read; after a
+    /// bulk load (genesis, recovery) the dimensions hash in parallel.
     fn v2_leaves(&self) -> ([Digest; 11], Digest, Digest) {
-        (
-            [
-                self.particles.commitment(),
-                self.axons_out.commitment(),
-                self.axons_in.commitment(),
-                self.neurons.commitment(),
-                self.locations.commitment(),
-                self.coins.commitment(),
-                self.cards.commitment(),
-                self.files.commitment(),
-                self.time.commitment(),
-                self.signals.commitment(),
-                self.balances.commitment(),
-            ],
-            self.commitments.commitment(),
-            self.nullifiers.commitment(),
-        )
+        let pending = self.particles.pending()
+            + self.axons_out.pending()
+            + self.axons_in.pending()
+            + self.neurons.pending()
+            + self.balances.pending()
+            + self.time.pending()
+            + self.signals.pending();
+        if pending >= PARALLEL_FLUSH {
+            std::thread::scope(|s| {
+                let particles = s.spawn(|| self.particles.commitment());
+                let out = s.spawn(|| self.axons_out.commitment());
+                let inn = s.spawn(|| self.axons_in.commitment());
+                let neurons = s.spawn(|| self.neurons.commitment());
+                let balances = s.spawn(|| self.balances.commitment());
+                let rest = s.spawn(|| {
+                    (
+                        self.locations.commitment(),
+                        self.coins.commitment(),
+                        self.cards.commitment(),
+                        self.files.commitment(),
+                        self.time.commitment(),
+                        self.signals.commitment(),
+                        self.commitments.commitment(),
+                        self.nullifiers.commitment(),
+                    )
+                });
+                let (locations, coins, cards, files, time, signals, a, n) = rest.join().expect("flush");
+                (
+                    [
+                        particles.join().expect("flush"),
+                        out.join().expect("flush"),
+                        inn.join().expect("flush"),
+                        neurons.join().expect("flush"),
+                        locations,
+                        coins,
+                        cards,
+                        files,
+                        time,
+                        signals,
+                        balances.join().expect("flush"),
+                    ],
+                    a,
+                    n,
+                )
+            })
+        } else {
+            (
+                [
+                    self.particles.commitment(),
+                    self.axons_out.commitment(),
+                    self.axons_in.commitment(),
+                    self.neurons.commitment(),
+                    self.locations.commitment(),
+                    self.coins.commitment(),
+                    self.cards.commitment(),
+                    self.files.commitment(),
+                    self.time.commitment(),
+                    self.signals.commitment(),
+                    self.balances.commitment(),
+                ],
+                self.commitments.commitment(),
+                self.nullifiers.commitment(),
+            )
+        }
     }
 
     /// v1: every dimension leaf is the limbs of its Brakedown commitment,
@@ -202,7 +256,7 @@ impl BbgState {
             let cb = c.as_bytes();
             let len = cb.len().min(32);
             b[..len].copy_from_slice(&cb[..len]);
-            crate::dim::goldilocks_from_bytes32(&b)
+            crate::dim::digest_limbs(&b)
         };
         (
             [
@@ -228,7 +282,7 @@ impl BbgState {
     /// Field-native — the same limbs, permutation, and order as the in-circuit
     /// replay, so the root a program declares is the root the proof recomputes.
     pub fn compute_root(&self) -> Particle {
-        let root = zheng::root_from_leaves(&self.root_leaves());
+        let root = crate::root::root_from_leaves(&self.root_leaves());
         let mut out = [0u8; 32];
         for (i, limb) in root.iter().enumerate() {
             out[i * 8..(i + 1) * 8].copy_from_slice(&limb.as_u64().to_le_bytes());
@@ -307,28 +361,28 @@ impl BbgState {
         for link in &signal.links {
             let axon_id = axon_id(&link.from, &link.to);
 
-            // particles[H(p,q)]: weight += a
-            {
-                let new_weight = self.particles.get(&axon_id)
-                    .map_or(link.amount, |p| p.weight.saturating_add(link.amount));
-                self.particles.entry(axon_id).or_insert(ParticleRecord::zero()).weight = new_weight;
-            }
-
-            // particles[q]: energy += a
-            {
-                let new_energy = self.particles.get(&link.to)
-                    .map_or(link.amount, |p| p.energy.saturating_add(link.amount));
-                self.particles.entry(link.to).or_insert(ParticleRecord::zero()).energy = new_energy;
-            }
-
-            // axons_out[p]: insert H(p,q)
+            // axons_out[p] / axons_in[q]: insert H(p,q) — the topology, always
             self.axons_out.add(link.from, axon_id);
-
-            // axons_in[q]: insert H(p,q)
             self.axons_in.add(link.to, axon_id);
 
             // record reverse mapping for pruning
             self.axon_edges.entry(axon_id).or_insert((link.from, link.to));
+
+            // A link without conviction moves nothing: no axon-particle, no
+            // energy, no focus, no balance row. (Genesis replays are all such
+            // links; writing zero records would double the particles
+            // dimension and add a balance row per endpoint.)
+            if link.amount == 0 {
+                continue;
+            }
+
+            // particles[H(p,q)]: weight += a
+            self.particles.entry(axon_id).or_insert(ParticleRecord::zero()).weight =
+                self.particles.get(&axon_id).map_or(link.amount, |p| p.weight.saturating_add(link.amount));
+
+            // particles[q]: energy += a
+            self.particles.entry(link.to).or_insert(ParticleRecord::zero()).energy =
+                self.particles.get(&link.to).map_or(link.amount, |p| p.energy.saturating_add(link.amount));
 
             // neurons[ν]: focus -= cost (cost = amount; cybergraph already verified sufficiency)
             if let Some(mut nr) = self.neurons.get_mut(&signal.neuron) {
@@ -339,10 +393,15 @@ impl BbgState {
             let to_key = balance_key(&link.to, &link.token);
             *self.balances.entry(to_key).or_insert(0) += link.amount;
 
-            // balances[H(from || token)] -= a  (public input)
+            // balances[H(from || token)] -= a  (public input); a zero balance
+            // is an absent row, so the state has one representation.
             let from_key = balance_key(&link.from, &link.token);
-            let mut bal = self.balances.entry(from_key).or_insert(0);
-            *bal = bal.saturating_sub(link.amount);
+            let next = self.balances.get(&from_key).map_or(0, |b| b.saturating_sub(link.amount));
+            if next == 0 {
+                self.balances.remove(&from_key);
+            } else {
+                self.balances.insert(from_key, next);
+            }
         }
 
         Ok(())

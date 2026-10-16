@@ -2,6 +2,14 @@
 
 authenticated state layer for [[cyber]]. individual [[cyberlinks]] are private — who linked what is never disclosed. the [[cybergraph]] is the public aggregate: [[axons]], [[neuron]] summaries, [[particle]] energy, [[token]] supplies, φ* distribution. all derived from cyberlinks, revealing no individual contribution.
 
+## delivery priority
+
+P0: [durable storage for the Cyber node](roadmap/storage-reliability.md).
+Complete BBG's existing Fjall/redb storage path and its Cybergraph integration
+before declaring the node reliable. The [roadmap](roadmap/README.md) owns work
+order; the [persistence audit](audit/persistence.md) records verified behavior
+and remaining failures.
+
 ## three laws
 
 **bounded locality.** no global recompute for local change. every operation's cost is proportional to what it touches. at 10¹⁵ nodes, global operations are physically impossible.

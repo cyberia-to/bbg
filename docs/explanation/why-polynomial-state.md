@@ -33,7 +33,7 @@ this is stronger than a consistency proof. a LogUp argument proves agreement und
 
 ## 33x fewer constraints per cyberlink
 
-a cyberlink (neuron links particle P to particle Q) touches 4-5 indexes: particles (energy update for P and Q), axons_out (insert under P), axons_in (insert under Q), neurons (focus deduction).
+a cyberlink (neuron links file P to file Q) touches 4-5 indexes: particles (energy update for P and Q), axons_out (insert under P), axons_in (insert under Q), neurons (focus deduction).
 
 with hash trees at 4 billion entries per index:
 
@@ -121,7 +121,7 @@ BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 
 ## nouns ARE polynomials
 
-the polynomial model extends beyond aggregate state (BBG_poly) to individual particles. a particle's content is a polynomial over the Goldilocks field. its identity is hemera(Lens.commit(content) ‖ PARTICLE). the tree/polynomial isomorphism means the SAME Lens serves both levels:
+the polynomial model extends beyond aggregate state (BBG_poly) to individual files. a file's content is a polynomial over the Goldilocks field. its identity — its particle — is hemera(Lens.commit(content) ‖ PARTICLE). the tree/polynomial isomorphism means the SAME Lens serves both levels:
 
 - **state queries**: BBG_poly(particles, particle, t) → energy, pi-star (aggregate)
 - **content queries**: Lens.open(particle_poly, position) → bytes at offset (data)
@@ -132,7 +132,7 @@ this unification has three consequences:
 
 1. **no separate content addressing layer.** particle identity is a Lens commitment wrapped by hemera. there is no hash tree for content and a separate polynomial for state. one algebraic framework covers both.
 
-2. **native DAS.** a polynomial noun is automatically erasure-coded — extending the polynomial beyond its evaluation domain produces parity. no encoding pipeline. the particle IS the erasure code.
+2. **native DAS.** a polynomial noun is automatically erasure-coded — extending the polynomial beyond its evaluation domain produces parity. no encoding pipeline. the file IS the erasure code.
 
 3. **algebraic composability end-to-end.** particle identity is a field element derived from polynomial commitment. state operations (energy, focus, axon weights) operate on field elements. there is no hash-to-field boundary anywhere in the pipeline. content, identity, and state are all polynomial objects in the same field.
 

@@ -18,12 +18,14 @@
 //! for hashed keys (bounded by 256). The whole point: a block that touches `c`
 //! records costs O(c · log n), never O(n).
 //!
-//! Derivation (frozen, versioned by `RootVersion::V2`):
+//! Derivation (frozen; `RootVersion::V2`, dimension version 3 — the version
+//! enters every leaf, so records committed under another dimension version
+//! never share a digest):
 //!
 //! ```text
 //! EMPTY            = [0, 0, 0, 0]
-//! leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [limbs(k), chunk₁(v), …])
-//!                    chunks are 4 limbs, zero-padded
+//! leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, DIMENSION_VERSION, 0], [k₀..₃, k₄..₇, chunk₁(v), …])
+//!                    k as eight 32-bit limbs, chunks of 4 limbs, zero-padded
 //! branch(i, l, r)  = compress4(compress4([BRANCH_TAG, i, 0, 0], l), r)
 //! node(S)          = EMPTY                          if S = ∅
 //!                  = leaf(k, v)                     if S = {(k, v)}
@@ -34,9 +36,9 @@
 //! ```
 
 use nebu::Goldilocks;
-use zheng::ccs::compress4;
+use crate::root::compress4;
 
-use crate::dim::goldilocks_from_bytes32;
+use crate::dim::{bytes32_limbs, DIMENSION_VERSION};
 
 /// A 4-limb hemera digest — one root-fold leaf.
 pub type Digest = [Goldilocks; 4];
@@ -67,9 +69,23 @@ fn first_diff_bit(a: &[u8; 32], b: &[u8; 32]) -> u16 {
 }
 
 /// `leaf(k, v)` — the digest of one `(key, values)` entry.
+///
+/// The key enters as eight 32-bit limbs and every value field is expected in
+/// an injective encoding ([`crate::dim::u64_limbs`], [`bytes32_limbs`]), so
+/// two distinct records never share a preimage.
 pub fn leaf_digest(key: &[u8; 32], vals: &[Goldilocks]) -> Digest {
-    let mut acc = [Goldilocks::new(LEAF_TAG), Goldilocks::new(vals.len() as u64), Goldilocks::ZERO, Goldilocks::ZERO];
-    acc = compress4(&acc, &goldilocks_from_bytes32(key));
+    let mut acc = [
+        Goldilocks::new(LEAF_TAG),
+        Goldilocks::new(vals.len() as u64),
+        Goldilocks::new(DIMENSION_VERSION),
+        Goldilocks::ZERO,
+    ];
+    let k = bytes32_limbs(key);
+    for half in k.chunks(4) {
+        let mut block = [Goldilocks::ZERO; 4];
+        block.copy_from_slice(half);
+        acc = compress4(&acc, &block);
+    }
     for chunk in vals.chunks(4) {
         let mut block = [Goldilocks::ZERO; 4];
         block[..chunk.len()].copy_from_slice(chunk);
@@ -87,7 +103,8 @@ pub fn branch_digest(bit: u16, left: &Digest, right: &Digest) -> Digest {
 #[derive(Clone, Debug)]
 enum Node {
     Leaf { key: [u8; 32], digest: Digest },
-    Branch { bit: u16, left: u32, right: u32, digest: Digest },
+    /// `dirty`: a descendant changed since `digest` was computed.
+    Branch { bit: u16, left: u32, right: u32, digest: Digest, dirty: bool },
 }
 
 impl Node {
@@ -100,6 +117,11 @@ impl Node {
 }
 
 /// A canonical keyed trie with cached node digests.
+///
+/// Mutations change the shape and mark the touched path; branch digests are
+/// recomputed once, bottom-up, on the next [`Trie::root`] — so a batch of `c`
+/// changes costs `c` path walks plus one hash per dirty branch, and a bulk
+/// load hashes every node exactly once.
 #[derive(Clone, Debug, Default)]
 pub struct Trie {
     nodes: Vec<Node>,
@@ -174,9 +196,33 @@ impl Trie {
         self.len == 0
     }
 
-    /// The commitment: the root digest, [`EMPTY`] for no keys.
-    pub fn root(&self) -> Digest {
-        self.root.map_or(EMPTY, |r| *self.nodes[r as usize].digest())
+    /// The commitment: the root digest, [`EMPTY`] for no keys. Hashes the
+    /// branches changed since the last call.
+    pub fn root(&mut self) -> Digest {
+        match self.root {
+            None => EMPTY,
+            Some(r) => self.hash(r),
+        }
+    }
+
+    /// Whether some branch digest is stale (a [`Self::root`] call would hash).
+    pub fn is_dirty(&self) -> bool {
+        self.root.is_some_and(|r| matches!(self.nodes[r as usize], Node::Branch { dirty: true, .. }))
+    }
+
+    fn hash(&mut self, idx: u32) -> Digest {
+        let (bit, left, right) = match &self.nodes[idx as usize] {
+            Node::Leaf { digest, .. } | Node::Branch { digest, dirty: false, .. } => return *digest,
+            Node::Branch { bit, left, right, dirty: true, .. } => (*bit, *left, *right),
+        };
+        let l = self.hash(left);
+        let r = self.hash(right);
+        let d = branch_digest(bit, &l, &r);
+        if let Node::Branch { digest, dirty, .. } = &mut self.nodes[idx as usize] {
+            *digest = d;
+            *dirty = false;
+        }
+        d
     }
 
     fn alloc(&mut self, node: Node) -> u32 {
@@ -208,17 +254,11 @@ impl Trie {
         }
     }
 
-    fn rehash(&mut self, idx: u32) {
-        let Node::Branch { bit, left, right, .. } = self.nodes[idx as usize] else { return };
-        let d = branch_digest(bit, self.nodes[left as usize].digest(), self.nodes[right as usize].digest());
-        if let Node::Branch { digest, .. } = &mut self.nodes[idx as usize] {
-            *digest = d;
-        }
-    }
-
-    fn rehash_path(&mut self, path: &[u32]) {
-        for &idx in path.iter().rev() {
-            self.rehash(idx);
+    fn mark(&mut self, path: &[u32]) {
+        for &idx in path {
+            if let Node::Branch { dirty, .. } = &mut self.nodes[idx as usize] {
+                *dirty = true;
+            }
         }
     }
 
@@ -249,9 +289,12 @@ impl Trie {
         };
         if leaf_key == key {
             if let Node::Leaf { digest: d, .. } = &mut self.nodes[leaf as usize] {
+                if *d == digest {
+                    return false;
+                }
                 *d = digest;
             }
-            self.rehash_path(&path);
+            self.mark(&path);
             return false;
         }
         let j = first_diff_bit(&key, &leaf_key);
@@ -267,14 +310,13 @@ impl Trie {
         let split = if keep == path.len() { leaf } else { path[keep] };
         let new_leaf = self.alloc(Node::Leaf { key, digest });
         let (left, right) = if key_bit(&key, j) { (split, new_leaf) } else { (new_leaf, split) };
-        let branch = self.alloc(Node::Branch { bit: j, left, right, digest: EMPTY });
-        self.rehash(branch);
+        let branch = self.alloc(Node::Branch { bit: j, left, right, digest: EMPTY, dirty: true });
         if keep == 0 {
             self.root = Some(branch);
         } else {
             self.replace_child(path[keep - 1], split, branch);
         }
-        self.rehash_path(&path[..keep]);
+        self.mark(&path[..keep]);
         self.len += 1;
         true
     }
@@ -301,7 +343,7 @@ impl Trie {
             None => self.root = Some(sibling),
             Some(&grand) => self.replace_child(grand, parent, sibling),
         }
-        self.rehash_path(rest);
+        self.mark(rest);
         true
     }
 
@@ -316,10 +358,11 @@ impl Trie {
     }
 
     /// An inclusion / non-inclusion proof for `key` against [`Self::root`].
-    pub fn prove(&self, key: &[u8; 32]) -> TrieProof {
+    pub fn prove(&mut self, key: &[u8; 32]) -> TrieProof {
         let Some(_) = self.root else {
             return TrieProof { steps: Vec::new(), terminal: None };
         };
+        self.root();
         let (path, leaf) = self.descend(key);
         let steps = path
             .iter()
@@ -400,7 +443,7 @@ mod tests {
         assert_eq!(a.root(), b.root());
         // removal matches a trie that never had the key
         a.remove(&k(5));
-        let c = Trie::from_entries((0..64).filter(|&i| i != 5).map(|i| (k(i), d(i))));
+        let mut c = Trie::from_entries((0..64).filter(|&i| i != 5).map(|i| (k(i), d(i))));
         assert_eq!(a.root(), c.root());
     }
 
@@ -422,7 +465,7 @@ mod tests {
                     model.insert(k(key), digest);
                 }
             }
-            let fresh = Trie::from_entries(model.iter().map(|(a, b)| (*a, *b)));
+            let mut fresh = Trie::from_entries(model.iter().map(|(a, b)| (*a, *b)));
             assert_eq!(t.root(), fresh.root(), "round {round}");
             assert_eq!(t.len(), model.len());
         }
@@ -449,7 +492,7 @@ mod tests {
         t.set(k(41), d(41));
         assert!(!p.verify(&t.root(), &absent, None));
         // empty trie: absence of anything
-        let e = Trie::new();
+        let mut e = Trie::new();
         assert!(e.prove(&absent).verify(&EMPTY, &absent, None));
     }
 
@@ -467,6 +510,89 @@ mod tests {
         let p = t.prove(&key);
         assert!(p.steps.len() <= 10, "depth {}", p.steps.len());
         assert!(p.verify(&t.root(), &key, Some(&leaf_digest(&key, &[g(777)]))));
+    }
+
+    /// Keys on the structural edges of the trie: the extremes of the key
+    /// space, keys differing only in the first or the last bit, a full chain
+    /// of single-bit keys (every branch depth 0..=255 occurs), and u64 keys at
+    /// both ends of their range.
+    fn boundary_keys() -> Vec<[u8; 32]> {
+        let mut keys = vec![[0u8; 32], [0xFF; 32]];
+        let mut last = [0u8; 32];
+        last[31] = 1;
+        keys.push(last);
+        let mut first = [0u8; 32];
+        first[0] = 0x80;
+        keys.push(first);
+        let mut almost = [0xFF; 32];
+        almost[31] = 0xFE;
+        keys.push(almost);
+        for bit in 0..256u16 {
+            let mut k = [0u8; 32];
+            k[(bit / 8) as usize] = 0x80 >> (bit % 8);
+            keys.push(k);
+        }
+        for v in [1u64, u64::MAX, u64::MAX - 1, 1 << 63] {
+            let mut k = [0u8; 32];
+            k[..8].copy_from_slice(&v.to_le_bytes());
+            keys.push(k);
+        }
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
+    #[test]
+    fn boundary_keys_match_from_scratch_and_prove_at_every_step() {
+        let keys = boundary_keys();
+        let mut rng = Rng(0xB0B);
+        let mut t = Trie::new();
+        let mut model = std::collections::BTreeMap::new();
+        for step in 0..1500u64 {
+            let key = keys[(rng.next() % keys.len() as u64) as usize];
+            if rng.next().is_multiple_of(3) {
+                assert_eq!(t.remove(&key), model.remove(&key).is_some());
+            } else {
+                let digest = leaf_digest(&key, &[g(step)]);
+                assert_eq!(t.set(key, digest), model.insert(key, digest).is_none());
+            }
+            let mut fresh = Trie::from_entries(model.iter().map(|(a, b)| (*a, *b)));
+            assert_eq!(t.root(), fresh.root(), "step {step}");
+            if step % 25 == 0 {
+                let root = t.root();
+                for k in &keys {
+                    let proof = t.prove(k);
+                    assert!(proof.steps.len() <= 256);
+                    assert!(proof.verify(&root, k, model.get(k)), "step {step}");
+                }
+            }
+        }
+        // the single-bit chain alone: depth 256 at the all-zero key
+        let chain: Vec<[u8; 32]> = keys.iter().copied().filter(|k| k.iter().map(|b| b.count_ones()).sum::<u32>() <= 1).collect();
+        let mut t = Trie::from_entries(chain.iter().map(|k| (*k, leaf_digest(k, &[]))));
+        let zero = [0u8; 32];
+        let proof = t.prove(&zero);
+        assert_eq!(proof.steps.len(), 256, "all-zero key sits under every single-bit branch");
+        assert!(proof.verify(&t.root(), &zero, Some(&leaf_digest(&zero, &[]))));
+        // removing down to empty returns to EMPTY
+        for k in &chain {
+            assert!(t.remove(k));
+        }
+        assert_eq!(t.root(), EMPTY);
+        assert!(t.is_empty());
+    }
+
+    #[test]
+    fn the_dimension_version_enters_every_leaf() {
+        let key = k(3);
+        let vals = crate::dim::u64_limbs(5);
+        let limbs = bytes32_limbs(&key);
+        let mut acc = [g(LEAF_TAG), g(2), g(crate::dim::DIMENSION_VERSION), g(0)];
+        acc = compress4(&acc, &[limbs[0], limbs[1], limbs[2], limbs[3]]);
+        acc = compress4(&acc, &[limbs[4], limbs[5], limbs[6], limbs[7]]);
+        acc = compress4(&acc, &[vals[0], vals[1], g(0), g(0)]);
+        assert_eq!(leaf_digest(&key, &vals), acc);
+        assert_eq!(crate::dim::DIMENSION_VERSION, 3);
     }
 
     #[test]

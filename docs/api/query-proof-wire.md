@@ -68,7 +68,7 @@ Tensor = Brakedown / Ikat / Porphyry, Folding = Binius, Witness = Assayer.
 
 `QueryProof.commitment` is the dimension commitment — one of the 14 leaves of
 BBG_root (`BbgState::root_leaves()`). A verifier that also holds the root
-checks `root_from_leaves(leaves) == BBG_root` and that `leaves.dims[dim]`
+checks `bbg::root_from_leaves(leaves) == BBG_root` and that `leaves.dims[dim]`
 matches `commitment`; the proof then binds the opened value all the way to the
 state root. `BBG_root` itself is a `Particle` (`[u8; 32]`) — four Goldilocks
 limbs, little-endian — and needs no special serde.

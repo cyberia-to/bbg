@@ -63,21 +63,39 @@ impl PruneState {
 /// Called by `Bbg::finalize_block` at every epoch boundary, after the time
 /// snapshot is written. Mutates `state` and `ps`; recomputes the root after.
 pub fn prune(state: &mut BbgState, ps: &mut PruneState, config: &PruneConfig, epoch: u64) {
+    let (over_budget, sorted) = candidates(state, ps, config, epoch, usize::MAX)
+        .expect("unlimited pruning candidate budget");
+    for axon_id in sorted {
+        if over_budget && estimate_bytes(state) <= config.max_bytes {
+            break;
+        }
+        remove_axon(state, ps, &axon_id);
+    }
+    state.refresh_root();
+}
+
+/// Plan pruning with an explicit candidate bound before allocating each entry.
+pub(crate) fn candidates(
+    state: &BbgState,
+    ps: &PruneState,
+    config: &PruneConfig,
+    epoch: u64,
+    limit: usize,
+) -> Result<(bool, Vec<Particle>), ()> {
     let floor = rank_floor(state, config.rank_floor_pct);
     let over_budget = estimate_bytes(state) > config.max_bytes;
 
     // Collect candidate axon ids and their weights (proxy for density).
-    let candidates: Vec<(Particle, u64)> = if over_budget {
+    let candidates: Box<dyn Iterator<Item = (Particle, u64)> + '_> = if over_budget {
         // Gravity: all unprotected entries compete.
-        state
+        Box::new(state
             .particles
             .iter()
             .filter(|(_, p)| p.pi_star < floor)
-            .map(|(id, p)| (*id, p.weight))
-            .collect()
+            .map(|(id, p)| (*id, p.weight)))
     } else {
         // Half-life: only stale unprotected entries.
-        ps.last_touched
+        Box::new(ps.last_touched
             .iter()
             .filter(|(id, last)| {
                 let pi = state.particles.get(*id).map_or(0, |p| p.pi_star);
@@ -87,24 +105,19 @@ pub fn prune(state: &mut BbgState, ps: &mut PruneState, config: &PruneConfig, ep
             .map(|(id, _)| {
                 let weight = state.particles.get(id).map_or(0, |p| p.weight);
                 (*id, weight)
-            })
-            .collect()
+            }))
     };
 
     // Sort ascending by weight (lowest density = lowest weight = prune first).
-    let mut sorted = candidates;
-    sorted.sort_by_key(|(_, w)| *w);
-
-    for (axon_id, _) in sorted {
-        if over_budget && estimate_bytes(state) <= config.max_bytes {
-            break;
+    let mut sorted = Vec::new();
+    for candidate in candidates {
+        if sorted.len() == limit {
+            return Err(());
         }
-        remove_axon(state, ps, &axon_id);
+        sorted.push(candidate);
     }
-
-    if !state.particles.is_empty() {
-        state.refresh_root();
-    }
+    sorted.sort_by_key(|(_, w)| *w);
+    Ok((over_budget, sorted.into_iter().map(|(id, _)| id).collect()))
 }
 
 // ── internals ─────────────────────────────────────────────────────────────────
@@ -135,17 +148,17 @@ pub fn estimate_bytes(state: &BbgState) -> u64 {
     let particles = state.particles.len() as u64 * 80;
     let axons_out: u64 = state.axons_out.values().map(|v| 32 + v.len() as u64 * 32).sum();
     let axons_in: u64 = state.axons_in.values().map(|v| 32 + v.len() as u64 * 32).sum();
-    let neurons = state.neurons.len() as u64 * 56;
+    let neurons = state.neurons.len() as u64 * 64;
     particles + axons_out + axons_in + neurons
 }
 
 /// Remove an axon and all its index references. Updates PruneState too.
-fn remove_axon(state: &mut BbgState, ps: &mut PruneState, axon_id: &Particle) {
+pub(crate) fn remove_axon(state: &mut BbgState, ps: &mut PruneState, axon_id: &Particle) {
     state.particles.remove(axon_id);
     ps.last_touched.remove(axon_id);
     if let Some((from, to)) = state.axon_edges.remove(axon_id) {
-        state.axons_out.remove(&from, axon_id);
-        state.axons_in.remove(&to, axon_id);
+        state.axons_out.remove_axon(&from, axon_id);
+        state.axons_in.remove_axon(&to, axon_id);
     }
 }
 
@@ -163,7 +176,7 @@ mod tests {
 
     fn make_state() -> BbgState {
         let mut s = BbgState::new();
-        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0 });
+        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0, nonce: 0 });
         s
     }
 
@@ -265,5 +278,17 @@ mod tests {
         prune(&mut state, &mut ps, &config, 15);
 
         assert!(state.particles.contains_key(&aid));
+    }
+
+    #[test]
+    fn bounded_candidates_reject_before_collecting_an_extra_entry() {
+        let mut state = BbgState::new();
+        for n in 0..4u8 {
+            state.particles.insert(particle(n), crate::types::ParticleRecord::zero());
+        }
+        let config = PruneConfig { max_bytes: 0, rank_floor_pct: 0, half_life_epochs: 0 };
+        let pruning = PruneState::default();
+        assert!(candidates(&state, &pruning, &config, 1, 3).is_err());
+        assert_eq!(candidates(&state, &pruning, &config, 1, 4).unwrap().1.len(), 4);
     }
 }
