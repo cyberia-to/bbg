@@ -130,7 +130,7 @@ impl Bbg {
                     prepared.capture(4, *neuron)?;
                     prepared.bbg.state.balances.insert(key, balance);
                     prepared.bbg.state.neurons.entry(**neuron).or_insert(crate::NeuronRecord {
-                        focus: 0, karma: 0, stake: 0,
+                        focus: 0, karma: 0, stake: 0, nonce: 0,
                     }).focus = next_focus;
                     prepared.bbg.state.refresh_root();
                     prepared.bbg.checkpoint = prepared.bbg.checkpoint.advance(&prepared.bbg.state);

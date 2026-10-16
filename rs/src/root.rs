@@ -115,16 +115,21 @@ mod tests {
     const ZERO_ROOT: [u64; 4] =
         [9231417576306038954, 11425091536555908058, 3672555888010110395, 14299998217756054807];
 
-    /// `BbgState::new().root()` under zheng 0.4's `root_from_leaves`.
+    /// `BbgState::new().root()` under each root version, dimension version 3.
+    /// The trie (v2) empty root has every dimension leaf `EMPTY`: the fold over
+    /// zero dimension leaves and the stats leaf. The flat (v1) empty root is
+    /// unchanged by dimension version 3 (empty tables carry only the
+    /// `TABLE_VERSION` header).
     #[test]
-    fn empty_state_root_is_unchanged() {
-        assert_eq!(
-            crate::BbgState::new().root(),
-            [
-                101, 255, 97, 50, 17, 105, 216, 69, 53, 247, 43, 177, 119, 197, 214, 249, 136, 17,
-                54, 156, 143, 81, 34, 29, 200, 70, 190, 135, 6, 75, 36, 69
-            ]
-        );
+    fn empty_state_roots_are_pinned() {
+        let mut s = crate::BbgState::new();
+        assert_eq!(hex(&s.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
+        s.set_root_version(crate::RootVersion::V1);
+        assert_eq!(hex(&s.root()), "65ff61321169d84535f72bb177c5d6f98811369c8f51221dc846be87064b2445");
+    }
+
+    fn hex(b: &[u8; 32]) -> String {
+        b.iter().map(|x| format!("{x:02x}")).collect()
     }
 
     #[test]

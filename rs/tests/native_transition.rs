@@ -13,6 +13,7 @@ fn graph() -> Bbg {
             focus: 1000,
             karma: 4,
             stake: 5,
+            nonce: 0,
         },
     );
     graph.state.refresh_root();

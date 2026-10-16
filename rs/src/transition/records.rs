@@ -36,7 +36,7 @@ pub(crate) fn adjacency(entries: &[Particle]) -> Vec<u8> {
 }
 
 pub(crate) fn neuron(n: &NeuronRecord) -> Vec<u8> {
-    integers(&[n.focus, n.karma, n.stake])
+    integers(&[n.focus, n.karma, n.stake, n.nonce])
 }
 
 pub(crate) fn signal(s: &SignalRecord) -> Vec<u8> {

@@ -42,7 +42,7 @@ fn main() {
     }
     const NEURONS: u64 = 1000;
     for i in 0..NEURONS {
-        bbg.state.neurons.insert(h(1_000_000 + i), NeuronRecord { focus: u64::MAX / 2, karma: 0, stake: 0 });
+        bbg.state.neurons.insert(h(1_000_000 + i), NeuronRecord { focus: u64::MAX / 2, karma: 0, stake: 0, nonce: 0 });
     }
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let start = Instant::now();

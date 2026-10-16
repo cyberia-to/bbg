@@ -86,19 +86,15 @@ fn every_committed_component_and_structural_metadata_is_checked() {
 }
 
 #[test]
-fn stale_cached_roots_and_changed_signal_networks_are_rejected() {
+fn a_changed_signal_network_moves_the_certified_root() {
     let mut state = state();
     let old = StateCertificate::from_state(&state, &[9])
         .unwrap()
         .root()
         .unwrap();
+    // Every mutation goes through the committed map, so the root is never
+    // stale: a certificate taken right after the change binds the new root.
     state.signals.get_mut(&7).unwrap().network[0] += 1;
-    assert!(
-        StateCertificate::from_state(&state, &[9])
-            .unwrap_err()
-            .contains("stale cached")
-    );
-    state.refresh_root();
     let cert = StateCertificate::from_state(&state, &[9]).unwrap();
     assert_ne!(cert.root().unwrap(), old);
     assert!(cert.verify(old).is_err());

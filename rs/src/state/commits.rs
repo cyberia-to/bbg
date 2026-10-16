@@ -8,7 +8,7 @@
 //! v2 (keyed trie): the leaf of a record is `trie::leaf_digest(key, leaf_vals)`
 //! with [`LeafValue`] giving the fields in the injective encoding (`u64` → two
 //! 32-bit limbs, 32 bytes → eight) — the same fields `proof::dim_entries`
-//! serializes for v1. v1 (flat Brakedown polynomial, `dim::DIMENSION_VERSION`):
+//! serializes for v1. v1 (flat Brakedown polynomial, table layout `dim::TABLE_VERSION`):
 //! `commit_dim` over `dim_entries`, cached per dimension until it mutates.
 //! Adjacency: v1 commits the ordered list, v2 the set ([`crate::keyed::AxonIndex`]).
 
@@ -37,7 +37,7 @@ impl LeafValue for ParticleRecord {
 
 impl LeafValue for NeuronRecord {
     fn leaf_vals(&self) -> Vec<Goldilocks> {
-        [self.focus, self.karma, self.stake].iter().flat_map(|&v| u64_limbs(v)).collect()
+        [self.focus, self.karma, self.stake, self.nonce].iter().flat_map(|&v| u64_limbs(v)).collect()
     }
 }
 

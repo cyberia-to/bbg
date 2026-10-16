@@ -45,7 +45,7 @@ fn main() {
     let mut neurons: BTreeMap<[u8; 32], ()> = BTreeMap::new();
     for r in &rows {
         if neurons.insert(r.3, ()).is_none() {
-            bbg.state.neurons.insert(r.3, NeuronRecord { focus: u64::MAX / 2, karma: 0, stake: 0 });
+            bbg.state.neurons.insert(r.3, NeuronRecord { focus: u64::MAX / 2, karma: 0, stake: 0, nonce: 0 });
         }
     }
     let total_links = rows.len();

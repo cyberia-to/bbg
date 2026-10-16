@@ -148,7 +148,7 @@ pub fn estimate_bytes(state: &BbgState) -> u64 {
     let particles = state.particles.len() as u64 * 80;
     let axons_out: u64 = state.axons_out.values().map(|v| 32 + v.len() as u64 * 32).sum();
     let axons_in: u64 = state.axons_in.values().map(|v| 32 + v.len() as u64 * 32).sum();
-    let neurons = state.neurons.len() as u64 * 56;
+    let neurons = state.neurons.len() as u64 * 64;
     particles + axons_out + axons_in + neurons
 }
 
@@ -176,7 +176,7 @@ mod tests {
 
     fn make_state() -> BbgState {
         let mut s = BbgState::new();
-        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0 });
+        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0, nonce: 0 });
         s
     }
 

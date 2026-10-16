@@ -5,7 +5,17 @@ use crate::types::Particle;
 use lens::{Commitment, Lens, MultilinearPoly, brakedown::Brakedown};
 use nebu::Goldilocks;
 
-pub const DIMENSION_VERSION: u64 = 2;
+/// The dimension rule set every root derives under (specs/state.md
+/// § dimension versions): record schemas, the conviction-free link and zero
+/// row rules, and the trie leaf derivation, which carries this number.
+/// 3 = `NeuronRecord.nonce`, keyed-trie leaves, no zero records.
+pub const DIMENSION_VERSION: u64 = 3;
+/// Version word of the flat table layout (`[version, length, entries,
+/// (key(8) ‖ fields)*]`) — the v1 dimension polynomial and the state
+/// certificate tables zheng authenticates (`zheng::execution::state_evidence::
+/// TABLE_VERSION`). The layout is record-agnostic, so a record schema change
+/// moves the table contents, not this word.
+pub const TABLE_VERSION: u64 = 2;
 pub const HEADER_FIELDS: usize = 3;
 pub const KEY_FIELDS: usize = 8;
 
@@ -48,7 +58,7 @@ pub(crate) fn dim_serialize(entries: &[(Particle, Vec<Goldilocks>)]) -> Vec<Gold
             .sum::<usize>();
     let mut fields = Vec::with_capacity(count);
     fields.extend([
-        Goldilocks::new(DIMENSION_VERSION),
+        Goldilocks::new(TABLE_VERSION),
         Goldilocks::new(count as u64),
         Goldilocks::new(entries.len() as u64),
     ]);

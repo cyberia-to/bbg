@@ -5,13 +5,14 @@
 // ---
 //! Root derivation vectors and properties.
 //!
-//! Dimension version 2 (2026-10-15): v2 (keyed trie) is the default, a link
-//! without conviction writes only topology, a zero balance is an absent row.
-//! The pinned roots below are the v1 and v2 derivations of this engine. v1
-//! here is the `dim::DIMENSION_VERSION = 2` serialization of this line
-//! (header fields, 32-bit limbs); v2 is identical on every line. v2 roots are also checked against
-//! from-scratch rebuilds after random batches, pruning and replay — the
-//! property the incremental path exists to preserve.
+//! Dimension version 3 (2026-10-16): v2 (keyed trie) is the default, every
+//! trie leaf carries `DIMENSION_VERSION`, `NeuronRecord` carries the chain
+//! `nonce`, a link without conviction writes only topology, a zero balance is
+//! an absent row. The pinned roots below are the v1 (flat table, `TABLE_VERSION
+//! = 2` layout) and v2 derivations of this engine; vectors moved from
+//! dimension version 2 are listed beside each pin. v2 roots are also checked
+//! against from-scratch rebuilds after random batches, pruning and replay —
+//! the property the incremental path exists to preserve.
 
 use bbg::types::{
     CardRecord, CoinRecord, FileRecord, LocationRecord, NeuronRecord, ParticleRecord, SignalRecord,
@@ -39,7 +40,7 @@ fn one_link(neuron: [u8; 32], from: [u8; 32], to: [u8; 32], amount: u64) -> Sign
 fn all_dims(version: RootVersion) -> Bbg {
     let mut b = Bbg::new().with_root_version(version);
     for i in 1..4u8 {
-        b.state.neurons.insert(p(i), NeuronRecord { focus: 10_000, karma: i as u64, stake: 0 });
+        b.state.neurons.insert(p(i), NeuronRecord { focus: 10_000, karma: i as u64, stake: 0, nonce: 7 * i as u64 });
     }
     for i in 0..6u8 {
         let s = Signal {
@@ -66,7 +67,8 @@ fn all_dims(version: RootVersion) -> Bbg {
     b
 }
 
-// ── v1: bit-exact with the pre-incremental derivation ─────────────────────────
+// ── v1: the flat derivation (bit-exact with the pre-incremental engine on
+// states without a nonce; dimension version 3 adds the nonce to neuron rows) ──
 
 #[test]
 fn v1_empty_root_is_pinned() {
@@ -76,19 +78,21 @@ fn v1_empty_root_is_pinned() {
 #[test]
 fn v1_one_link_roots_are_pinned() {
     let mut b = Bbg::new().with_root_version(RootVersion::V1);
-    b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3 });
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3, nonce: 0 });
     b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
-    assert_eq!(hex(&b.state.root()), "4a8c115efd137d2dc5e0430e6739ffaf4c7e58c942b41731d5df35a72c0257b7");
+    // dimension version 2: 4a8c115e…2c0257b7 / c25ef669…6dc2ff46
+    assert_eq!(hex(&b.state.root()), "b0ff0f23b3097bdf9b164420d8bed189f2b97a3460aab1fb28e66da958c08a5b");
     b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "c25ef6693c77b1e9ece8ea58fde58cdcd53ec7181bf4b3ffb685785a6dc2ff46");
+    assert_eq!(hex(&b.state.root()), "a816131a37ef6e41dafa6ffc02531e245111bca90fb23734336bea68aada8d6d");
 }
 
 #[test]
 fn v1_all_dimension_roots_are_pinned() {
     let mut b = all_dims(RootVersion::V1);
-    assert_eq!(hex(&b.state.root()), "02957e017233a1116d8b5e5fdd1c7fad6da12f9f5c81d74cda34ac34a572297e");
+    // dimension version 2: 02957e01…a572297e / 36052d5d…bcfbd70f
+    assert_eq!(hex(&b.state.root()), "9bfc4ed92fe3d12aa24db241dce84f851371f32ecd0cc63c5fc0b576e6d3f0aa");
     b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "36052d5dbc0fd5a9e40fde6a523412cc7aa77c3fda56de2af9482d3dbcfbd70f");
+    assert_eq!(hex(&b.state.root()), "b49248abe1959f2e8f8911b4589ad51607c3995a5d775bd330a697ee4f4a30df");
 }
 
 #[test]
@@ -102,7 +106,7 @@ fn v2_is_the_default_and_v1_differs() {
     // any block is finalized.)
     let build = |version| {
         let mut b = Bbg::new().with_root_version(version);
-        b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3 });
+        b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3, nonce: 0 });
         b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
         b
     };
@@ -172,6 +176,18 @@ fn rebuild(src: &BbgState) -> BbgState {
     for (k, v) in src.balances.iter() {
         s.balances.insert(*k, *v);
     }
+    for (k, v) in src.locations.iter() {
+        s.locations.insert(*k, LocationRecord { ..*v });
+    }
+    for (k, v) in src.coins.iter() {
+        s.coins.insert(*k, CoinRecord { ..*v });
+    }
+    for (k, v) in src.cards.iter() {
+        s.cards.insert(*k, CardRecord { ..*v });
+    }
+    for (k, v) in src.files.iter() {
+        s.files.insert(*k, FileRecord { ..*v });
+    }
     s.diameter_override = src.diameter_override;
     s.height = src.height;
     s
@@ -182,7 +198,7 @@ fn v2_incremental_root_matches_from_scratch_after_random_batches() {
     let mut rng = Rng(0x5EED);
     let mut b = Bbg::new().with_root_version(RootVersion::V2);
     for i in 0..8u8 {
-        b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0 });
+        b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: 0 });
     }
     for round in 0..40u64 {
         for _ in 0..25 {
@@ -216,7 +232,7 @@ fn v2_incremental_root_matches_from_scratch_after_random_batches() {
 fn v2_pruning_and_reinsertion_leave_no_trace() {
     let config = PruneConfig { max_bytes: u64::MAX, rank_floor_pct: 0, half_life_epochs: 0 };
     let mut pruned = Bbg::new().with_root_version(RootVersion::V2).with_prune_config(config);
-    pruned.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 40, karma: 0, stake: 0 });
+    pruned.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 40, karma: 0, stake: 0, nonce: 0 });
     // link A survives (refreshed every epoch), link B goes stale and is pruned
     pruned.insert(&one_link(p(1), p(2), p(3), 10)).unwrap();
     pruned.insert(&one_link(p(1), p(4), p(5), 10)).unwrap();
@@ -238,7 +254,7 @@ fn v2_pruning_and_reinsertion_leave_no_trace() {
 #[test]
 fn v2_replay_reproduces_every_block_root() {
     let script = |b: &mut Bbg| {
-        b.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 30, karma: 0, stake: 0 });
+        b.state.neurons.insert(p(1), NeuronRecord { focus: 1 << 30, karma: 0, stake: 0, nonce: 0 });
         for i in 0..30u8 {
             b.insert(&one_link(p(1), p(10 + i % 7), p(50 + i % 5), 2 + i as u64)).unwrap();
             if i % 3 == 2 {
@@ -266,18 +282,83 @@ fn v2_root_is_pinned() {
     let before = hex(&b.state.root());
     b.finalize_block();
     let after = hex(&b.state.root());
-    assert_eq!(before, "937bc9a053d97c13da898ef4551148531b4fc308ad18308829cb261284b8442f");
-    assert_eq!(after, "5c76c557fd36ddcc5dc4b3971e3f7b24dd4b4c9dbdde57974814fb7d6b664d38");
+    // dimension version 2: 937bc9a0…84b8442f / 5c76c557…6b664d38
+    assert_eq!(before, "0425f40873d13420a2105f0aef582b5f39a9c4d68db008d461fc7b610a4d6fe8");
+    assert_eq!(after, "a616390b29470ff5a525110ca86110ba8e6fed45cf9f4c8afe0b1d179d49054b");
     let empty = Bbg::new().with_root_version(RootVersion::V2);
     assert_eq!(hex(&empty.state.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
 }
 
-// ── dimension version 2 engine rules ─────────────────────────────────────────
+// ── dimension version 3 engine rules ─────────────────────────────────────────
+
+#[test]
+fn the_nonce_is_under_the_root() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        let build = |nonce| {
+            let mut s = BbgState::new();
+            s.set_root_version(version);
+            s.neurons.insert(p(1), NeuronRecord { focus: 0, karma: 0, stake: 0, nonce });
+            s.root()
+        };
+        assert_ne!(build(0), build(1), "{version:?}");
+        let mut s = BbgState::new();
+        s.set_root_version(version);
+        s.neurons.insert(p(1), NeuronRecord { focus: 0, karma: 0, stake: 0, nonce: 0 });
+        s.neurons.get_mut(&p(1)).unwrap().nonce += 1;
+        assert_eq!(s.root(), build(1), "{version:?}: the guard re-hashes the nonce");
+    }
+}
+
+/// Recovery: a node replays committed blocks from scratch and checks every
+/// stored block root (`time[h]`) before readiness. A long random run with
+/// removals (pruning off, zero balances dropped, conviction-free links) must
+/// reproduce every stored root bit for bit.
+#[test]
+fn recovery_replay_reproduces_every_stored_root() {
+    let run = |b: &mut Bbg| {
+        let mut rng = Rng(0xC0FFEE);
+        for i in 0..6u8 {
+            b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: 0 });
+        }
+        for _block in 0..60 {
+            for _ in 0..(1 + rng.next() % 30) {
+                let neuron = p((rng.next() % 6) as u8);
+                b.state.neurons.get_mut(&neuron).unwrap().nonce += 1;
+                let sig = Signal {
+                    neuron,
+                    links: vec![Cyberlink {
+                        from: rng.key(80, 0xA0),
+                        to: rng.key(80, 0xB0),
+                        token: p((rng.next() % 2) as u8),
+                        amount: if rng.next().is_multiple_of(2) { 0 } else { 1 + rng.next() % 9 },
+                        valence: 1,
+                    }],
+                    box_moves: vec![],
+                    height: b.state.height,
+                };
+                b.insert(&sig).unwrap();
+            }
+            b.finalize_block();
+        }
+    };
+    let mut live = Bbg::new();
+    run(&mut live);
+    let mut recovered = Bbg::new();
+    run(&mut recovered);
+    assert_eq!(live.state.time.len(), 60);
+    for (h, root) in live.state.time.iter() {
+        assert_eq!(recovered.state.time.get(h), Some(root), "stored root at {h}");
+    }
+    assert_eq!(live.state.root(), recovered.state.root());
+    assert_eq!(rebuild(&live.state).root(), live.state.root(), "and a from-scratch rebuild agrees");
+}
+
+// ── conviction-free links and zero rows (since dimension version 2) ──────────
 
 #[test]
 fn a_link_without_conviction_writes_only_topology() {
     let mut b = Bbg::new();
-    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0 });
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0, nonce: 0 });
     b.state.particles.insert(p(3), ParticleRecord::zero());
     b.insert(&one_link(p(1), p(2), p(3), 0)).unwrap();
     let axon = bbg::state::axon_id(&p(2), &p(3));
@@ -298,7 +379,7 @@ fn a_link_without_conviction_writes_only_topology() {
 #[test]
 fn a_zero_balance_is_an_absent_row() {
     let mut b = Bbg::new();
-    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0 });
+    b.state.neurons.insert(p(1), NeuronRecord { focus: 100, karma: 0, stake: 0, nonce: 0 });
     b.insert(&one_link(p(1), p(2), p(3), 5)).unwrap();
     let from = bbg::balance_key(&p(2), &p(0));
     let to = bbg::balance_key(&p(3), &p(0));

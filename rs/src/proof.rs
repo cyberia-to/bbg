@@ -124,7 +124,7 @@ pub(crate) fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Gold
         Dim::Neurons => state
             .neurons
             .iter()
-            .map(|(k, v)| (*k, fields(&[v.focus, v.karma, v.stake])))
+            .map(|(k, v)| (*k, fields(&[v.focus, v.karma, v.stake, v.nonce])))
             .collect(),
         Dim::Locations => state
             .locations

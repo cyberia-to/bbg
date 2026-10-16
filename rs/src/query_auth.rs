@@ -147,7 +147,7 @@ fn primary_index(fields: &[u64], dim: Dim, key: &[u8; 32]) -> Option<usize> {
         let start = offset + KEY_FIELDS;
         let width = match dim {
             Dim::Particles => 12,
-            Dim::Neurons => 6,
+            Dim::Neurons => 8,
             Dim::Locations => 4,
             Dim::Coins => 2,
             Dim::Cards => 16,

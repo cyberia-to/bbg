@@ -107,6 +107,7 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
             focus: 77,
             karma: u64::MAX,
             stake: 1,
+            nonce: 9,
         },
     );
     s.locations.insert(key, LocationRecord { lat: -1, lon: 2 });

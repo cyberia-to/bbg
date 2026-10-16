@@ -18,11 +18,13 @@
 //! for hashed keys (bounded by 256). The whole point: a block that touches `c`
 //! records costs O(c · log n), never O(n).
 //!
-//! Derivation (frozen, versioned by `RootVersion::V2`):
+//! Derivation (frozen; `RootVersion::V2`, dimension version 3 — the version
+//! enters every leaf, so records committed under another dimension version
+//! never share a digest):
 //!
 //! ```text
 //! EMPTY            = [0, 0, 0, 0]
-//! leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [k₀..₃, k₄..₇, chunk₁(v), …])
+//! leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, DIMENSION_VERSION, 0], [k₀..₃, k₄..₇, chunk₁(v), …])
 //!                    k as eight 32-bit limbs, chunks of 4 limbs, zero-padded
 //! branch(i, l, r)  = compress4(compress4([BRANCH_TAG, i, 0, 0], l), r)
 //! node(S)          = EMPTY                          if S = ∅
@@ -36,7 +38,7 @@
 use nebu::Goldilocks;
 use crate::root::compress4;
 
-use crate::dim::bytes32_limbs;
+use crate::dim::{bytes32_limbs, DIMENSION_VERSION};
 
 /// A 4-limb hemera digest — one root-fold leaf.
 pub type Digest = [Goldilocks; 4];
@@ -72,7 +74,12 @@ fn first_diff_bit(a: &[u8; 32], b: &[u8; 32]) -> u16 {
 /// an injective encoding ([`crate::dim::u64_limbs`], [`bytes32_limbs`]), so
 /// two distinct records never share a preimage.
 pub fn leaf_digest(key: &[u8; 32], vals: &[Goldilocks]) -> Digest {
-    let mut acc = [Goldilocks::new(LEAF_TAG), Goldilocks::new(vals.len() as u64), Goldilocks::ZERO, Goldilocks::ZERO];
+    let mut acc = [
+        Goldilocks::new(LEAF_TAG),
+        Goldilocks::new(vals.len() as u64),
+        Goldilocks::new(DIMENSION_VERSION),
+        Goldilocks::ZERO,
+    ];
     let k = bytes32_limbs(key);
     for half in k.chunks(4) {
         let mut block = [Goldilocks::ZERO; 4];
@@ -476,6 +483,90 @@ mod tests {
         let p = t.prove(&key);
         assert!(p.steps.len() <= 10, "depth {}", p.steps.len());
         assert!(p.verify(&t.root(), &key, Some(&leaf_digest(&key, &[g(777)]))));
+    }
+
+    /// Keys on the structural edges of the trie: the extremes of the key
+    /// space, keys differing only in the first or the last bit, a full chain
+    /// of single-bit keys (every branch depth 0..=255 occurs), and u64 keys at
+    /// both ends of their range.
+    fn boundary_keys() -> Vec<[u8; 32]> {
+        let mut keys = vec![[0u8; 32], [0xFF; 32]];
+        let mut last = [0u8; 32];
+        last[31] = 1;
+        keys.push(last);
+        let mut first = [0u8; 32];
+        first[0] = 0x80;
+        keys.push(first);
+        let mut almost = [0xFF; 32];
+        almost[31] = 0xFE;
+        keys.push(almost);
+        for bit in 0..256u16 {
+            let mut k = [0u8; 32];
+            k[(bit / 8) as usize] = 0x80 >> (bit % 8);
+            keys.push(k);
+        }
+        for v in [1u64, u64::MAX, u64::MAX - 1, 1 << 63] {
+            let mut k = [0u8; 32];
+            k[..8].copy_from_slice(&v.to_le_bytes());
+            keys.push(k);
+        }
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
+    #[test]
+    fn boundary_keys_match_from_scratch_and_prove_at_every_step() {
+        let keys = boundary_keys();
+        let mut rng = Rng(0xB0B);
+        let mut t = Trie::new();
+        let mut model = std::collections::BTreeMap::new();
+        for step in 0..1500u64 {
+            let key = keys[(rng.next() % keys.len() as u64) as usize];
+            if rng.next() % 3 == 0 {
+                assert_eq!(t.remove(&key), model.remove(&key).is_some());
+            } else {
+                let digest = leaf_digest(&key, &[g(step)]);
+                assert_eq!(t.set(key, digest), model.insert(key, digest).is_none());
+            }
+            let fresh = Trie::from_entries(model.iter().map(|(a, b)| (*a, *b)));
+            assert_eq!(t.root(), fresh.root(), "step {step}");
+            if step % 25 == 0 {
+                let root = t.root();
+                for k in &keys {
+                    let proof = t.prove(k);
+                    assert!(proof.steps.len() <= 256);
+                    assert!(proof.verify(&root, k, model.get(k)), "step {step}");
+                }
+            }
+        }
+        // the single-bit chain alone: depth 256 at the all-zero key
+        let chain: Vec<[u8; 32]> = keys.iter().copied().filter(|k| k.iter().map(|b| b.count_ones()).sum::<u32>() <= 1).collect();
+        let t = Trie::from_entries(chain.iter().map(|k| (*k, leaf_digest(k, &[]))));
+        let zero = [0u8; 32];
+        let proof = t.prove(&zero);
+        assert_eq!(proof.steps.len(), 256, "all-zero key sits under every single-bit branch");
+        assert!(proof.verify(&t.root(), &zero, Some(&leaf_digest(&zero, &[]))));
+        // removing down to empty returns to EMPTY
+        let mut t = t;
+        for k in &chain {
+            assert!(t.remove(k));
+        }
+        assert_eq!(t.root(), EMPTY);
+        assert!(t.is_empty());
+    }
+
+    #[test]
+    fn the_dimension_version_enters_every_leaf() {
+        let key = k(3);
+        let vals = crate::dim::u64_limbs(5);
+        let limbs = bytes32_limbs(&key);
+        let mut acc = [g(LEAF_TAG), g(2), g(crate::dim::DIMENSION_VERSION), g(0)];
+        acc = compress4(&acc, &[limbs[0], limbs[1], limbs[2], limbs[3]]);
+        acc = compress4(&acc, &[limbs[4], limbs[5], limbs[6], limbs[7]]);
+        acc = compress4(&acc, &[vals[0], vals[1], g(0), g(0)]);
+        assert_eq!(leaf_digest(&key, &vals), acc);
+        assert_eq!(crate::dim::DIMENSION_VERSION, 3);
     }
 
     #[test]

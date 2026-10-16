@@ -278,7 +278,8 @@ pub struct AxonIndex {
     map: BTreeMap<Particle, Vec<Particle>>,
     sets: BTreeMap<Particle, Trie>,
     trie: Trie,
-    max_len: usize,
+    /// degree → how many particles have it; the last key is the max degree.
+    degrees: BTreeMap<usize, usize>,
     legacy: OnceLock<Commitment>,
 }
 
@@ -305,6 +306,27 @@ impl AxonIndex {
         leaf_digest(particle, &vals)
     }
 
+    /// Move one particle from degree `old` to degree `new` in the histogram.
+    fn degree_moved(&mut self, old: usize, new: usize) {
+        if old == new {
+            return;
+        }
+        if old > 0 {
+            let n = self.degrees.get_mut(&old).expect("histogram tracks every list");
+            *n -= 1;
+            if *n == 0 {
+                self.degrees.remove(&old);
+            }
+        }
+        if new > 0 {
+            *self.degrees.entry(new).or_insert(0) += 1;
+        }
+    }
+
+    fn degree(&self, particle: &Particle) -> usize {
+        self.map.get(particle).map_or(0, Vec::len)
+    }
+
     fn touched(&mut self, particle: &Particle) {
         self.legacy = OnceLock::new();
         match (self.map.get(particle), self.sets.get(particle)) {
@@ -326,20 +348,23 @@ impl AxonIndex {
         }
         let list = self.map.entry(particle).or_default();
         list.push(axon);
-        self.max_len = self.max_len.max(list.len());
+        let len = list.len();
+        self.degree_moved(len - 1, len);
         self.touched(&particle);
         true
     }
 
-    /// Replace `particle`'s whole list (duplicates dropped from the set).
-    /// Returns the previous list. The map-shaped mutator undo/restore uses.
+    /// Replace `particle`'s whole list; a repeated axon keeps its first
+    /// position (the list mirrors the set). Returns the previous list. The
+    /// map-shaped mutator undo/restore uses.
     pub fn insert(&mut self, particle: Particle, list: Vec<Particle>) -> Option<Vec<Particle>> {
         let old = self.remove(&particle);
+        let mut set = Trie::new();
+        let list: Vec<Particle> = list.into_iter().filter(|a| set.set(*a, Self::member_digest(a))).collect();
         if list.is_empty() {
             return old;
         }
-        let set = Trie::from_entries(list.iter().map(|a| (*a, Self::member_digest(a))));
-        self.max_len = self.max_len.max(list.len());
+        self.degree_moved(0, list.len());
         self.map.insert(particle, list);
         self.sets.insert(particle, set);
         self.touched(&particle);
@@ -350,9 +375,7 @@ impl AxonIndex {
     pub fn remove(&mut self, particle: &Particle) -> Option<Vec<Particle>> {
         let old = self.map.remove(particle)?;
         self.sets.remove(particle);
-        if old.len() == self.max_len {
-            self.max_len = self.map.values().map(Vec::len).max().unwrap_or(0);
-        }
+        self.degree_moved(old.len(), 0);
         self.touched(particle);
         Some(old)
     }
@@ -365,30 +388,53 @@ impl AxonIndex {
             return false;
         }
         let list = self.map.get_mut(particle).expect("list mirrors set");
-        let was_max = list.len() == self.max_len;
+        let before = list.len();
         list.retain(|a| a != axon);
-        if list.is_empty() {
+        let after = list.len();
+        if after == 0 {
             self.map.remove(particle);
             self.sets.remove(particle);
         }
-        if was_max {
-            self.max_len = self.map.values().map(Vec::len).max().unwrap_or(0);
-        }
+        self.degree_moved(before, after);
         self.touched(particle);
         true
+    }
+
+    /// Keep the first `len` axons of `particle`'s list, dropping the rest from
+    /// the list and the set — the undo of the appends a reverted block made
+    /// (lists are append-only). `len = 0` removes the list. Returns how many
+    /// axons were dropped.
+    pub fn truncate(&mut self, particle: &Particle, len: usize) -> usize {
+        let before = self.degree(particle);
+        if before <= len {
+            return 0;
+        }
+        if len == 0 {
+            return self.remove(particle).map_or(0, |l| l.len());
+        }
+        let list = self.map.get_mut(particle).expect("degree > 0");
+        let dropped = list.split_off(len);
+        let set = self.sets.get_mut(particle).expect("list mirrors set");
+        for axon in &dropped {
+            set.remove(axon);
+        }
+        self.degree_moved(before, len);
+        self.touched(particle);
+        dropped.len()
     }
 
     pub fn clear(&mut self) {
         self.map.clear();
         self.sets.clear();
         self.trie = Trie::new();
-        self.max_len = 0;
+        self.degrees.clear();
         self.legacy = OnceLock::new();
     }
 
-    /// The longest list — O(1); maintained across adds and removes.
+    /// The longest list — O(log) from the degree histogram, maintained across
+    /// every mutation.
     pub fn max_degree(&self) -> usize {
-        self.max_len
+        self.degrees.last_key_value().map_or(0, |(d, _)| *d)
     }
 
     /// The v2 commitment: the outer trie root.
@@ -502,6 +548,77 @@ mod tests {
         assert_eq!(ix.max_degree(), 2);
         assert_eq!(ix.remove(&p(1)).map(|l| l.len()), Some(2));
         assert_eq!(ix.commitment(), EMPTY);
+    }
+
+    /// Random add / remove_axon / truncate / remove / insert against a model
+    /// list map: after every operation the index commits exactly what an index
+    /// built fresh from the model commits, and the max degree is the model's.
+    #[test]
+    fn axon_index_matches_a_fresh_build_under_random_operations() {
+        let mut x: u64 = 0xA11CE;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let mut ix = AxonIndex::new();
+        let mut model: BTreeMap<Particle, Vec<Particle>> = BTreeMap::new();
+        for step in 0..2000u32 {
+            let particle = p((next() % 6) as u8);
+            let mut axon = [0u8; 32];
+            axon[..8].copy_from_slice(&(next() % 40).to_le_bytes());
+            match next() % 10 {
+                0..=5 => {
+                    let list = model.entry(particle).or_default();
+                    let new = !list.contains(&axon);
+                    if new {
+                        list.push(axon);
+                    }
+                    assert_eq!(ix.add(particle, axon), new);
+                }
+                6 => {
+                    let had = model.get(&particle).is_some_and(|l| l.contains(&axon));
+                    if let Some(l) = model.get_mut(&particle) {
+                        l.retain(|a| a != &axon);
+                    }
+                    assert_eq!(ix.remove_axon(&particle, &axon), had);
+                }
+                7 => {
+                    let len = (next() % 8) as usize;
+                    let before = model.get(&particle).map_or(0, Vec::len);
+                    if let Some(l) = model.get_mut(&particle) {
+                        l.truncate(len);
+                    }
+                    assert_eq!(ix.truncate(&particle, len), before.saturating_sub(len));
+                }
+                8 => {
+                    assert_eq!(ix.remove(&particle), model.remove(&particle).filter(|l| !l.is_empty()));
+                }
+                _ => {
+                    // whole-list restore, with a repeated axon the list drops
+                    let list: Vec<Particle> = (0..(next() % 5)).map(|i| p(100 + (i % 3) as u8)).collect();
+                    let mut dedup: Vec<Particle> = Vec::new();
+                    for a in &list {
+                        if !dedup.contains(a) {
+                            dedup.push(*a);
+                        }
+                    }
+                    ix.insert(particle, list);
+                    model.insert(particle, dedup);
+                }
+            }
+            model.retain(|_, l| !l.is_empty());
+            let mut fresh = AxonIndex::new();
+            for (k, list) in &model {
+                for a in list {
+                    fresh.add(*k, *a);
+                }
+            }
+            assert_eq!(ix.commitment(), fresh.commitment(), "step {step}");
+            assert_eq!(&*ix, &model, "step {step}");
+            assert_eq!(ix.max_degree(), model.values().map(Vec::len).max().unwrap_or(0), "step {step}");
+        }
     }
 
     #[test]

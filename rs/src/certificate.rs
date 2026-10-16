@@ -1,6 +1,6 @@
 //! Exact public-table authentication for consumed BBG dimensions.
 //! The certificate reveals complete tables. See specs/state-certificate.md.
-use crate::dim::{DIMENSION_VERSION, HEADER_FIELDS, KEY_FIELDS, commit_fields, dim_serialize};
+use crate::dim::{TABLE_VERSION, HEADER_FIELDS, KEY_FIELDS, commit_fields, dim_serialize};
 use crate::proof::dim_entries;
 use crate::{BbgState, Dim};
 use nebu::Goldilocks;
@@ -156,7 +156,7 @@ impl StateCertificate {
         let table = self.dimensions.iter().find(|t| t.namespace == namespace)?;
         if table.fields.len() < HEADER_FIELDS
             || table.fields.len() > MAX_FIELDS
-            || table.fields[0] != DIMENSION_VERSION
+            || table.fields[0] != TABLE_VERSION
             || table.fields[1] != table.fields.len() as u64
         {
             return None;
@@ -191,7 +191,7 @@ impl StateCertificate {
                 return Err("certificate field limit exceeded".into());
             }
             if table.fields.len() < HEADER_FIELDS
-                || table.fields[0] != DIMENSION_VERSION
+                || table.fields[0] != TABLE_VERSION
                 || table.fields[1] != table.fields.len() as u64
                 || table.fields[2] > ((table.fields.len() - HEADER_FIELDS) / KEY_FIELDS) as u64
                 || (table.fields[2] == 0 && table.fields.len() != HEADER_FIELDS)
