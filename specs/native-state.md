@@ -43,7 +43,7 @@ fixed-width byte arrays. No key or u64 value is reduced into a field element.
 | 0 | version u32=1, height u64, state root 32, checkpoint height u64, checkpoint root 32, diameter option u8 + optional u64, pruning max bytes u64, rank floor u8, half-life u64 |
 | 1 | particle: energy, pi_star, weight, s_yes, s_no, meta_score (six u64) |
 | 2, 3 | outgoing/incoming adjacency: count u64 followed by ordered 32-byte entries |
-| 4 | neuron: focus, karma, stake (three u64) |
+| 4 | neuron: focus, karma, stake, nonce (four u64; nonce since dimension version 3) |
 | 5 | location: lat, lon (two i32) |
 | 6 | coin: total supply u64 |
 | 7 | card: owner 32, particle 32 |

@@ -5,7 +5,7 @@ crystal-domain: cyber
 ---
 # state
 
-Current dimension encoding and public state authentication use [version 2](state-certificate.md). This changes roots and flat cell offsets; old roots and proofs must be recomputed.
+The state derives under **dimension version 3** (§ dimension versions below). Flat tables — the v1 root and public state authentication — use [table format version 2](state-certificate.md). Old roots and proofs must be recomputed.
 
 all authenticated state committed under a single polynomial commitment. individual [[cyberlinks]] are private (polynomial mutator set). the public state contains only aggregates.
 
@@ -28,7 +28,7 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
   particles     all particles: content + axons
   axons_out     directional index by source
   axons_in      directional index by target
-  neurons       focus, karma, stake per neuron
+  neurons       focus, karma, stake, nonce per neuron (nonce: the root chain's replay counter)
   locations     proof of location
   coins         fungible token denominations
   cards         names and knowledge assets
@@ -50,16 +50,29 @@ versions differ in how a dimension's leaf is derived from its records.
 | version | dimension leaf | cost of a block touching c records | status |
 |---|---|---|---|
 | v1 | Brakedown commitment of the flat sorted `[key(4) ‖ fields]` polynomial (`dim::commit_dim`), limbs of the 32-byte digest | O(state): every touched dimension is re-encoded and re-hashed in full; at most 2^20 field elements per dimension (lens `MAX_VARIABLES`) | kept for the zheng look argument, which binds `LookOpening.commitment` (a Brakedown cell opening) to `leaves.dims[ns]` in-circuit; opt-in (`RootVersion::V1`) |
-| v2 | root of the keyed trie below | O(c · log n), no size cap | default since dimension version 2 (2026-10-15, the fresh chain) — launch rows 43 and 14 |
+| v2 | root of the keyed trie below | O(c · log n), no size cap | default since dimension version 2 (2026-10-15, the fresh chain) — launch rows 43 and 14; dimension version 3 is the chain's genesis version |
 
 a v1 root recompute is linear in the state, so a chain's cost is quadratic in its length (measured: cybergraph `audit/import-commit-cost-2026-09-27.md`, bbg `audit/commit-cost-2026-10-15.md`). v2 makes a block cost proportional to what it changes. the version is selected per state (`BbgState::set_root_version`); the records are version-independent, with one consequence: `time[h]` stores the root in force at finalization, so a state that finalized blocks under v1 and the same operations replayed under v2 hold different `time` records.
 
-**dimension version 2** (the fresh chain starts here; every node derives the same root only under the same version):
+### dimension versions
 
-1. the dimension leaf is the keyed-trie root (v2);
+`dim::DIMENSION_VERSION` names the rule set a root derives under — record schemas, the engine's write rules, the trie leaf derivation. Every node derives the same root only under the same version; a bump is a consensus change and moves the blessed vectors of every consumer (soft3 `conformance/chain.snap`).
+
+| version | date | rules |
+|---|---|---|
+| 2 | 2026-10-15 | flat tables, injective limbs, `TABLE_VERSION = 2` header |
+| 3 | 2026-10-16 | rules 1–6 below — the root chain's genesis version (soft3 specs/chain.md §3) |
+
+**dimension version 3** (the fresh chain starts here):
+
+1. the dimension leaf is the keyed-trie root (v2); every trie leaf IV carries the version: `[LEAF_TAG, |v|, DIMENSION_VERSION, 0]`;
 2. field encoding is injective: a `u64` is two 32-bit limbs (low first), 32 bytes are eight 32-bit limbs — one Goldilocks limb per `u64` would make `v` and `v − p` collide;
-3. a cyberlink without conviction (`a = 0`) writes topology only: `axons_out`, `axons_in` and the reverse edge map. no axon-particle, no energy, no focus, no balance row. (a genesis replay is all such links; writing zero records doubled the particles dimension and added a balance row per endpoint.)
-4. a zero balance is an absent row: `balances[k]` reaching 0 is removed, so a state has one representation.
+3. a cyberlink without conviction (`a = 0`) writes topology only: `axons_out`, `axons_in` and the reverse edge map. no axon-particle, no energy, no focus, no balance row. (a genesis replay is all such links; writing zero records doubled the particles dimension and added a balance row per endpoint — bostrom: 2,949,732 axon-particles and 3.2 M zero balance rows.)
+4. a zero balance is an absent row: `balances[k]` reaching 0 is removed, so a state has one representation;
+5. `NeuronRecord` is `[focus, karma, stake, nonce]` — `nonce` is the root chain's per-neuron replay counter (soft3 specs/chain.md §2.5), under the root;
+6. the flat table layout keeps its own word, `TABLE_VERSION = 2` (the zheng state-evidence contract): the layout does not depend on record schemas, so rule 5 widens neuron entries (6 → 8 limbs) without a new table format.
+
+**why a trie and not chunked Brakedown.** splitting a flat dimension into Brakedown-committed chunks of ≤ 2^20 fields (hemera-hashed into the leaf) lifts the size cap but not the cost: a Brakedown commit is 1.33 µs per field on an M4 Max (2^10: 2.3 ms, 2^16: 92 ms, 2^20: 1.39 s per commit; `audit/dimension-version-3-2026-10-16.md`), and a sorted flat layout shifts every chunk after an insertion point. even with key-bucketed chunks, a block of random links touches most chunks of bostrom's 2^25-field adjacency dimensions — tens of seconds per block against a 30 s target. the trie costs O(changes · log n) compressions per block with no size cap and a bounded worst case (depth ≤ 256) under adversarial keys. chunked Brakedown buys only Brakedown cell openings, which the zheng look argument cannot use against a chunked leaf without a circuit change anyway; when zheng opens state, it opens trie paths (same `compress4`).
 
 the zheng look argument still opens v1 Brakedown cells; it moves to trie paths (leaf chain + branch chain, all `compress4`) to prove reads against a v2 root. until then proofs pin `RootVersion::V1` on states small enough for it.
 
@@ -69,7 +82,7 @@ every committed dimension is a set of `(key, fields)` records: `key` is 32 bytes
 
 ```
 EMPTY            = [0, 0, 0, 0]
-leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, 0, 0], [k₀..k₃, k₄..k₇, chunk₁(v), chunk₂(v), …])
+leaf(k, v)       = fold(compress4, [LEAF_TAG, |v|, DIMENSION_VERSION, 0], [k₀..k₃, k₄..k₇, chunk₁(v), chunk₂(v), …])
                    k as eight 32-bit limbs; chunks of 4 limbs, the last zero-padded
 branch(i, l, r)  = compress4(compress4([BRANCH_TAG, i, 0, 0], l), r)
 node(S)          = EMPTY                          if S = ∅
@@ -84,7 +97,7 @@ LEAF_TAG   = "bbg-leaf" as a little-endian u64
 BRANCH_TAG = "bbg-node" as a little-endian u64
 ```
 
-the shape is a function of the key set alone (a branch exists exactly where two keys first differ), so the root is a function of the record set: insertion order, deletions and reinsertions leave no trace. depth is ≈ log₂ n for hashed keys, bounded by 256. a record update re-hashes its leaf and its path: O(depth) compressions, two per branch.
+the shape is a function of the key set alone (a branch exists exactly where two keys first differ), so the root is a function of the record set: insertion order, deletions and reinsertions leave no trace. depth is ≈ log₂ n for hashed keys, bounded by 256. a record update marks its leaf and its path; the next root read re-hashes each touched leaf once and each marked branch once, bottom-up (two compressions per branch) — a block of c changes costs at most c · depth branch hashes and shares the upper levels, a bulk load hashes every node exactly once (implementation note, not part of the derivation).
 
 adjacency dimensions (`axons_out`, `axons_in`) are sets of sets: the leaf of particle p is `leaf(p, [degree (2 limbs), node(axons of p) (4 limbs)])` where the inner trie has leaves `leaf(axon_id, [])`. appending to a hub costs O(log degree); the committed value is the set of axon ids (the v1 polynomial committed the list in insertion order).
 

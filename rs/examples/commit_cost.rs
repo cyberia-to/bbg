@@ -1,6 +1,6 @@
 //! Commit-cost benchmark: ingest N synthetic links in blocks of B, root per block.
 //!
-//! `commit_cost N B [v1|v2]` — prints wall time per 10k links (flat ⇔ O(changes)).
+//! `commit_cost N B [v2|v1]` — prints wall time per 10k links (flat ⇔ O(changes)).
 use std::time::Instant;
 
 use bbg::types::NeuronRecord;
@@ -24,10 +24,10 @@ impl Rng {
         x
     }
     /// Zipf-like index: heavy head, long tail (hubs in axons_in).
+    /// Integers only: index = n · (r / 2^21)^3 for a 21-bit r.
     fn zipf(&mut self, n: u64) -> u64 {
-        let r = self.next() % (1 << 32);
-        let x = (r as f64 / (1u64 << 32) as f64).powf(3.0);
-        (x * n as f64) as u64
+        let r = (self.next() >> 43) as u128;
+        ((r * r * r * n as u128) >> 63) as u64
     }
 }
 
@@ -35,11 +35,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let n: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(10_000);
     let b: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(100);
-    let mode = args.get(3).map(String::as_str).unwrap_or("v1");
+    let mode = args.get(3).map(String::as_str).unwrap_or("v2");
     let mut bbg = Bbg::new();
-    if mode == "v2" {
-        bbg.state.set_root_version(bbg::state::RootVersion::V2);
-    }
+    bbg.state.set_root_version(if mode == "v1" { bbg::state::RootVersion::V1 } else { bbg::state::RootVersion::V2 });
     const NEURONS: u64 = 1000;
     for i in 0..NEURONS {
         bbg.state.neurons.insert(h(1_000_000 + i), NeuronRecord { focus: u64::MAX / 2, karma: 0, stake: 0, nonce: 0 });

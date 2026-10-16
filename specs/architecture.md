@@ -42,7 +42,7 @@ cyberlink 7-tuple (ν, p, q, τ, a, v, t)
 who linked what                        axon H(p,q): aggregate weight A_{pq}
 individual conviction, valence         axon market state (s_YES, s_NO)
 neuron linking history                 axon meta-score
-market positions (TRUE/FALSE tokens)   neuron: focus, karma, stake
+market positions (TRUE/FALSE tokens)   neuron: focus, karma, stake, nonce
 box values, owners                     particle: energy, φ*
                                        token: denominations, total supply
                                        content: availability proofs
