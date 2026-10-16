@@ -8,11 +8,17 @@
 //! Dimension version 3 (2026-10-16): v2 (keyed trie) is the default, every
 //! trie leaf carries `DIMENSION_VERSION`, `NeuronRecord` carries the chain
 //! `nonce`, a link without conviction writes only topology, a zero balance is
-//! an absent row. The pinned roots below are the v1 (flat table, `TABLE_VERSION
-//! = 2` layout) and v2 derivations of this engine; vectors moved from
-//! dimension version 2 are listed beside each pin. v2 roots are also checked
-//! against from-scratch rebuilds after random batches, pruning and replay —
-//! the property the incremental path exists to preserve.
+//! an absent row.
+//!
+//! Hash-agnostic: no digest is pinned by hand. Every expected root is
+//! recomputed here by an independent reference of specs/state.md — records
+//! laid out in the spec's field order, the trie built recursively from
+//! `node(S)`, the flat tables serialized by hand, the 14 leaves folded with
+//! hemera's permutation directly — so the vectors follow hemera (0.3 now,
+//! 0.4 next) without re-pinning, and a derivation change still fails them.
+//! v2 roots are also checked against from-scratch rebuilds after random
+//! batches, pruning and replay — the property the incremental path exists to
+//! preserve.
 
 use bbg::types::{
     CardRecord, CoinRecord, FileRecord, LocationRecord, NeuronRecord, ParticleRecord, SignalRecord,
@@ -67,32 +73,210 @@ fn all_dims(version: RootVersion) -> Bbg {
     b
 }
 
-// ── v1: the flat derivation (bit-exact with the pre-incremental engine on
-// states without a nonce; dimension version 3 adds the nonce to neuron rows) ──
+// ── the reference derivation (specs/state.md), independent of the engine ───
+
+mod reference {
+    use bbg::dim::{bytes32_limbs, u64_limbs, TABLE_VERSION};
+    use bbg::state::BbgState;
+    use bbg::trie::{branch_digest, leaf_digest, Digest, EMPTY};
+    use hemera::field::Goldilocks as H;
+    use nebu::Goldilocks as G;
+
+    type Rec = ([u8; 32], Vec<G>);
+
+    fn u(vals: &[u64]) -> Vec<G> {
+        vals.iter().flat_map(|&v| u64_limbs(v)).collect()
+    }
+
+    fn pos(v: u64) -> [u8; 32] {
+        let mut k = [0u8; 32];
+        k[..8].copy_from_slice(&v.to_le_bytes());
+        k
+    }
+
+    fn bit(k: &[u8; 32], i: usize) -> bool {
+        (k[i / 8] >> (7 - i % 8)) & 1 == 1
+    }
+
+    /// `node(S)` — the recursive definition, no incremental state.
+    pub fn trie(mut leaves: Vec<([u8; 32], Digest)>) -> Digest {
+        leaves.sort_by(|a, b| a.0.cmp(&b.0));
+        fn node(s: &[([u8; 32], Digest)]) -> Digest {
+            match s.len() {
+                0 => EMPTY,
+                1 => s[0].1,
+                _ => {
+                    let (lo, hi) = (&s[0].0, &s[s.len() - 1].0);
+                    let i = (0..256).find(|&i| bit(lo, i) != bit(hi, i)).expect("distinct keys");
+                    let split = s.iter().position(|(k, _)| bit(k, i)).expect("both sides");
+                    branch_digest(i as u16, &node(&s[..split]), &node(&s[split..]))
+                }
+            }
+        }
+        node(&leaves)
+    }
+
+    fn trie_of(recs: Vec<Rec>) -> Digest {
+        trie(recs.into_iter().map(|(k, v)| (k, leaf_digest(&k, &v))).collect())
+    }
+
+    /// The 13 dimension records in spec field order: (v2 leaf values, v1 values).
+    fn records(s: &BbgState) -> [(Vec<Rec>, Vec<Rec>); 13] {
+        let same = |r: Vec<Rec>| (r.clone(), r);
+        let axons = |m: &std::collections::BTreeMap<[u8; 32], Vec<[u8; 32]>>| {
+            let v2 = m
+                .iter()
+                .map(|(p, list)| {
+                    let set = trie(list.iter().map(|a| (*a, leaf_digest(a, &[]))).collect());
+                    let mut vals = u(&[list.len() as u64]);
+                    vals.extend_from_slice(&set);
+                    (*p, vals)
+                })
+                .collect();
+            let v1 = m
+                .iter()
+                .map(|(p, list)| {
+                    let mut vals = u(&[list.len() as u64]);
+                    for a in list {
+                        vals.extend_from_slice(&bytes32_limbs(a));
+                    }
+                    (*p, vals)
+                })
+                .collect();
+            (v2, v1)
+        };
+        let cat = |parts: &[&[G]]| parts.concat();
+        [
+            same(s.particles.iter().map(|(k, r)| (*k, u(&[r.energy, r.pi_star, r.weight, r.s_yes, r.s_no, r.meta_score]))).collect()),
+            axons(&s.axons_out),
+            axons(&s.axons_in),
+            same(s.neurons.iter().map(|(k, r)| (*k, u(&[r.focus, r.karma, r.stake, r.nonce]))).collect()),
+            same(s.locations.iter().map(|(k, r)| (*k, u(&[r.lat as u32 as u64, r.lon as u32 as u64]))).collect()),
+            same(s.coins.iter().map(|(k, r)| (*k, u(&[r.total_supply]))).collect()),
+            same(s.cards.iter().map(|(k, r)| (*k, cat(&[&bytes32_limbs(&r.owner), &bytes32_limbs(&r.particle)]))).collect()),
+            same(s.files.iter().map(|(k, r)| (*k, u(&[r.available as u64, r.chunk_count as u64]))).collect()),
+            same(s.time.iter().map(|(h, root)| (pos(*h), bytes32_limbs(root).to_vec())).collect()),
+            same(
+                s.signals
+                    .iter()
+                    .map(|(st, r)| {
+                        (
+                            pos(*st),
+                            cat(&[
+                                &bytes32_limbs(&r.neuron),
+                                &bytes32_limbs(&r.network),
+                                &u(&[r.link_count as u64, r.block_height]),
+                                &bytes32_limbs(&r.proof_hash),
+                            ]),
+                        )
+                    })
+                    .collect(),
+            ),
+            same(s.balances.iter().map(|(k, v)| (*k, u(&[*v]))).collect()),
+            same(s.commitments.iter().map(|(k, v)| (*k, vec![*v])).collect()),
+            (
+                s.nullifiers.iter().map(|k| (*k, vec![])).collect(),
+                s.nullifiers.iter().map(|k| (*k, vec![G::ONE])).collect(),
+            ),
+        ]
+    }
+
+    /// v1 dimension leaf: Brakedown over the hand-serialized flat table.
+    fn flat(recs: Vec<Rec>) -> Digest {
+        let count = 3 + recs.iter().map(|(_, v)| 8 + v.len()).sum::<usize>();
+        let mut fields = vec![G::new(TABLE_VERSION), G::new(count as u64), G::new(recs.len() as u64)];
+        for (k, v) in &recs {
+            fields.extend(bytes32_limbs(k));
+            fields.extend_from_slice(v);
+        }
+        fields.resize(fields.len().next_power_of_two(), G::ZERO);
+        use lens::Lens;
+        let c = lens::brakedown::Brakedown::commit(&lens::MultilinearPoly::new(fields));
+        let mut b = [0u8; 32];
+        b.copy_from_slice(&c.as_bytes()[..32]);
+        bbg::dim::goldilocks_from_bytes32(&b)
+    }
+
+    /// compress4 from hemera's permutation: the first 4 limbs of P([a ‖ b ‖ 0⁸]).
+    fn compress(a: &Digest, b: &Digest) -> Digest {
+        let mut st = [H::ZERO; 16];
+        for i in 0..4 {
+            st[i] = H::new(a[i].as_u64());
+            st[4 + i] = H::new(b[i].as_u64());
+        }
+        hemera::permutation::permute(&mut st);
+        std::array::from_fn(|i| G::new(st[i].as_canonical_u64()))
+    }
+
+    /// The root of `s` under `trie` (v2) or flat (v1) dimension leaves.
+    pub fn root(s: &BbgState, trie_leaves: bool) -> [u8; 32] {
+        let leaves: Vec<Digest> = records(s)
+            .into_iter()
+            .map(|(v2, v1)| if trie_leaves { trie_of(v2) } else { flat(v1) })
+            .collect();
+        let stats = bbg::dim::goldilocks_from_bytes32(&s.statistics().commit());
+        let iv = [G::new(u64::from_le_bytes(*b"bbg-root")), G::ZERO, G::ZERO, G::ZERO];
+        let acc = leaves.iter().chain(std::iter::once(&stats)).fold(iv, |acc, l| compress(&acc, l));
+        let mut out = [0u8; 32];
+        for (i, l) in acc.iter().enumerate() {
+            out[i * 8..i * 8 + 8].copy_from_slice(&l.as_u64().to_le_bytes());
+        }
+        out
+    }
+}
+
+fn check(b: &Bbg) {
+    let trie = b.state.root_version() == RootVersion::V2;
+    assert_eq!(hex(&b.state.root()), hex(&reference::root(&b.state, trie)), "{:?}", b.state.root_version());
+}
+
+// ── both root versions against the reference ─────────────────────────────────
 
 #[test]
-fn v1_empty_root_is_pinned() {
-    assert_eq!(hex(&Bbg::new().with_root_version(RootVersion::V1).state.root()), "65ff61321169d84535f72bb177c5d6f98811369c8f51221dc846be87064b2445");
+fn empty_roots_match_the_reference() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        check(&Bbg::new().with_root_version(version));
+    }
 }
 
 #[test]
-fn v1_one_link_roots_are_pinned() {
-    let mut b = Bbg::new().with_root_version(RootVersion::V1);
-    b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3, nonce: 0 });
-    b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
-    // dimension version 2: 4a8c115e…2c0257b7 / c25ef669…6dc2ff46
-    assert_eq!(hex(&b.state.root()), "b0ff0f23b3097bdf9b164420d8bed189f2b97a3460aab1fb28e66da958c08a5b");
-    b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "a816131a37ef6e41dafa6ffc02531e245111bca90fb23734336bea68aada8d6d");
+fn one_link_roots_match_the_reference() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        let mut b = Bbg::new().with_root_version(version);
+        b.state.neurons.insert(p(1), NeuronRecord { focus: 1000, karma: 2, stake: 3, nonce: 4 });
+        b.insert(&one_link(p(1), p(2), p(3), 7)).unwrap();
+        check(&b);
+        b.finalize_block();
+        check(&b);
+    }
 }
 
 #[test]
-fn v1_all_dimension_roots_are_pinned() {
-    let mut b = all_dims(RootVersion::V1);
-    // dimension version 2: 02957e01…a572297e / 36052d5d…bcfbd70f
-    assert_eq!(hex(&b.state.root()), "9bfc4ed92fe3d12aa24db241dce84f851371f32ecd0cc63c5fc0b576e6d3f0aa");
-    b.finalize_block();
-    assert_eq!(hex(&b.state.root()), "b49248abe1959f2e8f8911b4589ad51607c3995a5d775bd330a697ee4f4a30df");
+fn all_dimension_roots_match_the_reference() {
+    for version in [RootVersion::V1, RootVersion::V2] {
+        let mut b = all_dims(version);
+        check(&b);
+        b.finalize_block();
+        check(&b);
+    }
+}
+
+#[test]
+fn the_reference_trie_is_the_engine_trie_on_boundary_and_random_keys() {
+    let mut rng = Rng(0xF00D);
+    let mut keys: Vec<[u8; 32]> = (0..300).map(|_| rng.key(1 << 40, 0x11)).collect();
+    keys.extend([[0u8; 32], [0xFF; 32]]);
+    for b in 0..256usize {
+        let mut k = [0u8; 32];
+        k[b / 8] = 0x80 >> (b % 8);
+        keys.push(k);
+    }
+    keys.sort();
+    keys.dedup();
+    let entries: Vec<([u8; 32], bbg::trie::Digest)> =
+        keys.iter().map(|k| (*k, bbg::trie::leaf_digest(k, &[]))).collect();
+    let mut t = bbg::Trie::from_entries(entries.iter().rev().copied());
+    assert_eq!(t.root(), reference::trie(entries));
 }
 
 #[test]
@@ -273,20 +457,6 @@ fn v2_replay_reproduces_every_block_root() {
     }
     assert_eq!(a.state.root(), b.state.root());
     assert_eq!(a.checkpoint.root, b.checkpoint.root);
-}
-
-#[test]
-fn v2_root_is_pinned() {
-    // The v2 derivation is frozen by specs/state.md; this vector pins it.
-    let mut b = all_dims(RootVersion::V2);
-    let before = hex(&b.state.root());
-    b.finalize_block();
-    let after = hex(&b.state.root());
-    // dimension version 2: 937bc9a0…84b8442f / 5c76c557…6b664d38
-    assert_eq!(before, "0425f40873d13420a2105f0aef582b5f39a9c4d68db008d461fc7b610a4d6fe8");
-    assert_eq!(after, "a616390b29470ff5a525110ca86110ba8e6fed45cf9f4c8afe0b1d179d49054b");
-    let empty = Bbg::new().with_root_version(RootVersion::V2);
-    assert_eq!(hex(&empty.state.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
 }
 
 // ── dimension version 3 engine rules ─────────────────────────────────────────

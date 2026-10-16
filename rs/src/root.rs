@@ -11,7 +11,7 @@
 //!
 //! This layout was defined in zheng's `ccs::root` for the retired look
 //! argument; it moved here, with identical output, when that argument left
-//! zheng's default build. `root_matches_the_frozen_vectors` pins it.
+//! zheng's default build. `root_is_the_hemera_fold_over_the_ordered_leaves` checks it.
 
 use hemera::field::Goldilocks as HGold;
 use hemera::permutation::permute;
@@ -101,35 +101,26 @@ mod tests {
         }
     }
 
-    /// Values produced by zheng 0.4 `ccs::root_from_leaves` (feature
-    /// `legacy`) before the move; the root of every existing state depends
-    /// on them.
+    /// The fold, recomputed from hemera's permutation: IV `[ROOT_TAG, 0, 0,
+    /// 0]`, then for each of the 14 leaves in order the first four limbs of
+    /// `P([acc ‖ leaf ‖ 0⁸])`. Expected values come from hemera, never a
+    /// hand-pinned digest, so the vector follows the hash profile in force.
     #[test]
-    fn root_matches_the_frozen_vectors() {
-        assert_eq!(root_from_leaves(&sample_leaves()).map(|v| v.as_u64()), SAMPLE_ROOT);
-        assert_eq!(root_from_leaves(&zero_leaves()).map(|v| v.as_u64()), ZERO_ROOT);
-    }
-
-    const SAMPLE_ROOT: [u64; 4] =
-        [1839648704373557657, 16245063762079522430, 2767124943183982576, 17812001250628018905];
-    const ZERO_ROOT: [u64; 4] =
-        [9231417576306038954, 11425091536555908058, 3672555888010110395, 14299998217756054807];
-
-    /// `BbgState::new().root()` under each root version, dimension version 3.
-    /// The trie (v2) empty root has every dimension leaf `EMPTY`: the fold over
-    /// zero dimension leaves and the stats leaf. The flat (v1) empty root is
-    /// unchanged by dimension version 3 (empty tables carry only the
-    /// `TABLE_VERSION` header).
-    #[test]
-    fn empty_state_roots_are_pinned() {
-        let mut s = crate::BbgState::new();
-        assert_eq!(hex(&s.root()), "515dbb7ebaf6b868442827f72c6926e79e5f11fef77ff91b47839b6e68ec375d");
-        s.set_root_version(crate::RootVersion::V1);
-        assert_eq!(hex(&s.root()), "65ff61321169d84535f72bb177c5d6f98811369c8f51221dc846be87064b2445");
-    }
-
-    fn hex(b: &[u8; 32]) -> String {
-        b.iter().map(|x| format!("{x:02x}")).collect()
+    fn root_is_the_hemera_fold_over_the_ordered_leaves() {
+        for leaves in [sample_leaves(), zero_leaves()] {
+            let mut acc = [ROOT_TAG, 0, 0, 0];
+            for leaf in leaves.ordered() {
+                let mut st = [HGold::ZERO; 16];
+                for i in 0..4 {
+                    st[i] = HGold::new(acc[i]);
+                    st[4 + i] = HGold::new(leaf[i].as_u64());
+                }
+                permute(&mut st);
+                acc = core::array::from_fn(|i| st[i].as_canonical_u64());
+            }
+            assert_eq!(root_from_leaves(&leaves).map(|v| v.as_u64()), acc);
+        }
+        assert_eq!(ROOT_TAG, u64::from_le_bytes(*b"bbg-root"));
     }
 
     #[test]
