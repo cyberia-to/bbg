@@ -19,3 +19,8 @@ The storage contract lives in [specs/storage.md](../specs/storage.md).
   archive and node integration work.
 - [Shared application and shard database](shared-database.md) — one transaction
   owner, Fjall working storage, combined commits and explicit legacy redb import.
+- [Commit cost, launch row 43](commit-cost-2026-10-15.md) — flat recommit vs
+  incremental keyed-trie commitments, 10k–1M links and the pussy replay.
+- [Dimension version 3](dimension-version-3-2026-10-16.md) — the root chain's
+  genesis version (nonce, versioned trie leaves, no zero rows), deferred
+  hashing, chunked Brakedown measured and rejected, both burials committed.
