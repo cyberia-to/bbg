@@ -102,11 +102,21 @@ fn serialize_signal(s: &Signal) -> Vec<u8> {
     b
 }
 
+/// Wire size of one `Cyberlink` record: from ‖ to ‖ token ‖ amount ‖ valence.
+const LINK_BYTES: usize = 32 + 32 + 32 + 8 + 1;
+/// Wire size of the smallest possible `BoxMove` record: nullifier ‖ tag(0).
+const MOVE_MIN_BYTES: usize = 32 + 1;
+
 fn deserialize_signal(buf: &[u8]) -> Option<Signal> {
     let mut p = 0;
     let neuron = take32(buf, &mut p)?;
     let height = take_u64(buf, &mut p)?;
     let n_links = take_u32(buf, &mut p)? as usize;
+    // A payload this short cannot possibly hold n_links records — reject before
+    // Vec::with_capacity tries to allocate an attacker-chosen amount of memory.
+    if n_links > buf.len().saturating_sub(p) / LINK_BYTES {
+        return None;
+    }
     let mut links = Vec::with_capacity(n_links);
     for _ in 0..n_links {
         links.push(Cyberlink {
@@ -118,6 +128,9 @@ fn deserialize_signal(buf: &[u8]) -> Option<Signal> {
         });
     }
     let n_moves = take_u32(buf, &mut p)? as usize;
+    if n_moves > buf.len().saturating_sub(p) / MOVE_MIN_BYTES {
+        return None;
+    }
     let mut box_moves = Vec::with_capacity(n_moves);
     for _ in 0..n_moves {
         let nullifier = take32(buf, &mut p)?;
@@ -226,5 +239,55 @@ mod tests {
         assert!(matches!(events[0], Event::Signal(_)));
         assert!(matches!(events[1], Event::Finalize));
         assert!(matches!(events[2], Event::Signal(_)));
+    }
+
+    #[test]
+    fn rejects_n_links_that_cannot_fit_in_the_payload() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&[0u8; 32]); // neuron
+        buf.extend_from_slice(&7u64.to_le_bytes()); // height
+        buf.extend_from_slice(&u32::MAX.to_le_bytes()); // n_links: malicious
+        assert!(deserialize_signal(&buf).is_none());
+    }
+
+    #[test]
+    fn rejects_n_links_larger_than_the_records_remaining() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&[0u8; 32]); // neuron
+        buf.extend_from_slice(&7u64.to_le_bytes()); // height
+        buf.extend_from_slice(&2u32.to_le_bytes()); // claims 2 links
+        buf.extend_from_slice(&[0u8; LINK_BYTES]); // room for only 1
+        assert!(deserialize_signal(&buf).is_none());
+    }
+
+    #[test]
+    fn rejects_n_moves_that_cannot_fit_in_the_payload() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&[0u8; 32]); // neuron
+        buf.extend_from_slice(&7u64.to_le_bytes()); // height
+        buf.extend_from_slice(&0u32.to_le_bytes()); // n_links: 0
+        buf.extend_from_slice(&u32::MAX.to_le_bytes()); // n_moves: malicious
+        assert!(deserialize_signal(&buf).is_none());
+    }
+
+    #[test]
+    fn accepts_a_well_formed_signal_with_links_and_moves() {
+        let s = Signal {
+            neuron: [1u8; 32],
+            links: vec![Cyberlink { from: [2u8; 32], to: [3u8; 32], token: [0u8; 32], amount: 4, valence: -1 }],
+            box_moves: vec![BoxMove { nullifier: [5u8; 32], commitment: Some(([6u8; 32], 9)) }],
+            height: 7,
+        };
+        let frame = encode_signal(&s);
+        let events = decode_events(&frame);
+        match &events[0] {
+            Event::Signal(decoded) => {
+                assert_eq!(decoded.links.len(), 1);
+                assert_eq!(decoded.box_moves.len(), 1);
+                assert_eq!(decoded.box_moves[0].nullifier, [5u8; 32]);
+                assert_eq!(decoded.box_moves[0].commitment, Some(([6u8; 32], 9)));
+            }
+            _ => panic!("expected signal"),
+        }
     }
 }

@@ -201,7 +201,7 @@ A_live and N_live reset to empty tables at epoch start.
 zheng_acc_k = zheng.fold(zheng_acc_{k-1}, A_k_root, N_k_root, epoch_k)
 
 meaning:   no double spend through epoch k
-size:      ~240 bytes constant
+size:      constant
 verify:    O(1)
 
 Checkpoint = (BBG_root, zheng_acc, block_height)   ~280 bytes

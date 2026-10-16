@@ -14,7 +14,7 @@ and remaining failures.
 
 **bounded locality.** no global recompute for local change. every operation's cost is proportional to what it touches. at 10¹⁵ nodes, global operations are physically impossible.
 
-**constant-cost verification.** any computation produces a proof verifiable in ~5 μs via [[zheng]]-2 folding. verifier work is independent of prover work.
+**constant-cost verification.** any computation produces a [[zheng]] proof whose verification cost does not grow with the computation. verifier work is independent of prover work.
 
 **structural security.** guarantees from data structure invariants, not protocol correctness. a tree whose internal nodes carry min/max namespace labels cannot lie about completeness — the structure itself prevents it.
 
@@ -47,8 +47,8 @@ FINALIZATION (1 root)
 
 ```
 hash output:          32 bytes (hemera, 24 rounds, ~736 constraints/perm)
-proof size:           ~2 KiB (zheng-2, recursive Brakedown)
-verification:         ~5 μs
+proof size:           — (set by soft3 proposals/proof-system-repair)
+verification:         —
 private transfer:     ~40,000 constraints, sub-second proving
 cross-index (LogUp):  ~500 constraints per axon update (15× savings)
 light client join:    one zheng verification + namespace sync

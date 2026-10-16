@@ -157,18 +157,8 @@ pub(crate) fn remove_axon(state: &mut BbgState, ps: &mut PruneState, axon_id: &P
     state.particles.remove(axon_id);
     ps.last_touched.remove(axon_id);
     if let Some((from, to)) = state.axon_edges.remove(axon_id) {
-        if let Some(list) = state.axons_out.get_mut(&from) {
-            list.retain(|id| id != axon_id);
-            if list.is_empty() {
-                state.axons_out.remove(&from);
-            }
-        }
-        if let Some(list) = state.axons_in.get_mut(&to) {
-            list.retain(|id| id != axon_id);
-            if list.is_empty() {
-                state.axons_in.remove(&to);
-            }
-        }
+        state.axons_out.remove_axon(&from, axon_id);
+        state.axons_in.remove_axon(&to, axon_id);
     }
 }
 

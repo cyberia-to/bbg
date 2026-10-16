@@ -39,7 +39,7 @@ when particles ARE polynomials, DAS becomes native to the data model. the partic
 particle content         → polynomial f(x) over Goldilocks
 Lens.commit(f)            → particle identity (via hemera wrapping)
 f evaluated beyond 2^v   → erasure-coded extension (automatic)
-sampling                 = Lens.open(commitment, random position)    ~75 bytes proof
+sampling                 = Lens.open(commitment, random position)
 reconstruction           = polynomial interpolation from k evaluations
 ```
 
@@ -74,13 +74,13 @@ one Lens verification per sample instead of tree path walks.
 
 per-sample proof:
   cell data:         ~256 bytes (chunk content)
-  Lens opening:       ~75 bytes (recursive Brakedown evaluation proof)
-  verification:      O(λ log log N) field operations
+  Lens opening:       — (evaluation proof with hemera Merkle paths; size set by the proof-system repair)
+  verification:      —
 
 20 samples for 99.9999% confidence (batch opening):
-  bandwidth:  ~1.5 KiB (batch Lens opening, amortized across 20 samples)
-  compute:    20 × O(λ log log N) field verifications
-  constraints: ~20 × 150 = ~3K constraints
+  bandwidth:  — (batch Lens opening, amortized across 20 samples)
+  compute:    —
+  constraints: —
 ```
 
 ## comparison with NMT-based DAS
@@ -91,14 +91,14 @@ per-sample proof:
 commitment:             hemera tree              Lens commitment
   size:                 32 bytes (root)          32 bytes (Lens)
 
-per-sample proof:       NMT auth path            Lens opening (recursive)
-  size:                 ~1 KiB                   ~75 bytes
-  verification:         O(log n) hemera          O(λ log log N) field ops
+per-sample proof:       NMT auth path            Lens opening
+  size:                 ~1 KiB                   —
+  verification:         O(log n) hemera          —
 
 20-sample verification:
-  bandwidth:            ~25 KiB                  ~1.5 KiB (batch opening)
-  hemera calls:         640                      0
-  constraints:          ~471K                    ~3K
+  bandwidth:            ~25 KiB                  —
+  hemera calls:         640                      —
+  constraints:          ~471K                    —
 
 fraud proof (k=64):
   size:                 ~80 KiB                  ~30 KiB

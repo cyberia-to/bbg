@@ -6,6 +6,7 @@ use bbg::{
 
 fn state() -> BbgState {
     let mut state = BbgState::new();
+    state.set_root_version(bbg::RootVersion::V1); // certificates carry the v1 leaves
     let mut record = ParticleRecord::zero();
     record.energy = 77;
     state.particles.insert([1; 32], record);
@@ -107,6 +108,8 @@ fn stale_cached_roots_and_changed_signal_networks_are_rejected() {
 fn arbitrary_key_bytes_and_u64_values_have_no_modulus_alias() {
     let mut a = BbgState::new();
     let mut b = BbgState::new();
+    a.set_root_version(bbg::RootVersion::V1);
+    b.set_root_version(bbg::RootVersion::V1);
     let first = [0; 32];
     let mut second = first;
     second[..8].copy_from_slice(&nebu::field::P.to_le_bytes());

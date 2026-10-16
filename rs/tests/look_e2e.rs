@@ -18,8 +18,14 @@ use zheng::execution::state::{StateStatement, certify_state_execution};
 use zheng::execution::{Certificate, ExecutionNoun as N};
 
 /// A state with two particles — enough for a non-trivial particles dimension.
+///
+/// Root version 1: the look argument opens a Brakedown cell of the dimension
+/// polynomial and binds that commitment to `leaves.dims[ns]`; under v2 the
+/// leaf is a trie root. zheng opens trie paths next (specs/state.md § root
+/// versions); until then proofs pin v1.
 fn sample_state() -> BbgState {
     let mut state = BbgState::new();
+    state.set_root_version(bbg::RootVersion::V1);
     state.particles.insert(
         [1u8; 32],
         ParticleRecord {

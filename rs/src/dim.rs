@@ -1,4 +1,6 @@
-//! Versioned, injective dimension serialization shared by roots and reads.
+//! Versioned, injective dimension serialization shared by roots and reads —
+//! the v1 (flat Brakedown) dimension leaf. Under `RootVersion::V2` the leaf
+//! is a keyed-trie root over the same record fields (see [`crate::trie`]).
 use crate::types::Particle;
 use lens::{Commitment, Lens, MultilinearPoly, brakedown::Brakedown};
 use nebu::Goldilocks;

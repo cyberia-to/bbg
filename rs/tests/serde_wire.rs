@@ -17,6 +17,7 @@ use bbg::{BbgState, QueryProof};
 /// A state with two particles — enough for a non-trivial particles dimension.
 fn sample_state() -> BbgState {
     let mut state = BbgState::new();
+    state.set_root_version(bbg::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
     state.particles.insert(
         [1u8; 32],
         ParticleRecord {

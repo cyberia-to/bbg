@@ -8,6 +8,7 @@ use nebu::Goldilocks as F;
 
 fn state() -> BbgState {
     let mut s = BbgState::new();
+    s.set_root_version(bbg::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
     for key in [[0; 32], alias_key()] {
         let mut r = ParticleRecord::zero();
         r.energy = 77;
@@ -87,9 +88,11 @@ fn query_claim_context_opening_and_certificate_mutations_fail() {
         rejects(&bad, &root);
         assert!(!verify_query(&bad), "mutation {mutation}");
     }
-    let mut stale = state();
-    stale.particles.get_mut(&[0; 32]).unwrap().energy += 1;
-    assert!(prove_particle(&stale, &[0; 32]).is_none());
+    // the root is never stale: a proof after a mutation binds the new root
+    let mut moved = state();
+    moved.particles.get_mut(&[0; 32]).unwrap().energy += 1;
+    let fresh = prove_particle(&moved, &[0; 32]).unwrap();
+    assert!(verify_particle(&fresh, &moved.root(), &[0; 32]));
 }
 
 #[test]
@@ -186,6 +189,7 @@ fn private_tables_are_not_disclosed_and_cannot_claim_public_context() {
 #[test]
 fn public_query_limit_is_explicit_and_large_certificates_remain_available() {
     let mut s = BbgState::new();
+    s.set_root_version(bbg::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
     for i in 0u64..205 {
         let mut key = [0; 32];
         key[..8].copy_from_slice(&i.to_le_bytes());
