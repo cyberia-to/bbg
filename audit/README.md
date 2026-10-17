@@ -21,6 +21,10 @@ The storage contract lives in [specs/storage.md](../specs/storage.md).
   owner, Fjall working storage, combined commits and explicit legacy redb import.
 - [Commit cost, launch row 43](commit-cost-2026-10-15.md) — flat recommit vs
   incremental keyed-trie commitments, 10k–1M links and the pussy replay.
+- [Dimension version 2](dimension-version-2-2026-10-15.md) — the bostrom
+  genesis root unblocked by the trie default (eager trie: 1,790 s, 8.57 GB),
+  the two inflations measured, the bbg-only bostrom link replay; superseded as
+  a rule set by version 3, kept as evidence.
 - [Dimension version 3](dimension-version-3-2026-10-16.md) — the root chain's
   genesis version (nonce, versioned trie leaves, no zero rows), deferred
   hashing, chunked Brakedown measured and rejected, both burials committed.
