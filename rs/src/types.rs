@@ -62,15 +62,90 @@ pub struct CoinRecord {
     pub total_supply: u64,
 }
 
-/// A card in the cards dimension.
+/// The side of an axon a position pushes on (soft3 chain-economy §4.2):
+/// `Plus` adds weight (v ∈ {0, +1}), `Minus` subtracts it (v = −1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Side {
+    Plus,
+    Minus,
+}
+
+/// The valence v ∈ {−1, 0, +1} of a position, stored as the byte `v + 1`
+/// (`specs/state.md` rule 8). Any other byte is not a valence.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Valence {
+    /// v = −1: active stake against the edge
+    Against = 0,
+    /// v = 0: passive stake; adds weight, never earns
+    Neutral = 1,
+    /// v = +1: active stake for the edge
+    For = 2,
+}
+
+impl Valence {
+    /// From v ∈ {−1, 0, +1}.
+    pub const fn from_i8(v: i8) -> Option<Self> {
+        match v {
+            -1 => Some(Self::Against),
+            0 => Some(Self::Neutral),
+            1 => Some(Self::For),
+            _ => None,
+        }
+    }
+
+    /// v ∈ {−1, 0, +1}.
+    pub const fn to_i8(self) -> i8 {
+        self as i8 - 1
+    }
+
+    /// From the stored byte `v + 1` ∈ {0, 1, 2}.
+    pub const fn from_byte(b: u8) -> Option<Self> {
+        match b {
+            0 => Some(Self::Against),
+            1 => Some(Self::Neutral),
+            2 => Some(Self::For),
+            _ => None,
+        }
+    }
+
+    /// The stored byte `v + 1`.
+    pub const fn byte(self) -> u8 {
+        self as u8
+    }
+
+    /// `Minus` for v = −1, `Plus` otherwise.
+    pub const fn side(self) -> Side {
+        match self {
+            Self::Against => Side::Minus,
+            Self::Neutral | Self::For => Side::Plus,
+        }
+    }
+
+    /// v ≠ 0: the position takes epistemic risk and may earn.
+    pub const fn is_active(self) -> bool {
+        !matches!(self, Self::Neutral)
+    }
+}
+
+/// A position in the cards dimension (dimension version 4, `specs/state.md`
+/// rule 8): one author's locked stake on one axon, at
+/// [`crate::position::card_id`]`(author, p, q)`. The stake is not a field: it
+/// is the balance at [`crate::position::stake_key`]`(card)`.
 ///
-/// Every cyberlink is a card (A6). This records the current beneficial owner
-/// of the conviction box attached to an axon-particle.
+/// Field order is the leaf order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CardRecord {
-    /// current owner neuron
-    pub owner: NeuronId,
-    /// axon-particle this card is bound to
+    /// payout owner: rewards go to `balances[H(owner ‖ τ_native)]`
+    pub owner: [u8; 32],
+    /// the axon-particle `axon_id(p, q)`
     pub particle: Particle,
+    /// the neuron that locked the stake; only it may unlock
+    pub author: NeuronId,
+    /// fixed while the stake is positive
+    pub valence: Valence,
+    /// height of the last stake increase
+    pub since: u64,
 }
 
 /// A file availability record.

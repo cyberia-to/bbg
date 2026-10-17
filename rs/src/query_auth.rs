@@ -150,7 +150,7 @@ fn primary_index(fields: &[u64], dim: Dim, key: &[u8; 32]) -> Option<usize> {
             Dim::Neurons => 8,
             Dim::Locations => 4,
             Dim::Coins => 2,
-            Dim::Cards => 16,
+            Dim::Cards => 28,
             Dim::Files => 4,
             Dim::Time => 8,
             Dim::Signals => 30,

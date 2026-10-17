@@ -142,6 +142,8 @@ pub(crate) fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Gold
             .map(|(k, v)| {
                 let mut vals = goldilocks_from_bytes32(&v.owner).to_vec();
                 vals.extend_from_slice(&goldilocks_from_bytes32(&v.particle));
+                vals.extend_from_slice(&goldilocks_from_bytes32(&v.author));
+                vals.extend(fields(&[v.valence.byte() as u64, v.since]));
                 (*k, vals)
             })
             .collect(),

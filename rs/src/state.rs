@@ -20,11 +20,12 @@ use hemera::hash as hemera_hash;
 use nebu::Goldilocks;
 
 use crate::keyed::{AxonIndex, Keyed, KeyedSet};
+use crate::position::Cards;
 use crate::signal::{InsertError, Signal};
 use crate::stats::{GraphStats, STAT_RELATIONS};
 use crate::trie::Digest;
 use crate::types::{
-    CardRecord, Particle, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId,
+    Particle, CoinRecord, FileRecord, IntentRecord, LocationRecord, NeuronId,
     NeuronRecord, ParticleRecord, SignalRecord,
 };
 
@@ -101,7 +102,9 @@ pub struct BbgState {
     pub neurons: Keyed<NeuronId, NeuronRecord>,
     pub locations: Keyed<Particle, LocationRecord>,
     pub coins: Keyed<Particle, CoinRecord>,
-    pub cards: Keyed<Particle, CardRecord>,
+    /// positions: card id → [`crate::types::CardRecord`], with the axon index
+    /// (dimension version 4, [`crate::position`])
+    pub cards: Cards,
     pub files: Keyed<Particle, FileRecord>,
     /// height → BBG_root snapshot
     pub time: Keyed<u64, Particle>,
@@ -135,7 +138,7 @@ impl BbgState {
             neurons: Keyed::new(),
             locations: Keyed::new(),
             coins: Keyed::new(),
-            cards: Keyed::new(),
+            cards: Cards::new(),
             files: Keyed::new(),
             time: Keyed::new(),
             signals: Keyed::new(),
@@ -205,6 +208,7 @@ impl BbgState {
             + self.axons_in.pending()
             + self.neurons.pending()
             + self.balances.pending()
+            + self.cards.pending()
             + self.time.pending()
             + self.signals.pending();
         if pending >= PARALLEL_FLUSH {
