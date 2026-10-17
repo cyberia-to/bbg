@@ -391,7 +391,8 @@ impl BbgState {
 
             // balances[H(to || token)] += a  (public output)
             let to_key = balance_key(&link.to, &link.token);
-            *self.balances.entry(to_key).or_insert(0) += link.amount;
+            let credited = self.balances.get(&to_key).map_or(link.amount, |b| b.saturating_add(link.amount));
+            self.balances.insert(to_key, credited);
 
             // balances[H(from || token)] -= a  (public input); a zero balance
             // is an absent row, so the state has one representation.
