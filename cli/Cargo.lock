@@ -54,11 +54,12 @@ dependencies = [
 
 [[package]]
 name = "bbg"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
+ "neuron-id",
  "strata-nebu",
  "zheng",
 ]
@@ -69,7 +70,7 @@ version = "0.1.0"
 dependencies = [
  "bbg",
  "clap",
- "cyber-tape",
+ "tade",
 ]
 
 [[package]]
@@ -77,6 +78,12 @@ name = "bytes"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
+
+[[package]]
+name = "cfg-if"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "clap"
@@ -126,11 +133,11 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "cyber-hemera"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "cyber-lens"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "cyber-lens-assayer",
  "cyber-lens-binius",
@@ -138,11 +145,12 @@ dependencies = [
  "cyber-lens-core",
  "cyber-lens-ikat",
  "cyber-lens-porphyry",
+ "cyber-lens-rspcs",
 ]
 
 [[package]]
 name = "cyber-lens-assayer"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -161,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-brakedown"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -170,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cyber-hemera",
  "strata-core",
@@ -180,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-ikat"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-lens-brakedown",
  "cyber-lens-core",
@@ -190,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "cyber-lens-porphyry"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
@@ -198,8 +206,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyber-lens-rspcs"
+version = "0.1.0"
+dependencies = [
+ "cyber-hemera",
+ "cyber-lens-core",
+ "strata-nebu",
+]
+
+[[package]]
 name = "cyber-nox"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens-brakedown",
@@ -208,10 +225,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyber-tape"
-version = "0.1.0"
+name = "getrandom"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
- "bytes",
+ "cfg-if",
+ "libc",
+ "r-efi",
+ "wasip2",
 ]
 
 [[package]]
@@ -225,6 +247,16 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "libc"
+version = "0.2.191"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+
+[[package]]
+name = "neuron-id"
+version = "0.1.0"
 
 [[package]]
 name = "once_cell_polyfill"
@@ -251,26 +283,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-efi"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+
+[[package]]
 name = "strata-compute"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-core"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "strata-ext"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-genies"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-ext",
@@ -279,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "strata-jali"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-nebu",
@@ -287,7 +325,7 @@ dependencies = [
 
 [[package]]
 name = "strata-kuro"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
  "strata-ext",
@@ -296,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "strata-nebu"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-compute",
  "strata-core",
@@ -306,14 +344,14 @@ dependencies = [
 
 [[package]]
 name = "strata-proof"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
 
 [[package]]
 name = "strata-trop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "strata-core",
 ]
@@ -336,6 +374,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tade"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -346,6 +391,15 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "wasip2"
+version = "1.0.4+wasi-0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
+dependencies = [
+ "wit-bindgen",
+]
 
 [[package]]
 name = "windows-link"
@@ -363,11 +417,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen"
+version = "0.57.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "zeroize"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
+
+[[package]]
 name = "zheng"
-version = "0.1.2"
+version = "0.4.0"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
+ "getrandom",
  "strata-nebu",
+ "zeroize",
 ]
