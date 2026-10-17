@@ -36,8 +36,8 @@ impl TrieKey for [u8; 32] {
     }
 }
 
-/// Heights and steps: little-endian in the first 8 bytes — the key layout the
-/// v1 `time` / `signals` polynomials already use.
+/// Heights: little-endian in the first 8 bytes — the key layout the v1 `time`
+/// polynomial already uses.
 impl TrieKey for u64 {
     fn key_bytes(&self) -> [u8; 32] {
         let mut key = [0u8; 32];

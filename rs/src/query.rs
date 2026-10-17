@@ -26,7 +26,7 @@ use nox::{CallProvider, LookProvider, Reduction, Order};
 
 use crate::proof::{
     prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_file, prove_location,
-    prove_neuron, prove_particle, prove_signal, prove_time, QueryProof,
+    prove_neuron, prove_particle, prove_signal_key, prove_time, QueryProof,
 };
 use crate::state::BbgState;
 
@@ -68,13 +68,14 @@ impl Dim {
 
 /// Generate a `QueryProof` for dimension `dim` at key `key`.
 ///
-/// `key` is a 32-byte particle/hash. For `Time` and `Signals` the u64 height
-/// or step is read from the first 8 bytes (little-endian); remaining bytes must be zero.
+/// `key` is a 32-byte particle/hash. For `Time` the u64 height is read from
+/// the first 8 bytes (little-endian); remaining bytes must be zero. For
+/// `Signals` it is the signal key `signal_key(neuron, step)`.
 ///
 /// `Balances` returns `None` — use `prove_balances(state, owner, token)` directly
 /// because the key is derived from two inputs.
 pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProof> {
-    if matches!(dim, Dim::Time | Dim::Signals) && key[8..].iter().any(|&v| v != 0) { return None; }
+    if dim == Dim::Time && key[8..].iter().any(|&v| v != 0) { return None; }
     match dim {
         Dim::Particles => prove_particle(state, key),
         Dim::AxonsOut  => prove_axons_out(state, key),
@@ -89,11 +90,7 @@ pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProo
             buf.copy_from_slice(&key[..8]);
             prove_time(state, u64::from_le_bytes(buf))
         }
-        Dim::Signals   => {
-            let mut buf = [0u8; 8];
-            buf.copy_from_slice(&key[..8]);
-            prove_signal(state, u64::from_le_bytes(buf))
-        }
+        Dim::Signals   => prove_signal_key(state, key),
         Dim::Balances  => None,
     }
 }

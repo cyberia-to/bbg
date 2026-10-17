@@ -14,7 +14,7 @@ contains its 32-byte key as eight little-endian u32 field limbs, followed by the
 record fields. Every arbitrary u64 record scalar is two u32 limbs, low first;
 every arbitrary 32-byte value is eight u32 limbs. True field values in A remain
 single canonical field elements. Keys follow the dimension map's deterministic
-ordering. Signals include neuron, network, link_count, block_height, proof_hash.
+ordering. Signals are keyed by `H(neuron ‖ step)` (state.md rule 7) and include neuron, network, link_count, block_height, proof_hash, step (30 limbs).
 Root commitments and query proofs use the same entry serializer.
 
 The table pads to exactly its next power of two for Brakedown version 2.

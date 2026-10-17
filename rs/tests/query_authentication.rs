@@ -133,24 +133,25 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
     );
     for n in [1, 256] {
         s.time.insert(n, [9; 32]);
-        s.signals.insert(
-            n,
-            SignalRecord {
-                neuron: [10; 32],
-                network: [11; 32],
-                link_count: 55,
-                block_height: u64::MAX,
-                proof_hash: [12; 32],
-            },
-        );
+        s.apply_signal_record(SignalRecord {
+            neuron: [10; 32],
+            network: [11; 32],
+            link_count: 55,
+            block_height: u64::MAX,
+            proof_hash: [12; 32],
+            step: n,
+        });
     }
     s.refresh_root();
     for ns in 1..=9 {
         let dim = Dim::from_u64(ns).unwrap();
         let mut entity = key;
-        if ns >= 8 {
+        if ns == 8 {
             entity = [0; 32];
             entity[..8].copy_from_slice(&256u64.to_le_bytes());
+        }
+        if ns == 9 {
+            entity = bbg::signal_key(&[10; 32], 256);
         }
         let proof = bbg_query(&s, dim, &entity).unwrap();
         assert!(
@@ -165,6 +166,10 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
     invalid[31] = 1;
     assert!(bbg_query(&s, Dim::Time, &invalid).is_none());
     assert!(bbg_query(&s, Dim::Signals, &invalid).is_none());
+    // a bare step no longer names a signal: the key is H(neuron || step)
+    let mut bare_step = [0; 32];
+    bare_step[..8].copy_from_slice(&256u64.to_le_bytes());
+    assert!(bbg_query(&s, Dim::Signals, &bare_step).is_none());
 }
 
 #[test]

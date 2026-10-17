@@ -61,7 +61,7 @@ a v1 root recompute is linear in the state, so a chain's cost is quadratic in it
 | version | date | rules |
 |---|---|---|
 | 2 | 2026-10-15 | flat tables, injective limbs, `TABLE_VERSION = 2` header |
-| 3 | 2026-10-16 | rules 1–6 below — the root chain's genesis version (soft3 specs/chain.md §3) |
+| 3 | 2026-10-16, rule 7 2026-10-17 | rules 1–7 below — the root chain's genesis version (soft3 specs/chain.md §3) |
 
 **dimension version 3** (the fresh chain starts here):
 
@@ -70,7 +70,8 @@ a v1 root recompute is linear in the state, so a chain's cost is quadratic in it
 3. a cyberlink without conviction (`a = 0`) writes topology only: `axons_out`, `axons_in` and the reverse edge map. no axon-particle, no energy, no focus, no balance row. (a genesis replay is all such links; writing zero records doubled the particles dimension and added a balance row per endpoint — bostrom: 2,949,732 axon-particles and 3.2 M zero balance rows.)
 4. a zero balance is an absent row: `balances[k]` reaching 0 is removed, so a state has one representation;
 5. `NeuronRecord` is `[focus, karma, stake, nonce]` — `nonce` is the root chain's per-neuron replay counter (soft3 specs/chain.md §2.5), under the root;
-6. the flat table layout keeps its own word, `TABLE_VERSION = 2` (the zheng state-evidence contract): the layout does not depend on record schemas, so rule 5 widens neuron entries (6 → 8 limbs) without a new table format.
+6. the flat table layout keeps its own word, `TABLE_VERSION = 2` (the zheng state-evidence contract): the layout does not depend on record schemas, so rule 5 widens neuron entries (6 → 8 limbs) without a new table format;
+7. a signal record lives at `signal_key(neuron, step) = H(neuron ‖ step)` — hemera over the 32-byte neuron id and the step as 8 little-endian bytes — and `SignalRecord` is `[neuron, network, link_count, block_height, proof_hash, step]`. `step` is the neuron's own signal-chain counter, so every neuron's first signal is step 0: keyed by the bare step, two neurons' signals shared a record and arrival order picked the survivor and the root (launch row 9, bbg#31/#32). Under rule 7 the signals dimension is a function of the set of accepted signals. Added to version 3 before genesis froze (owner decision 2026-10-17, `cyber/launch.md`); no version-3 genesis state carries a signal record, so no blessed root moved (`audit/signals-key-2026-10-17.md`).
 
 **why a trie and not chunked Brakedown.** splitting a flat dimension into Brakedown-committed chunks of ≤ 2^20 fields (hemera-hashed into the leaf) lifts the size cap but not the cost: a Brakedown commit is 1.33 µs per field on an M4 Max (2^10: 2.3 ms, 2^16: 92 ms, 2^20: 1.39 s per commit; `audit/dimension-version-3-2026-10-16.md`), and a sorted flat layout shifts every chunk after an insertion point. even with key-bucketed chunks, a block of random links touches most chunks of bostrom's 2^25-field adjacency dimensions — tens of seconds per block against a 30 s target. the trie costs O(changes · log n) compressions per block with no size cap and a bounded worst case (depth ≤ 256) under adversarial keys. chunked Brakedown buys only Brakedown cell openings, which the zheng look argument cannot use against a chunked leaf without a circuit change anyway; when zheng opens state, it opens trie paths (same `compress4`).
 
@@ -78,7 +79,7 @@ the zheng look argument still opens v1 Brakedown cells; it moves to trie paths (
 
 ### dimension commitment v2 — keyed trie
 
-every committed dimension is a set of `(key, fields)` records: `key` is 32 bytes (a particle, neuron, nullifier or commitment point; heights and steps little-endian in the first 8 bytes), `fields` is the record's Goldilocks vector in the frozen per-dimension order (`state/commits.rs`, same field order as the v1 polynomial) in the injective encoding: `u64` → two 32-bit limbs, 32 bytes → eight 32-bit limbs, a field element → itself. the commitment is the root of a canonical binary Merkle-Patricia trie over the keys:
+every committed dimension is a set of `(key, fields)` records: `key` is 32 bytes (a particle, neuron, nullifier or commitment point; `time` heights little-endian in the first 8 bytes; signals at `H(neuron ‖ step)`, rule 7), `fields` is the record's Goldilocks vector in the frozen per-dimension order (`state/commits.rs`, same field order as the v1 polynomial) in the injective encoding: `u64` → two 32-bit limbs, 32 bytes → eight 32-bit limbs, a field element → itself. the commitment is the root of a canonical binary Merkle-Patricia trie over the keys:
 
 ```
 EMPTY            = [0, 0, 0, 0]

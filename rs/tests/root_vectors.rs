@@ -8,7 +8,7 @@
 //! Dimension version 3 (2026-10-16): v2 (keyed trie) is the default, every
 //! trie leaf carries `DIMENSION_VERSION`, `NeuronRecord` carries the chain
 //! `nonce`, a link without conviction writes only topology, a zero balance is
-//! an absent row.
+//! an absent row, a signal record lives at `H(neuron ‖ step)` (rule 7).
 //!
 //! Hash-agnostic: no digest is pinned by hand. Every expected root is
 //! recomputed here by an independent reference of specs/state.md — records
@@ -65,10 +65,17 @@ fn all_dims(version: RootVersion) -> Bbg {
     b.state.coins.insert(p(41), CoinRecord { total_supply: 1_000_000 });
     b.state.cards.insert(p(42), CardRecord { owner: p(1), particle: p(10) });
     b.state.files.insert(p(43), FileRecord { available: true, chunk_count: 9 });
-    b.apply_signal_record(
-        0,
-        SignalRecord { neuron: p(1), network: p(50), link_count: 2, block_height: 0, proof_hash: p(51) },
-    );
+    // two neurons' first signals (step 0 each) and a later step: three records
+    for (neuron, step) in [(p(1), 0), (p(2), 0), (p(1), 1)] {
+        b.apply_signal_record(SignalRecord {
+            neuron,
+            network: p(50),
+            link_count: 2,
+            block_height: step,
+            proof_hash: p(51),
+            step,
+        });
+    }
     b.set_diameter_bound(4);
     b
 }
@@ -86,6 +93,14 @@ mod reference {
 
     fn u(vals: &[u64]) -> Vec<G> {
         vals.iter().flat_map(|&v| u64_limbs(v)).collect()
+    }
+
+    /// The signals key (specs/state.md, dimension version 3 rule 7):
+    /// H(neuron ‖ step as 8 little-endian bytes).
+    fn signal_key(neuron: &[u8; 32], step: u64) -> [u8; 32] {
+        let mut preimage = neuron.to_vec();
+        preimage.extend_from_slice(&step.to_le_bytes());
+        hemera::hash(&preimage).as_bytes()[..32].try_into().unwrap()
     }
 
     fn pos(v: u64) -> [u8; 32] {
@@ -159,17 +174,20 @@ mod reference {
             same(
                 s.signals
                     .iter()
-                    .map(|(st, r)| {
+                    .map(|(_, r)| {
                         (
-                            pos(*st),
+                            signal_key(&r.neuron, r.step),
                             cat(&[
                                 &bytes32_limbs(&r.neuron),
                                 &bytes32_limbs(&r.network),
                                 &u(&[r.link_count as u64, r.block_height]),
                                 &bytes32_limbs(&r.proof_hash),
+                                &u(&[r.step]),
                             ]),
                         )
                     })
+                    .collect::<std::collections::BTreeMap<_, _>>()
+                    .into_iter()
                     .collect(),
             ),
             same(s.balances.iter().map(|(k, v)| (*k, u(&[*v]))).collect()),
@@ -485,14 +503,17 @@ fn the_nonce_is_under_the_root() {
 /// reproduce every stored root bit for bit.
 #[test]
 fn recovery_replay_reproduces_every_stored_root() {
-    let run = |b: &mut Bbg| {
+    let run = |b: &mut Bbg| -> u64 {
         let mut rng = Rng(0xC0FFEE);
+        let mut signals = 0;
         for i in 0..6u8 {
             b.state.neurons.insert(p(i), NeuronRecord { focus: u64::MAX / 4, karma: 0, stake: 0, nonce: 0 });
         }
         for _block in 0..60 {
             for _ in 0..(1 + rng.next() % 30) {
                 let neuron = p((rng.next() % 6) as u8);
+                // the neuron's own chain step: every neuron starts at 0
+                let step = b.state.neurons.get(&neuron).unwrap().nonce;
                 b.state.neurons.get_mut(&neuron).unwrap().nonce += 1;
                 let sig = Signal {
                     neuron,
@@ -507,15 +528,27 @@ fn recovery_replay_reproduces_every_stored_root() {
                     height: b.state.height,
                 };
                 b.insert(&sig).unwrap();
+                b.apply_signal_record(SignalRecord {
+                    neuron,
+                    network: p(9),
+                    link_count: 1,
+                    block_height: b.state.height,
+                    proof_hash: p(8),
+                    step,
+                });
+                signals += 1;
             }
             b.finalize_block();
         }
+        signals
     };
     let mut live = Bbg::new();
-    run(&mut live);
+    let signals = run(&mut live);
     let mut recovered = Bbg::new();
     run(&mut recovered);
     assert_eq!(live.state.time.len(), 60);
+    // six neurons, each starting at step 0: every signal keeps its own record
+    assert_eq!(live.state.signals.len() as u64, signals);
     for (h, root) in live.state.time.iter() {
         assert_eq!(recovered.state.time.get(h), Some(root), "stored root at {h}");
     }

@@ -5,7 +5,7 @@ tags: bbg, storage, spec
 # native state transitions
 
 The native node prepares a BBG transition under an exclusive mutable borrow.
-A prepared signal applies the signal and its global history-position header,
+A prepared signal applies the signal and its header (the neuron's own step),
 then finalizes one block. An intent stores its exact record without advancing
 the block height. The caller commits the returned typed-state changes together
 with its operation, economics and receipt in one Database transaction, then
@@ -28,13 +28,16 @@ Native preparation rejects repeated nullifiers within one signal, previously
 spent nullifiers, overflowing balance additions, height overflow, oversized
 link counts and inconsistent signal/header arguments. The coordinator remains
 responsible for semantic authorization and proof verification. Signals are
-indexed by the supplied global history position; a position already present
-is rejected. Native persistence requires an absent checkpoint accumulator.
+indexed by `signal_key(header.neuron, header.step)` (state.md rule 7), so the
+record set does not depend on the order a node accepted them in; a
+`(neuron, step)` already present is rejected (`SignalExists`). Native
+persistence requires an absent checkpoint accumulator.
 
 ## typed record format
 
 NativeState keys start with a one-byte domain. Entity keys append their exact
-32 bytes; time and signal positions append eight big-endian bytes. Metadata
+32 bytes (signals: the 32-byte signal key); time heights append eight
+big-endian bytes. Metadata
 uses the single-byte key 0. Values contain exact little-endian integers and
 fixed-width byte arrays. No key or u64 value is reduced into a field element.
 
@@ -49,7 +52,7 @@ fixed-width byte arrays. No key or u64 value is reduced into a field element.
 | 7 | card: owner 32, particle 32 |
 | 8 | file: available u8 (0 or 1), chunk count u32 |
 | 9 | time: root 32 |
-| 10 | signal: neuron 32, network 32, link count u32, height u64, proof hash 32 |
+| 10 | signal: neuron 32, network 32, link count u32, height u64, proof hash 32, step u64 (step since dimension version 3 rule 7) |
 | 11 | commitment: canonical field representative u64 |
 | 12 | nullifier: empty value |
 | 13 | public balance: u64 |

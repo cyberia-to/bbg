@@ -8,7 +8,8 @@ use nebu::Goldilocks;
 /// The dimension rule set every root derives under (specs/state.md
 /// § dimension versions): record schemas, the conviction-free link and zero
 /// row rules, and the trie leaf derivation, which carries this number.
-/// 3 = `NeuronRecord.nonce`, keyed-trie leaves, no zero records.
+/// 3 = `NeuronRecord.nonce`, keyed-trie leaves, no zero records, signals keyed
+/// by `H(neuron ‖ step)` (`state::signal_key`).
 pub const DIMENSION_VERSION: u64 = 3;
 /// Version word of the flat table layout (`[version, length, entries,
 /// (key(8) ‖ fields)*]`) — the v1 dimension polynomial and the state
