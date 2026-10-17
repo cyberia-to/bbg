@@ -9,6 +9,47 @@ fn key(b: u8) -> [u8; 32] {
     [b; 32]
 }
 
+/// A network tier that answers `fetch` with a fixed byte string regardless
+/// of the particle asked for — a buggy or adversarial peer.
+struct MockNetworkStore(Vec<u8>);
+
+impl NetworkStore for MockNetworkStore {
+    fn fetch(&self, _particle: &Particle) -> Option<Vec<u8>> {
+        Some(self.0.clone())
+    }
+    fn das_sample(
+        &self,
+        _particle: &Particle,
+        _offset: u64,
+        _length: u64,
+    ) -> Option<crate::proof::QueryProof> {
+        None
+    }
+}
+
+#[test]
+fn fetch_content_accepts_matching_content() {
+    let content = b"hello world".to_vec();
+    let particle: Particle = *hemera::hash(&content).as_bytes();
+    let store = TieredStore::new(Box::new(MemStore::new()))
+        .with_network(Box::new(MockNetworkStore(content.clone())));
+    assert_eq!(store.fetch_content(&particle), Some(content));
+}
+
+#[test]
+fn fetch_content_rejects_content_that_does_not_hash_to_the_particle() {
+    let requested: Particle = *hemera::hash(b"hello world").as_bytes();
+    let store = TieredStore::new(Box::new(MemStore::new()))
+        .with_network(Box::new(MockNetworkStore(b"hello world!".to_vec())));
+    assert_eq!(store.fetch_content(&requested), None);
+}
+
+#[test]
+fn fetch_content_none_without_a_network_tier() {
+    let store = TieredStore::new(Box::new(MemStore::new()));
+    assert_eq!(store.fetch_content(&[0u8; 32]), None);
+}
+
 #[test]
 fn write_through_to_warm() {
     let hot = Box::new(MemStore::new());
