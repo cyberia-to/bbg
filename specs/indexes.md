@@ -98,9 +98,9 @@ DIMENSION 9: time
   note: replaces 7-namespace NMT. continuous — any t is queryable via Lens opening
 
 DIMENSION 10: signals
-  evaluation: BBG_poly(signals, step, t) → signal_batch_hash
-  key: step counter / batch index
-  proves: "signal batch at step S was accepted"
+  evaluation: BBG_poly(signals, H(neuron, step), t) → signal record
+  key: H(neuron ‖ step) — the neuron's own signal-chain step (state.md rule 7)
+  proves: "neuron ν's signal at step S was accepted"
 ```
 
 ## leaf structures
@@ -167,7 +167,7 @@ time entry:
   BBG_root_snapshot: F_p⁴             32 bytes
 
 signals entry:
-  key: batch_index                     8 bytes
+  key: H(neuron ‖ step_le)             32 bytes
   network: F_p⁴                       32 bytes   (destination network card id)
   signal_batch_hash: F_p⁴             32 bytes
   recursive_proof_hash: F_p⁴          32 bytes

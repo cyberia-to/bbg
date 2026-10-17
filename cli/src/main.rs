@@ -220,8 +220,8 @@ fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
         }
     }
     if show("signals") {
-        for (step, r) in bbg.state.signals.iter() {
-            println!("signal step {}  neuron {}  links {}  height {}", step, hex(&r.neuron), r.link_count, r.block_height);
+        for (key, r) in bbg.state.signals.iter() {
+            println!("signal {}  neuron {}  step {}  links {}  height {}", hex(key), hex(&r.neuron), r.step, r.link_count, r.block_height);
         }
     }
 }
@@ -230,8 +230,13 @@ fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
 
 fn cmd_prove(bbg: &Bbg, dim: &str, key: &str, json: bool) -> i32 {
     let Some(d) = dim_from(dim) else { eprintln!("unknown dim: {dim}"); return 3 };
-    // time/signals keys are a u64 height, encoded LE into the first 8 bytes.
-    let parsed = if matches!(dim, "time" | "signals") { height_key(key) } else { h32(key) };
+    // time keys are a u64 height, encoded LE into the first 8 bytes; signals
+    // keys are `<neuron-hex>:<step>` or the hex signal key H(neuron ‖ step).
+    let parsed = match dim {
+        "time" => height_key(key),
+        "signals" => signal_key_arg(key),
+        _ => h32(key),
+    };
     let Some(k) = parsed else { eprintln!("bad key"); return 3 };
     let Some(proof) = bbg::bbg_query(&bbg.state, d, &k) else { eprintln!("not found"); return 1 };
     let ok = bbg::verify_query(&proof);
@@ -281,8 +286,17 @@ fn h32(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// Parse a signals key: `<neuron-hex>:<step>` → `bbg::signal_key(neuron, step)`,
+/// or a bare hex signal key.
+fn signal_key_arg(s: &str) -> Option<[u8; 32]> {
+    match s.split_once(':') {
+        Some((neuron, step)) => Some(bbg::signal_key(&h32(neuron)?, step.parse().ok()?)),
+        None => h32(s),
+    }
+}
+
 /// Parse a u64 height into a key: little-endian into the first 8 bytes,
-/// matching how bbg_query reads the time/signals dimensions.
+/// matching how bbg_query reads the time dimension.
 fn height_key(s: &str) -> Option<[u8; 32]> {
     let n: u64 = s.parse().ok()?;
     let mut out = [0u8; 32];
@@ -292,7 +306,7 @@ fn height_key(s: &str) -> Option<[u8; 32]> {
 
 #[cfg(test)]
 mod tests {
-    use super::{dim_from, h32, height_key};
+    use super::{dim_from, h32, height_key, signal_key_arg};
     use bbg::Dim;
 
     #[test]
@@ -350,6 +364,17 @@ mod tests {
         let mut expected = [0u8; 32];
         expected[..8].copy_from_slice(&42u64.to_le_bytes());
         assert_eq!(height_key("42"), Some(expected));
+    }
+
+    #[test]
+    fn signal_key_arg_names_a_signal_by_neuron_and_step() {
+        let neuron = "ab".repeat(32);
+        assert_eq!(signal_key_arg(&format!("{neuron}:7")), Some(bbg::signal_key(&[0xab; 32], 7)));
+        let key = bbg::signal_key(&[0xab; 32], 0);
+        let hex_key: String = key.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(signal_key_arg(&hex_key), Some(key));
+        assert_eq!(signal_key_arg(&format!("{neuron}:-1")), None);
+        assert_eq!(signal_key_arg("zz:1"), None);
     }
 
     #[test]

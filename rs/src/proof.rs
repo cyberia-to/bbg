@@ -27,7 +27,7 @@ use crate::dim::{
 };
 use crate::query::Dim;
 use crate::query_auth::{QueryContext, MAX_QUERY_FIELDS};
-use crate::state::{BbgState, balance_key};
+use crate::state::{BbgState, balance_key, signal_key};
 use crate::types::{NeuronId, Particle};
 
 /// A proof that a committed cell of a BBG dimension has a given value.
@@ -162,14 +162,13 @@ pub(crate) fn dim_entries(state: &BbgState, dim: Dim) -> Vec<(Particle, Vec<Gold
         Dim::Signals => state
             .signals
             .iter()
-            .map(|(s, v)| {
-                let mut key = [0u8; 32];
-                key[..8].copy_from_slice(&s.to_le_bytes());
+            .map(|(k, v)| {
                 let mut vals = goldilocks_from_bytes32(&v.neuron).to_vec();
                 vals.extend(goldilocks_from_bytes32(&v.network));
                 vals.extend(fields(&[v.link_count as u64, v.block_height]));
                 vals.extend_from_slice(&goldilocks_from_bytes32(&v.proof_hash));
-                (key, vals)
+                vals.extend(fields(&[v.step]));
+                (*k, vals)
             })
             .collect(),
         Dim::Balances => state
@@ -242,11 +241,15 @@ pub fn prove_file(state: &BbgState, particle: &Particle) -> Option<QueryProof> {
     open_entity(state, Dim::Files, particle, 0)
 }
 
-pub fn prove_signal(state: &BbgState, step: u64) -> Option<QueryProof> {
-    let mut key = [0u8; 32];
-    key[..8].copy_from_slice(&step.to_le_bytes());
+/// Open `neuron`'s signal at its chain `step` (key [`signal_key`]).
+pub fn prove_signal(state: &BbgState, neuron: &NeuronId, step: u64) -> Option<QueryProof> {
+    prove_signal_key(state, &signal_key(neuron, step))
+}
+
+/// Open the signal record at a signals key (`signal_key(neuron, step)`).
+pub fn prove_signal_key(state: &BbgState, key: &Particle) -> Option<QueryProof> {
     // link_count follows two eight-limb IDs: neuron and network.
-    open_entity(state, Dim::Signals, &key, 16)
+    open_entity(state, Dim::Signals, key, 16)
 }
 
 pub fn prove_time(state: &BbgState, height: u64) -> Option<QueryProof> {

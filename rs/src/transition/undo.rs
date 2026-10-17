@@ -137,13 +137,14 @@ fn restore(bbg: &mut Bbg, key: &[u8], value: Option<&[u8]>) {
         9 => entry!(s.time, position(), r.array()),
         10 => entry!(
             s.signals,
-            position(),
+            entity(),
             SignalRecord {
                 neuron: r.array(),
                 network: r.array(),
                 link_count: r.u32(),
                 block_height: r.u64(),
                 proof_hash: r.array(),
+                step: r.u64(),
             }
         ),
         11 => entry!(s.commitments, entity(), Goldilocks::new(r.u64())),

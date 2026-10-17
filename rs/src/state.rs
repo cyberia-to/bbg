@@ -52,6 +52,24 @@ pub fn balance_key(owner: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
     out
 }
 
+/// Compute the signals dimension key: H(neuron || step), `step` little-endian.
+///
+/// A signal is named by its author and its place in the author's own chain;
+/// steps are per-neuron counters (every neuron's first signal is step 0), so
+/// the step alone collides across neurons (launch row 9, bbg#31/#32). The
+/// 40-byte preimage cannot coincide with the 64-byte preimages of
+/// [`axon_id`] / [`balance_key`] or the 72-byte intent key.
+pub fn signal_key(neuron: &NeuronId, step: u64) -> Particle {
+    let mut buf = [0u8; 40];
+    buf[..32].copy_from_slice(neuron);
+    buf[32..].copy_from_slice(&step.to_le_bytes());
+    let h = hemera_hash(&buf);
+    let b = h.as_bytes();
+    let mut out = [0u8; 32];
+    out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
+    out
+}
+
 /// Which derivation of the 13 commitment leaves the root folds over.
 ///
 /// The 14-leaf fold itself (`crate::root::root_from_leaves`) and the stats leaf are
@@ -87,8 +105,8 @@ pub struct BbgState {
     pub files: Keyed<Particle, FileRecord>,
     /// height → BBG_root snapshot
     pub time: Keyed<u64, Particle>,
-    /// step → signal record
-    pub signals: Keyed<u64, SignalRecord>,
+    /// signals: H(neuron || step) → signal record ([`signal_key`])
+    pub signals: Keyed<Particle, SignalRecord>,
     /// A(x): commit_point → value (private polynomial commitments)
     pub commitments: Keyed<[u8; 32], Goldilocks>,
     /// N(x): spent nullifiers
@@ -426,13 +444,17 @@ impl BbgState {
         key
     }
 
-    /// Persist a signal header-only record (no cyberlinks applied).
+    /// Persist a signal header-only record (no cyberlinks applied) at
+    /// [`signal_key`]`(record.neuron, record.step)`; returns the key.
     ///
     /// Used when the signal has already been validated and ordered by sync
     /// but the cyberlink batch is being applied separately (e.g., for sealing
-    /// a previously-declared intent).
-    pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
-        self.signals.insert(step, record);
+    /// a previously-declared intent). The key depends only on the record, so
+    /// the dimension is the same whatever order signals arrive in.
+    pub fn apply_signal_record(&mut self, record: SignalRecord) -> Particle {
+        let key = signal_key(&record.neuron, record.step);
+        self.signals.insert(key, record);
+        key
     }
 
 }

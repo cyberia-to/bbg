@@ -40,12 +40,13 @@ pub(crate) fn neuron(n: &NeuronRecord) -> Vec<u8> {
 }
 
 pub(crate) fn signal(s: &SignalRecord) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(108);
+    let mut bytes = Vec::with_capacity(116);
     bytes.extend(s.neuron);
     bytes.extend(s.network);
     bytes.extend(s.link_count.to_le_bytes());
     bytes.extend(s.block_height.to_le_bytes());
     bytes.extend(s.proof_hash);
+    bytes.extend(s.step.to_le_bytes());
     bytes
 }
 
@@ -130,7 +131,7 @@ pub fn records(bbg: &Bbg) -> Result<impl Iterator<Item = Record> + '_, Error> {
             Box::new(
                 s.signals
                     .iter()
-                    .map(move |(k, v)| record(10, &k.to_be_bytes(), signal(v))),
+                    .map(move |(k, v)| record(10, k, signal(v))),
             ),
             Box::new(
                 s.commitments
@@ -171,7 +172,7 @@ pub(crate) fn read(bbg: &Bbg, key: &[u8]) -> Option<Vec<u8>> {
         3 => s.axons_in.get(&entity()).map(|v| adjacency(v)),
         4 => s.neurons.get(&entity()).map(neuron),
         9 => s.time.get(&position()).map(|v| v.to_vec()),
-        10 => s.signals.get(&position()).map(signal),
+        10 => s.signals.get(&entity()).map(signal),
         11 => s
             .commitments
             .get(&entity())

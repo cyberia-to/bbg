@@ -10,16 +10,14 @@ fn state() -> BbgState {
     let mut record = ParticleRecord::zero();
     record.energy = 77;
     state.particles.insert([1; 32], record);
-    state.signals.insert(
-        7,
-        SignalRecord {
-            neuron: [2; 32],
-            network: [3; 32],
-            link_count: 5,
-            block_height: u64::MAX,
-            proof_hash: [4; 32],
-        },
-    );
+    state.apply_signal_record(SignalRecord {
+        neuron: [2; 32],
+        network: [3; 32],
+        link_count: 5,
+        block_height: u64::MAX,
+        proof_hash: [4; 32],
+        step: 7,
+    });
     state.refresh_root();
     state
 }
@@ -94,7 +92,7 @@ fn a_changed_signal_network_moves_the_certified_root() {
         .unwrap();
     // Every mutation goes through the committed map, so the root is never
     // stale: a certificate taken right after the change binds the new root.
-    state.signals.get_mut(&7).unwrap().network[0] += 1;
+    state.signals.get_mut(&bbg::signal_key(&[2; 32], 7)).unwrap().network[0] += 1;
     let cert = StateCertificate::from_state(&state, &[9]).unwrap();
     assert_ne!(cert.root().unwrap(), old);
     assert!(cert.verify(old).is_err());

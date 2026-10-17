@@ -33,7 +33,7 @@ pub use checkpoint::{Checkpoint, CheckpointProof};
 pub use proof::{
     QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
     prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,
-    prove_time, verify_particle,
+    prove_signal_key, prove_time, verify_particle,
 };
 pub use prune::{PruneConfig, PruneState};
 pub use root::{RootLeaves, root_from_leaves, root_to_bytes};
@@ -43,7 +43,7 @@ pub use query::{
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
 pub use keyed::{AxonIndex, Keyed, KeyedSet};
-pub use state::{BbgState, RootVersion, balance_key};
+pub use state::{BbgState, RootVersion, balance_key, signal_key};
 pub use trie::{Trie, TrieProof};
 pub use stats::{GraphStats, STAT_RELATIONS};
 pub use types::{IntentRecord, NeuronId, NeuronRecord, Particle, SignalRecord};
@@ -143,8 +143,9 @@ impl Bbg {
         prove_file(&self.state, particle)
     }
 
-    pub fn prove_signal(&self, step: u64) -> Option<QueryProof> {
-        prove_signal(&self.state, step)
+    /// Open `neuron`'s signal at its chain `step`.
+    pub fn prove_signal(&self, neuron: &NeuronId, step: u64) -> Option<QueryProof> {
+        prove_signal(&self.state, neuron, step)
     }
 
     pub fn prove_time(&self, height: u64) -> Option<QueryProof> {
@@ -165,10 +166,11 @@ impl Bbg {
         self.state.apply_intent(intent)
     }
 
-    /// Persist a signal header without applying its cyberlinks.
+    /// Persist a signal header without applying its cyberlinks, at
+    /// `signal_key(record.neuron, record.step)`; returns the key.
     /// Used when sealing follows a separate intent → seal lifecycle.
-    pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
-        self.state.apply_signal_record(step, record);
+    pub fn apply_signal_record(&mut self, record: SignalRecord) -> Particle {
+        self.state.apply_signal_record(record)
     }
 
     /// Committed graph statistics — the bbg → inf cost/recursion interface.

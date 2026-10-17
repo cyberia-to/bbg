@@ -128,8 +128,8 @@ fn primary_index(fields: &[u64], dim: Dim, key: &[u8; 32]) -> Option<usize> {
         for (part, &limb) in bytes.chunks_exact_mut(4).zip(limbs) {
             part.copy_from_slice(&u32::try_from(limb).ok()?.to_le_bytes());
         }
-        // Numeric dimensions use BTreeMap<u64>; their eight-byte keys are LE.
-        let sort_key = if matches!(dim, Dim::Time | Dim::Signals) {
+        // Time uses BTreeMap<u64>; its eight-byte keys are LE.
+        let sort_key = if dim == Dim::Time {
             if bytes[8..].iter().any(|&v| v != 0) {
                 return None;
             }
@@ -153,7 +153,7 @@ fn primary_index(fields: &[u64], dim: Dim, key: &[u8; 32]) -> Option<usize> {
             Dim::Cards => 16,
             Dim::Files => 4,
             Dim::Time => 8,
-            Dim::Signals => 28,
+            Dim::Signals => 30,
             Dim::AxonsOut | Dim::AxonsIn => {
                 let low = u32::try_from(*fields.get(start)?).ok()? as u64;
                 let high = u32::try_from(*fields.get(start + 1)?).ok()? as u64;

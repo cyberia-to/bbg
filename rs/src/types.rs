@@ -87,6 +87,10 @@ pub struct SignalRecord {
     pub link_count: u32,
     pub block_height: u64,
     pub proof_hash: Particle,
+    /// the neuron's own signal-chain step (0 for its first signal). The
+    /// record lives at `state::signal_key(neuron, step)`: steps are
+    /// per-neuron counters, so the step alone does not name a signal.
+    pub step: u64,
 }
 
 /// An intent record committed to the intents dimension.

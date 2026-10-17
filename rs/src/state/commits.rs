@@ -75,6 +75,7 @@ impl LeafValue for SignalRecord {
         vals.extend_from_slice(&u64_limbs(self.link_count as u64));
         vals.extend_from_slice(&u64_limbs(self.block_height));
         vals.extend_from_slice(&bytes32_limbs(&self.proof_hash));
+        vals.extend_from_slice(&u64_limbs(self.step));
         vals
     }
 }
