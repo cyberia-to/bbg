@@ -42,6 +42,12 @@ time.
    row 9). Version 3 kept; no blessed root moves. Evidence:
    [signals-key-2026-10-17.md](signals-key-2026-10-17.md).
 
+Amended 2026-10-17: version 3 is no longer the root chain's genesis
+version. Dimension version 4 (rules 1–7 unchanged, rules 8–10 positions;
+soft3 `specs/chain-economy.md` §3) replaces it before genesis froze, and the
+version word in every trie leaf moves every root recorded below. Evidence:
+[positions-v4-2026-10-17.md](positions-v4-2026-10-17.md).
+
 ## why not chunked Brakedown commitments
 
 The alternative considered for the size cap: split each flat dimension into
