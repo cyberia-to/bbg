@@ -5,7 +5,7 @@ crystal-domain: cyber
 ---
 # state
 
-The state derives under **dimension version 3** (§ dimension versions below). Flat tables — the v1 root and public state authentication — use [table format version 2](state-certificate.md). Old roots and proofs must be recomputed.
+The state derives under **dimension version 4** (§ dimension versions below). Flat tables — the v1 root and public state authentication — use [table format version 2](state-certificate.md). Old roots and proofs must be recomputed.
 
 all authenticated state committed under a single polynomial commitment. individual [[cyberlinks]] are private (polynomial mutator set). the public state contains only aggregates.
 
@@ -31,7 +31,7 @@ BBG_poly(index, key, t) — multivariate polynomial over Goldilocks field
   neurons       focus, karma, stake, nonce per neuron (nonce: the root chain's replay counter)
   locations     proof of location
   coins         fungible token denominations
-  cards         names and knowledge assets
+  cards         positions: an author's locked stake on an axon (card id → owner, axon, author, valence, since)
   files         content availability (DAS)
   time          temporal snapshots (continuous, replaces 7-namespace NMT)
   signals       finalized signal batches
@@ -61,9 +61,10 @@ a v1 root recompute is linear in the state, so a chain's cost is quadratic in it
 | version | date | rules |
 |---|---|---|
 | 2 | 2026-10-15 | flat tables, injective limbs, `TABLE_VERSION = 2` header |
-| 3 | 2026-10-16, rule 7 2026-10-17 | rules 1–7 below — the root chain's genesis version (soft3 specs/chain.md §3) |
+| 3 | 2026-10-16, rule 7 2026-10-17 | rules 1–7 below |
+| 4 | 2026-10-17 | rules 1–7 + rules 8–10 below — positions; the root chain's genesis version (soft3 specs/chain.md §3, specs/chain-economy.md §3) |
 
-**dimension version 3** (the fresh chain starts here):
+**dimension version 3**:
 
 1. the dimension leaf is the keyed-trie root (v2); every trie leaf IV carries the version: `[LEAF_TAG, |v|, DIMENSION_VERSION, 0]`;
 2. field encoding is injective: a `u64` is two 32-bit limbs (low first), 32 bytes are eight 32-bit limbs — one Goldilocks limb per `u64` would make `v` and `v − p` collide;
@@ -72,6 +73,44 @@ a v1 root recompute is linear in the state, so a chain's cost is quadratic in it
 5. `NeuronRecord` is `[focus, karma, stake, nonce]` — `nonce` is the root chain's per-neuron replay counter (soft3 specs/chain.md §2.5), under the root;
 6. the flat table layout keeps its own word, `TABLE_VERSION = 2` (the zheng state-evidence contract): the layout does not depend on record schemas, so rule 5 widens neuron entries (6 → 8 limbs) without a new table format;
 7. a signal record lives at `signal_key(neuron, step) = H(neuron ‖ step)` — hemera over the 32-byte neuron id and the step as 8 little-endian bytes — and `SignalRecord` is `[neuron, network, link_count, block_height, proof_hash, step]`. `step` is the neuron's own signal-chain counter, so every neuron's first signal is step 0: keyed by the bare step, two neurons' signals shared a record and arrival order picked the survivor and the root (launch row 9, bbg#31/#32). Under rule 7 the signals dimension is a function of the set of accepted signals. Added to version 3 before genesis froze (owner decision 2026-10-17, `cyber/launch.md`); no version-3 genesis state carries a signal record, so no blessed root moved (`audit/signals-key-2026-10-17.md`).
+
+**dimension version 4** (2026-10-17, the fresh chain starts here; soft3 `specs/chain-economy.md` §3, owner order "foculus, stakes with valence, and mining"). Rules 1–7 hold unchanged; the version word in every trie leaf IV is 4, so every root of a non-empty state moves. Added:
+
+8. a **position** is one card: one author's locked stake on one axon `(p, q)`. `CardRecord` is `[owner, particle, author, valence, since]`, in this order:
+
+   | field | type | v2 leaf limbs | meaning |
+   |---|---|---|---|
+   | `owner` | 32 bytes | 8 | payout owner: the account credited with the position's rewards (`balances[H(owner ‖ τ_native)]`) |
+   | `particle` | 32 bytes | 8 | the axon-particle `axon_id(p, q) = H(p ‖ q)` |
+   | `author` | 32 bytes | 8 | the neuron that locked the stake; only it may unlock |
+   | `valence` | u8, `v + 1` ∈ {0, 1, 2} | 2 (as a u64) | v ∈ {−1, 0, +1}; any other byte is not a record |
+   | `since` | u64 | 2 | height of the last stake increase |
+
+   28 limbs in the trie leaf and the flat table (was 16); native record (domain 7) 105 bytes, `owner 32 ‖ particle 32 ‖ author 32 ‖ valence u8 ‖ since u64 LE` (was 64). The card lives at
+
+   ```
+   card_id(author, p, q) = H(D_CARD ‖ author ‖ p ‖ q)      // 20 + 96 = 116 bytes in
+   D_CARD = "soft3/chain/card/v1\0"
+   ```
+
+   The stake amount is no field: it is the native balance at `stake_key(card)` (rule 9). A card exists exactly while its stake is positive; the writer (the chain kernel) creates it on the first lock and deletes it when an unlock brings the stake to zero. bbg stores what the writer writes and never moves stake.
+
+9. **reserved balance keys.** Two keys of the balances dimension are addressable only by their derivation, never by an owner:
+
+   ```
+   stake_key(card) = H(D_STAKE ‖ card)     // 21 + 32 = 53 bytes in;  D_STAKE = "soft3/chain/stake/v1\0"
+   focus_key(τ)    = H(D_FOCUS ‖ τ)        // 21 + 32 = 53 bytes in;  D_FOCUS = "soft3/chain/focus/v1\0"
+   ```
+
+   `stake_key(card)` holds the position's stake, `focus_key(τ_native)` the chain's focus pool. Every bbg path that moves a balance — `BbgState::insert` (a link with conviction moves `H(from ‖ τ)` → `H(to ‖ τ)`) and the native `LocalCredit` — addresses `balance_key(owner, token) = H(owner ‖ token)`, a 64-byte preimage; hemera puts the input length in the capacity, so no owner/token pair reaches a 53-byte preimage, and a transfer to a card id credits `H(card ‖ τ)`, an ordinary balance no key controls. The tags are the chain's (soft3 `specs/chain-economy.md` §3.1); bbg implements the derivation (`position::{card_id, stake_key, focus_key}`) so the kernel, the CLI and the tests share one.
+
+10. **the axon index of cards.** Beside the committed map, the cards dimension keeps an uncommitted index `axon → {card → stake_key(card)}` (`position::Cards`), maintained by every insert and remove and rebuilt by loading the records — like the reverse edge map, it is derived and never enters the root. It serves the epoch snapshot of the chain (soft3 `specs/chain-economy.md` §2.4, §4.2): `BbgState::positions()` lists every position grouped by axon, axons and cards ascending by id, each with its stake, and per axon the side sums
+
+   ```
+   S⁺ = Σ stake over cards with v ∈ {0, +1}        S⁻ = Σ stake over cards with v = −1        (u128)
+   ```
+
+   in O(cards) with no hash per card. The new-high marks `H⁺, H⁻` of chain-economy §5.3 and the epoch records are the chain's: chain-economy places neither in bbg state (they are a function of the chain's history; settlement commits through the balances it pays and `time[settle(E)]`).
 
 **why a trie and not chunked Brakedown.** splitting a flat dimension into Brakedown-committed chunks of ≤ 2^20 fields (hemera-hashed into the leaf) lifts the size cap but not the cost: a Brakedown commit is 1.33 µs per field on an M4 Max (2^10: 2.3 ms, 2^16: 92 ms, 2^20: 1.39 s per commit; `audit/dimension-version-3-2026-10-16.md`), and a sorted flat layout shifts every chunk after an insertion point. even with key-bucketed chunks, a block of random links touches most chunks of bostrom's 2^25-field adjacency dimensions — tens of seconds per block against a 30 s target. the trie costs O(changes · log n) compressions per block with no size cap and a bounded worst case (depth ≤ 256) under adversarial keys. chunked Brakedown buys only Brakedown cell openings, which the zheng look argument cannot use against a chunked leaf without a circuit change anyway; when zheng opens state, it opens trie paths (same `compress4`).
 

@@ -83,8 +83,8 @@ DIMENSION 6: coins
 
 DIMENSION 7: cards
   evaluation: BBG_poly(cards, card_id, t) → card_record
-  key: card_id
-  proves: "card C exists, bound to axon-particle P, owned by N"
+  key: card_id = H(D_CARD ‖ author ‖ p ‖ q)            (state.md rule 8)
+  proves: "position C exists: author A's stake on axon-particle P, valence v, paid to owner N"
 
 DIMENSION 8: files
   evaluation: BBG_poly(files, particle, t) → availability_record
@@ -143,12 +143,14 @@ coins entry:
   max_supply: F_p (0 = unlimited)      8 bytes
   transfer_rules: u8                   1 byte
 
-cards entry:
+cards entry (a position, dimension version 4, state.md rule 8):
   key: card_id                         32 bytes
-  bound_axon_particle: F_p⁴           32 bytes
-  current_owner: F_p⁴                 32 bytes
-  creator: F_p⁴                       32 bytes
-  creation_time: u64                   8 bytes
+  owner: 32 bytes                      payout owner
+  particle: 32 bytes                   axon-particle H(p ‖ q)
+  author: 32 bytes                     the neuron that locked the stake
+  valence: u8                          v + 1 ∈ {0, 1, 2}
+  since: u64                           height of the last stake increase
+  stake: balances[stake_key(card_id)]  not a field (state.md rule 9)
 
 files entry:
   key: particle                        32 bytes

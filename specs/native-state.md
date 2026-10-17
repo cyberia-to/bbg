@@ -49,7 +49,7 @@ fixed-width byte arrays. No key or u64 value is reduced into a field element.
 | 4 | neuron: focus, karma, stake, nonce (four u64; nonce since dimension version 3) |
 | 5 | location: lat, lon (two i32) |
 | 6 | coin: total supply u64 |
-| 7 | card: owner 32, particle 32 |
+| 7 | card (a position): owner 32, particle 32, author 32, valence u8 (`v + 1`), since u64 (author, valence, since since dimension version 4) |
 | 8 | file: available u8 (0 or 1), chunk count u32 |
 | 9 | time: root 32 |
 | 10 | signal: neuron 32, network 32, link count u32, height u64, proof hash 32, step u64 (step since dimension version 3 rule 7) |
