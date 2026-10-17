@@ -63,7 +63,7 @@ bbg prove <dim> <key>    generate a query proof for the key; print the opened va
 bbg verify <proof>       verify a serialized query proof against its embedded root   [blocked]
 ```
 
-`<dim>` is one of: `particles axons-out axons-in neurons locations coins cards files time signals balances commitments nullifiers` (the [[cross-index|Dim]] set). `<key>` is a hex particle/neuron id, a u64 height for `time`, or `<neuron-hex>:<step>` (or the hex signal key `H(neuron ‖ step)`) for `signals`.
+`<dim>` is one of: `particles axons-out axons-in neurons locations coins cards files time signals balances commitments nullifiers` (the [[cross-index|Dim]] set). `<key>` is a hex particle/neuron id, a u64 height for `time`, or `<neuron-hex>:<step>` (or the hex signal key `H(neuron ‖ step)`) for `signals`, or `<author-hex>:<p-hex>:<q-hex>` (or the hex card id `card_id(author, p, q)`, [[state]] rule 8) for `cards`.
 
 ## output
 
