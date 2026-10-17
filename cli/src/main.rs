@@ -204,12 +204,12 @@ fn cmd_get(bbg: &Bbg, dim: &str, key: &str, json: bool) -> i32 {
 fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
     let show = |name: &str| dim.is_none() || dim == Some(name);
     if show("particles") {
-        for (k, p) in &bbg.state.particles {
+        for (k, p) in bbg.state.particles.iter() {
             println!("particles {}  energy {}  weight {}", hex(k), p.energy, p.weight);
         }
     }
     if show("neurons") {
-        for (k, n) in &bbg.state.neurons {
+        for (k, n) in bbg.state.neurons.iter() {
             println!("neurons {}  focus {}  karma {}  stake {}", hex(k), n.focus, n.karma, n.stake);
         }
     }
@@ -220,7 +220,7 @@ fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
         }
     }
     if show("signals") {
-        for (step, r) in &bbg.state.signals {
+        for (step, r) in bbg.state.signals.iter() {
             println!("signal step {}  neuron {}  links {}  height {}", step, hex(&r.neuron), r.link_count, r.block_height);
         }
     }
