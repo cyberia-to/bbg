@@ -36,6 +36,12 @@ time.
    independent reference of `specs/state.md` over hemera (no hand-pinned
    digest), so the vectors follow hemera 0.4 without re-pinning.
 
+7. (amended 2026-10-17, rule 7) the signals dimension is keyed by
+   `signal_key(neuron, step) = H(neuron ‖ step)` and `SignalRecord` carries
+   `step` — two neurons' step-0 signals no longer share a record (launch
+   row 9). Version 3 kept; no blessed root moves. Evidence:
+   [signals-key-2026-10-17.md](signals-key-2026-10-17.md).
+
 ## why not chunked Brakedown commitments
 
 The alternative considered for the size cap: split each flat dimension into

@@ -28,3 +28,6 @@ The storage contract lives in [specs/storage.md](../specs/storage.md).
 - [Dimension version 3](dimension-version-3-2026-10-16.md) — the root chain's
   genesis version (nonce, versioned trie leaves, no zero rows), deferred
   hashing, chunked Brakedown measured and rejected, both burials committed.
+- [Signals key, dimension version 3 rule 7](signals-key-2026-10-17.md) —
+  launch row 9: signals keyed by H(neuron ‖ step), the step-0 collision and
+  the acceptance-order dependence removed, no blessed root moved.
