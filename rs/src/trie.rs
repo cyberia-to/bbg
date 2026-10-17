@@ -592,7 +592,7 @@ mod tests {
         acc = compress4(&acc, &[limbs[4], limbs[5], limbs[6], limbs[7]]);
         acc = compress4(&acc, &[vals[0], vals[1], g(0), g(0)]);
         assert_eq!(leaf_digest(&key, &vals), acc);
-        assert_eq!(crate::dim::DIMENSION_VERSION, 3);
+        assert_eq!(crate::dim::DIMENSION_VERSION, 4);
     }
 
     #[test]

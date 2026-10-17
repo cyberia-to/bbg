@@ -17,6 +17,7 @@ pub mod query_auth;
 #[cfg(feature = "serde")]
 mod query_wire;
 pub mod keyed;
+pub mod position;
 pub mod proof;
 pub mod prune;
 pub mod query;
@@ -46,7 +47,11 @@ pub use keyed::{AxonIndex, Keyed, KeyedSet};
 pub use state::{BbgState, RootVersion, balance_key, signal_key};
 pub use trie::{Trie, TrieProof};
 pub use stats::{GraphStats, STAT_RELATIONS};
-pub use types::{IntentRecord, NeuronId, NeuronRecord, Particle, SignalRecord};
+pub use position::{
+    AxonPositions, Cards, D_CARD, D_FOCUS, D_STAKE, Position, PositionSnapshot, SideSums, card_id,
+    focus_key, stake_key,
+};
+pub use types::{CardRecord, IntentRecord, NeuronId, NeuronRecord, Particle, Side, SignalRecord, Valence};
 
 /// The BBG facade: state + checkpoint + pruning policy as a single unit.
 pub struct Bbg {

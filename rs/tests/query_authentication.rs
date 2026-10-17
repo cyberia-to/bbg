@@ -122,6 +122,9 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
         CardRecord {
             owner: [7; 32],
             particle: [8; 32],
+            author: [13; 32],
+            valence: Valence::Against,
+            since: u64::MAX,
         },
     );
     s.files.insert(

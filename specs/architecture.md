@@ -152,7 +152,7 @@ fungible token denominations. one entry per denomination τ. stores total supply
 
 ### cards — evaluation dimension
 
-non-fungible knowledge assets. every cyberlink is a card. names are cards bound to axon-particles (A6: axons are particles, names are human-readable identifiers for those particles).
+positions: an author's locked stake on an axon-particle, with a valence and a payout owner (dimension version 4, [[state]] rule 8). the stake itself is a balance at a reserved key (rule 9).
 
 ### files — evaluation dimension
 

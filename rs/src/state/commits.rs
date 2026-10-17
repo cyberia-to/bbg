@@ -58,6 +58,9 @@ impl LeafValue for CardRecord {
     fn leaf_vals(&self) -> Vec<Goldilocks> {
         let mut vals = bytes32_limbs(&self.owner).to_vec();
         vals.extend_from_slice(&bytes32_limbs(&self.particle));
+        vals.extend_from_slice(&bytes32_limbs(&self.author));
+        vals.extend_from_slice(&u64_limbs(self.valence.byte() as u64));
+        vals.extend_from_slice(&u64_limbs(self.since));
         vals
     }
 }

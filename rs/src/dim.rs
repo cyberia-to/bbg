@@ -9,8 +9,9 @@ use nebu::Goldilocks;
 /// § dimension versions): record schemas, the conviction-free link and zero
 /// row rules, and the trie leaf derivation, which carries this number.
 /// 3 = `NeuronRecord.nonce`, keyed-trie leaves, no zero records, signals keyed
-/// by `H(neuron ‖ step)` (`state::signal_key`).
-pub const DIMENSION_VERSION: u64 = 3;
+/// by `H(neuron ‖ step)` (`state::signal_key`). 4 = positions: `CardRecord`
+/// carries `author`, `valence`, `since` (`crate::position`).
+pub const DIMENSION_VERSION: u64 = 4;
 /// Version word of the flat table layout (`[version, length, entries,
 /// (key(8) ‖ fields)*]`) — the v1 dimension polynomial and the state
 /// certificate tables zheng authenticates (`zheng::execution::state_evidence::

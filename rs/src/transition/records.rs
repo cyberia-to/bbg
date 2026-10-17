@@ -39,6 +39,16 @@ pub(crate) fn neuron(n: &NeuronRecord) -> Vec<u8> {
     integers(&[n.focus, n.karma, n.stake, n.nonce])
 }
 
+pub(crate) fn card(c: &CardRecord) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(105);
+    bytes.extend(c.owner);
+    bytes.extend(c.particle);
+    bytes.extend(c.author);
+    bytes.push(c.valence.byte());
+    bytes.extend(c.since.to_le_bytes());
+    bytes
+}
+
 pub(crate) fn signal(s: &SignalRecord) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(116);
     bytes.extend(s.neuron);
@@ -116,7 +126,7 @@ pub fn records(bbg: &Bbg) -> Result<impl Iterator<Item = Record> + '_, Error> {
             Box::new(
                 s.cards
                     .iter()
-                    .map(move |(k, v)| record(7, k, [v.owner, v.particle].concat())),
+                    .map(move |(k, v)| record(7, k, card(v))),
             ),
             Box::new(s.files.iter().map(move |(k, v)| {
                 let mut bytes = vec![u8::from(v.available)];

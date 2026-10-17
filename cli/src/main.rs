@@ -231,10 +231,12 @@ fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
 fn cmd_prove(bbg: &Bbg, dim: &str, key: &str, json: bool) -> i32 {
     let Some(d) = dim_from(dim) else { eprintln!("unknown dim: {dim}"); return 3 };
     // time keys are a u64 height, encoded LE into the first 8 bytes; signals
-    // keys are `<neuron-hex>:<step>` or the hex signal key H(neuron ‖ step).
+    // keys are `<neuron-hex>:<step>` or the hex signal key H(neuron ‖ step);
+    // cards keys are `<author-hex>:<p-hex>:<q-hex>` or the hex card id.
     let parsed = match dim {
         "time" => height_key(key),
         "signals" => signal_key_arg(key),
+        "cards" => card_key_arg(key),
         _ => h32(key),
     };
     let Some(k) = parsed else { eprintln!("bad key"); return 3 };
@@ -295,6 +297,17 @@ fn signal_key_arg(s: &str) -> Option<[u8; 32]> {
     }
 }
 
+/// Parse a cards key: `<author-hex>:<p-hex>:<q-hex>` → `bbg::card_id(author, p, q)`,
+/// or a bare hex card id.
+fn card_key_arg(s: &str) -> Option<[u8; 32]> {
+    let parts: Vec<&str> = s.split(':').collect();
+    match parts.as_slice() {
+        [author, p, q] => Some(bbg::card_id(&h32(author)?, &h32(p)?, &h32(q)?)),
+        [card] => h32(card),
+        _ => None,
+    }
+}
+
 /// Parse a u64 height into a key: little-endian into the first 8 bytes,
 /// matching how bbg_query reads the time dimension.
 fn height_key(s: &str) -> Option<[u8; 32]> {
@@ -306,7 +319,7 @@ fn height_key(s: &str) -> Option<[u8; 32]> {
 
 #[cfg(test)]
 mod tests {
-    use super::{dim_from, h32, height_key, signal_key_arg};
+    use super::{card_key_arg, dim_from, h32, height_key, signal_key_arg};
     use bbg::Dim;
 
     #[test]
@@ -382,5 +395,16 @@ mod tests {
         assert_eq!(height_key(""), None);
         assert_eq!(height_key("abc"), None);
         assert_eq!(height_key("-1"), None);
+    }
+
+    #[test]
+    fn card_key_arg_names_a_position_by_author_and_axon() {
+        let (a, p, q) = ("ab".repeat(32), "01".repeat(32), "02".repeat(32));
+        let card = bbg::card_id(&[0xab; 32], &[1; 32], &[2; 32]);
+        assert_eq!(card_key_arg(&format!("{a}:{p}:{q}")), Some(card));
+        let hex_card: String = card.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(card_key_arg(&hex_card), Some(card));
+        assert_eq!(card_key_arg(&format!("{a}:{p}")), None);
+        assert_eq!(card_key_arg(&format!("{a}:{p}:zz")), None);
     }
 }

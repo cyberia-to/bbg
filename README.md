@@ -30,7 +30,7 @@ PUBLIC NMTs (9 roots)
   neurons.root         focus, karma, stake per neuron
   locations.root       proof of location
   coins.root           fungible token denominations
-  cards.root           names and knowledge assets
+  cards.root           positions: staked cyberlinks (author, axon, valence, since)
   files.root           content availability (DAS)
   time.root            temporal index (7 namespaces)
 

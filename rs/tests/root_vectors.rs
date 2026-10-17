@@ -5,10 +5,11 @@
 // ---
 //! Root derivation vectors and properties.
 //!
-//! Dimension version 3 (2026-10-16): v2 (keyed trie) is the default, every
+//! Dimension version 4 (2026-10-17): v2 (keyed trie) is the default, every
 //! trie leaf carries `DIMENSION_VERSION`, `NeuronRecord` carries the chain
 //! `nonce`, a link without conviction writes only topology, a zero balance is
-//! an absent row, a signal record lives at `H(neuron ‖ step)` (rule 7).
+//! an absent row, a signal record lives at `H(neuron ‖ step)` (rule 7), a card
+//! is a position `[owner, particle, author, valence, since]` (rule 8).
 //!
 //! Hash-agnostic: no digest is pinned by hand. Every expected root is
 //! recomputed here by an independent reference of specs/state.md — records
@@ -22,6 +23,7 @@
 
 use bbg::types::{
     CardRecord, CoinRecord, FileRecord, LocationRecord, NeuronRecord, ParticleRecord, SignalRecord,
+    Valence,
 };
 use bbg::{Bbg, BbgState, BoxMove, Cyberlink, PruneConfig, RootVersion, Signal};
 
@@ -63,7 +65,13 @@ fn all_dims(version: RootVersion) -> Bbg {
     }
     b.state.locations.insert(p(40), LocationRecord { lat: -5, lon: 110 });
     b.state.coins.insert(p(41), CoinRecord { total_supply: 1_000_000 });
-    b.state.cards.insert(p(42), CardRecord { owner: p(1), particle: p(10) });
+    // two positions on one axon (both sides) and one on another
+    let axon = bbg::state::axon_id(&p(10), &p(20));
+    for (author, valence, since) in [(p(1), Valence::For, 3), (p(2), Valence::Against, u64::MAX)] {
+        let card = bbg::card_id(&author, &p(10), &p(20));
+        b.state.cards.insert(card, CardRecord { owner: p(9), particle: axon, author, valence, since });
+    }
+    b.state.cards.insert(p(42), CardRecord { owner: p(1), particle: p(10), author: p(3), valence: Valence::Neutral, since: 0 });
     b.state.files.insert(p(43), FileRecord { available: true, chunk_count: 9 });
     // two neurons' first signals (step 0 each) and a later step: three records
     for (neuron, step) in [(p(1), 0), (p(2), 0), (p(1), 1)] {
@@ -168,7 +176,16 @@ mod reference {
             same(s.neurons.iter().map(|(k, r)| (*k, u(&[r.focus, r.karma, r.stake, r.nonce]))).collect()),
             same(s.locations.iter().map(|(k, r)| (*k, u(&[r.lat as u32 as u64, r.lon as u32 as u64]))).collect()),
             same(s.coins.iter().map(|(k, r)| (*k, u(&[r.total_supply]))).collect()),
-            same(s.cards.iter().map(|(k, r)| (*k, cat(&[&bytes32_limbs(&r.owner), &bytes32_limbs(&r.particle)]))).collect()),
+            // dimension version 4 rule 8: [owner, particle, author, valence byte (v + 1), since]
+            same(
+                s.cards
+                    .iter()
+                    .map(|(k, r)| {
+                        let valence = (r.valence.to_i8() + 1) as u64;
+                        (*k, cat(&[&bytes32_limbs(&r.owner), &bytes32_limbs(&r.particle), &bytes32_limbs(&r.author), &u(&[valence, r.since])]))
+                    })
+                    .collect(),
+            ),
             same(s.files.iter().map(|(k, r)| (*k, u(&[r.available as u64, r.chunk_count as u64]))).collect()),
             same(s.time.iter().map(|(h, root)| (pos(*h), bytes32_limbs(root).to_vec())).collect()),
             same(

@@ -7,7 +7,7 @@ query hiding and does not rely on sampled polynomial acceptance.
 
 ## Canonical dimension encoding
 
-Table format version 2 (`dim::TABLE_VERSION`) changes roots and cell offsets. The table layout is record-agnostic: dimension version 3 added `nonce` to neuron entries (width 8 limbs) without changing this word. Recompute old roots
+Table format version 2 (`dim::TABLE_VERSION`) changes roots and cell offsets. The table layout is record-agnostic: dimension version 3 added `nonce` to neuron entries (width 8 limbs) and dimension version 4 widened card entries to owner, particle, author, valence, since (16 → 28 limbs) without changing this word. Recompute old roots
 and proofs; no legacy fallback exists. For each dimension, the polynomial's
 unpadded field table is `[2, field_count, entry_count, entries...]`. Each entry
 contains its 32-byte key as eight little-endian u32 field limbs, followed by the

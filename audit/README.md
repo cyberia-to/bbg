@@ -31,3 +31,7 @@ The storage contract lives in [specs/storage.md](../specs/storage.md).
 - [Signals key, dimension version 3 rule 7](signals-key-2026-10-17.md) —
   launch row 9: signals keyed by H(neuron ‖ step), the step-0 collision and
   the acceptance-order dependence removed, no blessed root moved.
+- [Dimension version 4 — positions](positions-v4-2026-10-17.md) — the focus
+  economy's bbg side (soft3 chain-economy §3): card record author, valence,
+  since; reserved stake and focus keys; the axon index and epoch snapshot;
+  every non-empty root moves.
