@@ -129,7 +129,7 @@ impl<'a> LookProvider for BbgLookProvider<'a> {
 /// authenticates nothing ([`verify_opening`] returns `false`). Compare it
 /// against a complete public query with `verify_opening_with_context`.
 /// Execution over state is proven with a `StateCertificate` and zheng's
-/// state profile v3. Field layout matches the retired `zheng::LookOpening`.
+/// state profile v3. Field layout matches the LookOpening of the retired zheng 0.3 API.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LookOpening {
     /// Brakedown commitment to the BBG dimension polynomial.

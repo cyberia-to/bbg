@@ -2,6 +2,7 @@
 //! the v1 (flat Brakedown) dimension leaf. Under `RootVersion::V2` the leaf
 //! is a keyed-trie root over the same record fields (see [`crate::trie`]).
 use crate::types::Particle;
+use hemera::hash as hemera_hash;
 use lens::{Commitment, Lens, MultilinearPoly, brakedown::Brakedown};
 use nebu::Goldilocks;
 
@@ -71,10 +72,30 @@ pub(crate) fn dim_serialize(entries: &[(Particle, Vec<Goldilocks>)]) -> Vec<Gold
     fields
 }
 
+/// Brakedown's tensor-Merkle PCS caps at 2^20 evals and panics above that.
+/// A lived-in cyb graph blows past it (and even 2^16 hangs the GUI on
+/// commit). Dims that do not fit get a Hemera digest of the field stream
+/// instead — the process lives; look proofs for those dims stay none.
+const BRAKEDOWN_EVAL_CAP: usize = 1 << 16;
+
 pub(crate) fn commit_fields(fields: &[Goldilocks]) -> Commitment {
+    let n = fields.len().next_power_of_two().max(1);
+    if n > BRAKEDOWN_EVAL_CAP {
+        return hash_fields(fields);
+    }
     let mut padded = fields.to_vec();
-    padded.resize(padded.len().next_power_of_two(), Goldilocks::ZERO);
+    padded.resize(n, Goldilocks::ZERO);
     Brakedown::commit(&MultilinearPoly::new(padded))
+}
+
+fn hash_fields(fields: &[Goldilocks]) -> Commitment {
+    let mut bytes = Vec::with_capacity(24 + fields.len() * 8);
+    bytes.extend_from_slice(b"bbg-dim-oversize-v1");
+    bytes.extend_from_slice(&(fields.len() as u64).to_le_bytes());
+    for f in fields {
+        bytes.extend_from_slice(&f.as_u64().to_le_bytes());
+    }
+    Commitment(hemera_hash(&bytes))
 }
 
 pub fn commit_dim(entries: &[(Particle, Vec<Goldilocks>)]) -> Commitment {
@@ -95,6 +116,18 @@ pub(crate) fn digest_limbs(bytes: &[u8; 32]) -> [Goldilocks; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_dim_commits_without_panic() {
+        let fields: Vec<Goldilocks> = (0..(BRAKEDOWN_EVAL_CAP + 1))
+            .map(|i| Goldilocks::new(i as u64))
+            .collect();
+        let a = commit_fields(&fields);
+        let b = commit_fields(&fields);
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        let small = commit_fields(&[Goldilocks::ONE]);
+        assert_ne!(a.as_bytes(), small.as_bytes());
+    }
 
     #[test]
     fn u64_round_trips_through_goldilocks() {
