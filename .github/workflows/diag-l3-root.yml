@@ -1,0 +1,95 @@
+# CI for bbg.
+#
+# bbg is two separate cargo projects, each with its own Cargo.lock: `rs` (the
+# library) and `cli`. They depend on sibling crates through path deps
+# (../../neuron, ../../strata, ../../hemera, ../../lens, ../../nox, ../../zheng,
+# ../../tade), so every job lays out the same stand as the soft3 release train:
+# bbg, neuron, strata, hemera, lens, nox, zheng, tade and honeycrisp checked out
+# side by side.
+# The `lockfile` job resolves that stand for both projects and uploads the
+# resulting Cargo.lock files as an artifact so they can be committed.
+# The `test` job runs `cargo test --locked` in `rs`, exactly the release train's
+# `stack-bbg` gate, then builds `cli`.
+name: diag-l3-root-vector
+
+on:
+  push:
+    branches: [diag/l3-zheng-root-vector]
+
+env:
+  CARGO_TERM_COLOR: always
+  # empty = neuron's default branch
+  NEURON_REF: ""
+  # empty = strata's default branch
+  STRATA_REF: ""
+  # hemera's 0.4 line; set to main once hemera#25 (release/0.4 -> main) lands
+  HEMERA_REF: release/0.4
+  # lens's 0.2 line; set to master once lens#36 lands
+  LENS_REF: release/0.2
+  # nox's 0.4 line; set to master once the nox landing lands
+  NOX_REF: release/0.4
+  # zheng#73, the hemera 0.4 sweep; set to release/0.4 once #73 merges there,
+  # master once the zheng landing lands
+  ZHENG_REF: ci/hemera-0.4-sweep
+  # empty = tade's default branch
+  TADE_REF: ""
+  # empty = honeycrisp's default branch
+  HONEYCRISP_REF: ""
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: bbg
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/neuron
+          path: neuron
+          ref: ${{ env.NEURON_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/zheng
+          path: zheng
+          ref: ${{ env.ZHENG_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            bbg/rs
+            bbg/cli
+      - name: cargo test (rs)
+        run: cargo test --locked --test diag_l3_root_vector -- --nocapture
+        working-directory: bbg/rs
