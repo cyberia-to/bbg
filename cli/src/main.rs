@@ -8,7 +8,7 @@
 //! A low-level console for bbg's state: apply signals, advance blocks, read a
 //! dimension, prove a key, check the root. It is not the signal lifecycle —
 //! that is cybergraph; `apply` is the raw `insert` cybergraph calls after its
-//! gate. The store is a tade-frame signal log, replayed on open (bbg is
+//! gate. The store is a tape-frame signal log, replayed on open (bbg is
 //! signal-first: state = fold(genesis, log)). See specs/cli.md.
 
 mod frame;
@@ -23,7 +23,7 @@ use frame::Event;
 #[derive(Parser)]
 #[command(name = "bbg", about = "the authenticated state store, on the command line")]
 struct Cli {
-    /// store directory (a tade-frame signal log). absent → ephemeral, in-memory.
+    /// store directory (a tape-frame signal log). absent → ephemeral, in-memory.
     #[arg(long, global = true)]
     store: Option<PathBuf>,
     /// machine-readable output.
@@ -135,7 +135,7 @@ fn run(cli: Cli) -> i32 {
     0
 }
 
-// ── store: a tade-frame log, replayed on open ────────────────────────────────
+// ── store: a tape-frame log, replayed on open ────────────────────────────────
 
 fn open_store(store: Option<&PathBuf>) -> std::io::Result<Bbg> {
     let mut bbg = Bbg::new();
@@ -204,12 +204,12 @@ fn cmd_get(bbg: &Bbg, dim: &str, key: &str, json: bool) -> i32 {
 fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
     let show = |name: &str| dim.is_none() || dim == Some(name);
     if show("particles") {
-        for (k, p) in &bbg.state.particles {
+        for (k, p) in bbg.state.particles.iter() {
             println!("particles {}  energy {}  weight {}", hex(k), p.energy, p.weight);
         }
     }
     if show("neurons") {
-        for (k, n) in &bbg.state.neurons {
+        for (k, n) in bbg.state.neurons.iter() {
             println!("neurons {}  focus {}  karma {}  stake {}", hex(k), n.focus, n.karma, n.stake);
         }
     }
@@ -220,8 +220,8 @@ fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
         }
     }
     if show("signals") {
-        for (step, r) in &bbg.state.signals {
-            println!("signal step {}  neuron {}  links {}  height {}", step, hex(&r.neuron), r.link_count, r.block_height);
+        for (key, r) in bbg.state.signals.iter() {
+            println!("signal {}  neuron {}  step {}  links {}  height {}", hex(key), hex(&r.neuron), r.step, r.link_count, r.block_height);
         }
     }
 }
@@ -230,8 +230,15 @@ fn print_dump(bbg: &Bbg, dim: Option<&str>, _json: bool) {
 
 fn cmd_prove(bbg: &Bbg, dim: &str, key: &str, json: bool) -> i32 {
     let Some(d) = dim_from(dim) else { eprintln!("unknown dim: {dim}"); return 3 };
-    // time/signals keys are a u64 height, encoded LE into the first 8 bytes.
-    let parsed = if matches!(dim, "time" | "signals") { height_key(key) } else { h32(key) };
+    // time keys are a u64 height, encoded LE into the first 8 bytes; signals
+    // keys are `<neuron-hex>:<step>` or the hex signal key H(neuron ‖ step);
+    // cards keys are `<author-hex>:<p-hex>:<q-hex>` or the hex card id.
+    let parsed = match dim {
+        "time" => height_key(key),
+        "signals" => signal_key_arg(key),
+        "cards" => card_key_arg(key),
+        _ => h32(key),
+    };
     let Some(k) = parsed else { eprintln!("bad key"); return 3 };
     let Some(proof) = bbg::bbg_query(&bbg.state, d, &k) else { eprintln!("not found"); return 1 };
     let ok = bbg::verify_query(&proof);
@@ -281,11 +288,123 @@ fn h32(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// Parse a signals key: `<neuron-hex>:<step>` → `bbg::signal_key(neuron, step)`,
+/// or a bare hex signal key.
+fn signal_key_arg(s: &str) -> Option<[u8; 32]> {
+    match s.split_once(':') {
+        Some((neuron, step)) => Some(bbg::signal_key(&h32(neuron)?, step.parse().ok()?)),
+        None => h32(s),
+    }
+}
+
+/// Parse a cards key: `<author-hex>:<p-hex>:<q-hex>` → `bbg::card_id(author, p, q)`,
+/// or a bare hex card id.
+fn card_key_arg(s: &str) -> Option<[u8; 32]> {
+    let parts: Vec<&str> = s.split(':').collect();
+    match parts.as_slice() {
+        [author, p, q] => Some(bbg::card_id(&h32(author)?, &h32(p)?, &h32(q)?)),
+        [card] => h32(card),
+        _ => None,
+    }
+}
+
 /// Parse a u64 height into a key: little-endian into the first 8 bytes,
-/// matching how bbg_query reads the time/signals dimensions.
+/// matching how bbg_query reads the time dimension.
 fn height_key(s: &str) -> Option<[u8; 32]> {
     let n: u64 = s.parse().ok()?;
     let mut out = [0u8; 32];
     out[..8].copy_from_slice(&n.to_le_bytes());
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{card_key_arg, dim_from, h32, height_key, signal_key_arg};
+    use bbg::Dim;
+
+    #[test]
+    fn dim_from_recognizes_every_named_dimension() {
+        assert_eq!(dim_from("particles"), Some(Dim::Particles));
+        assert_eq!(dim_from("axons-out"), Some(Dim::AxonsOut));
+        assert_eq!(dim_from("axons-in"), Some(Dim::AxonsIn));
+        assert_eq!(dim_from("neurons"), Some(Dim::Neurons));
+        assert_eq!(dim_from("locations"), Some(Dim::Locations));
+        assert_eq!(dim_from("coins"), Some(Dim::Coins));
+        assert_eq!(dim_from("cards"), Some(Dim::Cards));
+        assert_eq!(dim_from("files"), Some(Dim::Files));
+        assert_eq!(dim_from("time"), Some(Dim::Time));
+        assert_eq!(dim_from("signals"), Some(Dim::Signals));
+    }
+
+    #[test]
+    fn dim_from_rejects_unknown_and_empty_names() {
+        assert_eq!(dim_from("balances"), None);
+        assert_eq!(dim_from("Particles"), None);
+        assert_eq!(dim_from(""), None);
+    }
+
+    #[test]
+    fn h32_accepts_full_length_and_0x_prefixed_hex() {
+        let full = "ab".repeat(32);
+        assert_eq!(h32(&full), Some([0xab; 32]));
+        assert_eq!(h32(&format!("0x{full}")), Some([0xab; 32]));
+    }
+
+    #[test]
+    fn h32_left_pads_short_hex_with_zeros() {
+        let mut expected = [0u8; 32];
+        expected[31] = 0xff;
+        assert_eq!(h32("ff"), Some(expected));
+    }
+
+    #[test]
+    fn h32_rejects_empty_overlong_and_non_hex() {
+        assert_eq!(h32(""), None);
+        assert_eq!(h32(&"a".repeat(65)), None);
+        assert_eq!(h32("zz"), None);
+    }
+
+    /// A multi-byte UTF-8 character keeps `.chars().all(is_ascii_hexdigit)`
+    /// honest (it fails on the very first non-ASCII scalar), so `h32` never
+    /// reaches the byte-index slice with one in the input.
+    #[test]
+    fn h32_rejects_non_ascii_without_panicking() {
+        assert_eq!(h32(&format!("{}{}", "a".repeat(61), '\u{a2}')), None);
+    }
+
+    #[test]
+    fn height_key_encodes_little_endian_in_the_first_8_bytes() {
+        let mut expected = [0u8; 32];
+        expected[..8].copy_from_slice(&42u64.to_le_bytes());
+        assert_eq!(height_key("42"), Some(expected));
+    }
+
+    #[test]
+    fn signal_key_arg_names_a_signal_by_neuron_and_step() {
+        let neuron = "ab".repeat(32);
+        assert_eq!(signal_key_arg(&format!("{neuron}:7")), Some(bbg::signal_key(&[0xab; 32], 7)));
+        let key = bbg::signal_key(&[0xab; 32], 0);
+        let hex_key: String = key.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(signal_key_arg(&hex_key), Some(key));
+        assert_eq!(signal_key_arg(&format!("{neuron}:-1")), None);
+        assert_eq!(signal_key_arg("zz:1"), None);
+    }
+
+    #[test]
+    fn height_key_rejects_non_numeric_and_negative_input() {
+        assert_eq!(height_key(""), None);
+        assert_eq!(height_key("abc"), None);
+        assert_eq!(height_key("-1"), None);
+    }
+
+    #[test]
+    fn card_key_arg_names_a_position_by_author_and_axon() {
+        let (a, p, q) = ("ab".repeat(32), "01".repeat(32), "02".repeat(32));
+        let card = bbg::card_id(&[0xab; 32], &[1; 32], &[2; 32]);
+        assert_eq!(card_key_arg(&format!("{a}:{p}:{q}")), Some(card));
+        let hex_card: String = card.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(card_key_arg(&hex_card), Some(card));
+        assert_eq!(card_key_arg(&format!("{a}:{p}")), None);
+        assert_eq!(card_key_arg(&format!("{a}:{p}:zz")), None);
+    }
 }

@@ -17,8 +17,7 @@ BBG_poly(index, key, t) = value
 query:  Lens.open(BBG_root, (index, key, t)) → (value, proof)
 verify: Lens.verify(BBG_root, (index, key, t), value, proof)
 
-verification cost: O(λ log log N) field operations, ~5 μs
-proof size: ~200 bytes per opening (vs ~1 KiB NMT path)
+verification cost and proof size: set by soft3 proposals/proof-system-repair (openings carry hemera Merkle paths)
 ```
 
 ## completeness proofs
@@ -84,8 +83,8 @@ DIMENSION 6: coins
 
 DIMENSION 7: cards
   evaluation: BBG_poly(cards, card_id, t) → card_record
-  key: card_id
-  proves: "card C exists, bound to axon-particle P, owned by N"
+  key: card_id = H(D_CARD ‖ author ‖ p ‖ q)            (state.md rule 8)
+  proves: "position C exists: author A's stake on axon-particle P, valence v, paid to owner N"
 
 DIMENSION 8: files
   evaluation: BBG_poly(files, particle, t) → availability_record
@@ -99,9 +98,9 @@ DIMENSION 9: time
   note: replaces 7-namespace NMT. continuous — any t is queryable via Lens opening
 
 DIMENSION 10: signals
-  evaluation: BBG_poly(signals, step, t) → signal_batch_hash
-  key: step counter / batch index
-  proves: "signal batch at step S was accepted"
+  evaluation: BBG_poly(signals, H(neuron, step), t) → signal record
+  key: H(neuron ‖ step) — the neuron's own signal-chain step (state.md rule 7)
+  proves: "neuron ν's signal at step S was accepted"
 ```
 
 ## leaf structures
@@ -144,12 +143,14 @@ coins entry:
   max_supply: F_p (0 = unlimited)      8 bytes
   transfer_rules: u8                   1 byte
 
-cards entry:
+cards entry (a position, dimension version 4, state.md rule 8):
   key: card_id                         32 bytes
-  bound_axon_particle: F_p⁴           32 bytes
-  current_owner: F_p⁴                 32 bytes
-  creator: F_p⁴                       32 bytes
-  creation_time: u64                   8 bytes
+  owner: 32 bytes                      payout owner
+  particle: 32 bytes                   axon-particle H(p ‖ q)
+  author: 32 bytes                     the neuron that locked the stake
+  valence: u8                          v + 1 ∈ {0, 1, 2}
+  since: u64                           height of the last stake increase
+  stake: balances[stake_key(card_id)]  not a field (state.md rule 9)
 
 files entry:
   key: particle                        32 bytes
@@ -168,7 +169,7 @@ time entry:
   BBG_root_snapshot: F_p⁴             32 bytes
 
 signals entry:
-  key: batch_index                     8 bytes
+  key: H(neuron ‖ step_le)             32 bytes
   network: F_p⁴                       32 bytes   (destination network card id)
   signal_batch_hash: F_p⁴             32 bytes
   recursive_proof_hash: F_p⁴          32 bytes

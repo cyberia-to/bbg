@@ -6,19 +6,18 @@ use bbg::{
 
 fn state() -> BbgState {
     let mut state = BbgState::new();
+    state.set_root_version(bbg::RootVersion::V1); // certificates carry the v1 leaves
     let mut record = ParticleRecord::zero();
     record.energy = 77;
     state.particles.insert([1; 32], record);
-    state.signals.insert(
-        7,
-        SignalRecord {
-            neuron: [2; 32],
-            network: [3; 32],
-            link_count: 5,
-            block_height: u64::MAX,
-            proof_hash: [4; 32],
-        },
-    );
+    state.apply_signal_record(SignalRecord {
+        neuron: [2; 32],
+        network: [3; 32],
+        link_count: 5,
+        block_height: u64::MAX,
+        proof_hash: [4; 32],
+        step: 7,
+    });
     state.refresh_root();
     state
 }
@@ -85,19 +84,15 @@ fn every_committed_component_and_structural_metadata_is_checked() {
 }
 
 #[test]
-fn stale_cached_roots_and_changed_signal_networks_are_rejected() {
+fn a_changed_signal_network_moves_the_certified_root() {
     let mut state = state();
     let old = StateCertificate::from_state(&state, &[9])
         .unwrap()
         .root()
         .unwrap();
-    state.signals.get_mut(&7).unwrap().network[0] += 1;
-    assert!(
-        StateCertificate::from_state(&state, &[9])
-            .unwrap_err()
-            .contains("stale cached")
-    );
-    state.refresh_root();
+    // Every mutation goes through the committed map, so the root is never
+    // stale: a certificate taken right after the change binds the new root.
+    state.signals.get_mut(&bbg::signal_key(&[2; 32], 7)).unwrap().network[0] += 1;
     let cert = StateCertificate::from_state(&state, &[9]).unwrap();
     assert_ne!(cert.root().unwrap(), old);
     assert!(cert.verify(old).is_err());
@@ -107,6 +102,8 @@ fn stale_cached_roots_and_changed_signal_networks_are_rejected() {
 fn arbitrary_key_bytes_and_u64_values_have_no_modulus_alias() {
     let mut a = BbgState::new();
     let mut b = BbgState::new();
+    a.set_root_version(bbg::RootVersion::V1);
+    b.set_root_version(bbg::RootVersion::V1);
     let first = [0; 32];
     let mut second = first;
     second[..8].copy_from_slice(&nebu::field::P.to_le_bytes());

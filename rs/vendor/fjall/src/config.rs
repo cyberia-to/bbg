@@ -46,6 +46,7 @@ pub struct Config {
     /// Fsync every N ms asynchronously
     pub(crate) fsync_ms: Option<u16>,
 
+    #[allow(dead_code)] // read by upstream recovery paths bbg's vendor cut
     pub(crate) journal_recovery_mode: RecoveryMode,
 }
 

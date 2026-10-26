@@ -15,11 +15,11 @@ pub const MAX_EVENTS: usize = 64;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     Arguments,
-    Accumulator,
+    CheckpointProof,
     DoubleSpend,
     Overflow(&'static str),
     Limit(&'static str),
-    PositionExists,
+    SignalExists,
 }
 
 impl std::fmt::Display for Error {
@@ -28,22 +28,25 @@ impl std::fmt::Display for Error {
             Self::Arguments => {
                 f.write_str("native transition requires a signal/header or an intent")
             }
-            Self::Accumulator => {
-                f.write_str("native persistence does not encode checkpoint accumulators")
+            Self::CheckpointProof => {
+                f.write_str("native persistence does not encode checkpoint proofs")
             }
             Self::DoubleSpend => f.write_str("duplicate or already spent nullifier"),
             Self::Overflow(field) => write!(f, "native transition overflow: {field}"),
             Self::Limit(limit) => write!(f, "native transition limit: {limit}"),
-            Self::PositionExists => f.write_str("native signal position already exists"),
+            Self::SignalExists => {
+                f.write_str("native signal (neuron, step) already exists")
+            }
         }
     }
 }
 impl std::error::Error for Error {}
 
 pub enum NativeChange<'a> {
+    /// A signal and its header; the header's `(neuron, step)` names the
+    /// record (`state::signal_key`).
     Signal {
         signal: &'a Signal,
-        position: u64,
         header: &'a SignalRecord,
     },
     Intent(&'a IntentRecord),
@@ -69,14 +72,13 @@ impl Bbg {
     pub fn prepare_native(
         &mut self,
         signal: Option<&Signal>,
-        header: Option<(u64, SignalRecord)>,
+        header: Option<SignalRecord>,
         intent: Option<&IntentRecord>,
     ) -> Result<Prepared<'_>, Error> {
         match (signal, header, intent) {
-            (Some(signal), Some((position, header)), None) => {
+            (Some(signal), Some(header), None) => {
                 self.prepare_native_batch(&[NativeChange::Signal {
                     signal,
-                    position,
                     header: &header,
                 }])
             }
@@ -95,7 +97,7 @@ impl Bbg {
             return Err(Error::Limit("event count"));
         }
         if self.checkpoint.acc.is_some() {
-            return Err(Error::Accumulator);
+            return Err(Error::CheckpointProof);
         }
         if self.prune_config.rank_floor_pct > 100 {
             return Err(Error::Limit("pruning rank floor"));
@@ -110,11 +112,7 @@ impl Bbg {
         prepared.capture(0, &[])?;
         for event in events {
             match event {
-                NativeChange::Signal {
-                    signal,
-                    position,
-                    header,
-                } => prepared.signal(signal, *position, header)?,
+                NativeChange::Signal { signal, header } => prepared.signal(signal, header)?,
                 NativeChange::Intent(intent) => {
                     let key = intent_key(intent);
                     prepared.capture(14, &key)?;
@@ -130,7 +128,7 @@ impl Bbg {
                     prepared.capture(4, *neuron)?;
                     prepared.bbg.state.balances.insert(key, balance);
                     prepared.bbg.state.neurons.entry(**neuron).or_insert(crate::NeuronRecord {
-                        focus: 0, karma: 0, stake: 0,
+                        focus: 0, karma: 0, stake: 0, nonce: 0,
                     }).focus = next_focus;
                     prepared.bbg.state.refresh_root();
                     prepared.bbg.checkpoint = prepared.bbg.checkpoint.advance(&prepared.bbg.state);
@@ -172,16 +170,12 @@ impl Prepared<'_> {
             .capture(self.bbg, records::key(domain, key))
     }
 
-    fn signal(
-        &mut self,
-        signal: &Signal,
-        position: u64,
-        header: &SignalRecord,
-    ) -> Result<(), Error> {
-        validate(self.bbg, signal, position, header)?;
+    fn signal(&mut self, signal: &Signal, header: &SignalRecord) -> Result<(), Error> {
+        let key = state::signal_key(&header.neuron, header.step);
+        validate(self.bbg, signal, &key, header)?;
         self.capture(4, &signal.neuron)?;
         self.capture(9, &self.bbg.state.height.to_be_bytes())?;
-        self.capture(10, &position.to_be_bytes())?;
+        self.capture(10, &key)?;
         for mv in &signal.box_moves {
             self.capture(12, &mv.nullifier)?;
             if let Some((point, _)) = mv.commitment {
@@ -200,16 +194,14 @@ impl Prepared<'_> {
             self.capture(16, &axon)?;
         }
         self.bbg.insert(signal).map_err(|_| Error::DoubleSpend)?;
-        self.bbg.apply_signal_record(
-            position,
-            SignalRecord {
-                neuron: header.neuron,
-                network: header.network,
-                link_count: header.link_count,
-                block_height: header.block_height,
-                proof_hash: header.proof_hash,
-            },
-        );
+        self.bbg.apply_signal_record(SignalRecord {
+            neuron: header.neuron,
+            network: header.network,
+            link_count: header.link_count,
+            block_height: header.block_height,
+            proof_hash: header.proof_hash,
+            step: header.step,
+        });
         let height = self.bbg.state.height;
         let root = self.bbg.state.root();
         self.bbg.state.time.insert(height, root);
@@ -289,7 +281,7 @@ fn intent_key(intent: &IntentRecord) -> Particle {
         .expect("32-byte hemera digest")
 }
 
-fn validate(bbg: &Bbg, signal: &Signal, position: u64, header: &SignalRecord) -> Result<(), Error> {
+fn validate(bbg: &Bbg, signal: &Signal, key: &Particle, header: &SignalRecord) -> Result<(), Error> {
     bbg.state
         .height
         .checked_add(1)
@@ -301,8 +293,8 @@ fn validate(bbg: &Bbg, signal: &Signal, position: u64, header: &SignalRecord) ->
     {
         return Err(Error::Arguments);
     }
-    if bbg.state.signals.contains_key(&position) {
-        return Err(Error::PositionExists);
+    if bbg.state.signals.contains_key(key) {
+        return Err(Error::SignalExists);
     }
     if signal.links.len().saturating_add(signal.box_moves.len()) > MAX_KEYS {
         return Err(Error::Limit("signal items"));

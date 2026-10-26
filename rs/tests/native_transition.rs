@@ -13,6 +13,7 @@ fn graph() -> Bbg {
             focus: 1000,
             karma: 4,
             stake: 5,
+            nonce: 0,
         },
     );
     graph.state.refresh_root();
@@ -38,13 +39,14 @@ fn signal(amount: u64) -> Signal {
     }
 }
 
-fn header(signal: &Signal) -> SignalRecord {
+fn header(signal: &Signal, step: u64) -> SignalRecord {
     SignalRecord {
         neuron: signal.neuron,
         network: [55; 32],
         link_count: signal.links.len() as u32,
         block_height: signal.height,
         proof_hash: [99; 32],
+        step,
     }
 }
 
@@ -63,7 +65,7 @@ fn dropped_preparation_restores_every_record_and_checkpoint() {
     let old_root = graph.state.root();
     {
         let prepared = graph
-            .prepare_native(Some(&signal), Some((256, header(&signal))), None)
+            .prepare_native(Some(&signal), Some(header(&signal, 256)), None)
             .unwrap();
         assert_eq!(prepared.height(), 1);
         assert_ne!(prepared.root(), old_root);
@@ -84,7 +86,7 @@ fn callback_failure_rolls_back_and_later_retry_succeeds() {
         commit: impl FnOnce(&[transition::RecordChange]) -> Result<(), &'static str>,
     ) -> Result<(), &'static str> {
         let prepared = graph
-            .prepare_native(Some(signal), Some((0, header(signal))), None)
+            .prepare_native(Some(signal), Some(header(signal, 0)), None)
             .unwrap();
         commit(prepared.changes())?;
         prepared.publish();
@@ -94,7 +96,7 @@ fn callback_failure_rolls_back_and_later_retry_succeeds() {
     assert!(failed.is_err());
     assert_eq!(records(&graph), before);
     graph
-        .prepare_native(Some(&signal), Some((0, header(&signal))), None)
+        .prepare_native(Some(&signal), Some(header(&signal, 0)), None)
         .unwrap()
         .publish();
     assert_eq!(graph.state.height, 1);
@@ -108,10 +110,10 @@ fn published_candidate_matches_standard_signal_finalization_and_exact_changes() 
     let signal = signal(19);
     let mut disk = records(&candidate);
     standard.insert(&signal).unwrap();
-    standard.apply_signal_record(9, header(&signal));
+    standard.apply_signal_record(header(&signal, 9));
     standard.finalize_block();
     let prepared = candidate
-        .prepare_native(Some(&signal), Some((9, header(&signal))), None)
+        .prepare_native(Some(&signal), Some(header(&signal, 9)), None)
         .unwrap();
     for change in prepared.changes() {
         if let Some(value) = &change.value {
@@ -136,7 +138,7 @@ fn duplicate_nullifier_inside_one_signal_is_rejected_before_mutation() {
         commitment: None,
     });
     assert!(matches!(
-        graph.prepare_native(Some(&signal), Some((0, header(&signal))), None),
+        graph.prepare_native(Some(&signal), Some(header(&signal, 0)), None),
         Err(Error::DoubleSpend)
     ));
     assert_eq!(records(&graph), before);
@@ -154,13 +156,13 @@ fn overflow_is_rejected_even_when_credit_and_debit_keys_alias() {
     graph.state.refresh_root();
     let before = records(&graph);
     assert!(matches!(
-        graph.prepare_native(Some(&signal), Some((0, header(&signal))), None),
+        graph.prepare_native(Some(&signal), Some(header(&signal, 0)), None),
         Err(Error::Overflow("balance"))
     ));
     assert_eq!(records(&graph), before);
     graph.state.height = u64::MAX;
     assert!(matches!(
-        graph.prepare_native(Some(&signal), Some((0, header(&signal))), None),
+        graph.prepare_native(Some(&signal), Some(header(&signal, 0)), None),
         Err(Error::Overflow("height"))
     ));
     assert_eq!(graph.state.height, u64::MAX);
@@ -172,8 +174,8 @@ fn failure_in_later_batch_event_rolls_back_earlier_signal_and_intent() {
     let before = records(&graph);
     let first = signal(2);
     let second = signal(3); // Same nullifier already consumed by the first candidate.
-    let first_header = header(&first);
-    let second_header = header(&second);
+    let first_header = header(&first, 0);
+    let second_header = header(&second, 1);
     let intent = IntentRecord {
         neuron: [1; 32],
         h0: 0,
@@ -183,13 +185,11 @@ fn failure_in_later_batch_event_rolls_back_earlier_signal_and_intent() {
     let batch = [
         NativeChange::Signal {
             signal: &first,
-            position: 0,
             header: &first_header,
         },
         NativeChange::Intent(&intent),
         NativeChange::Signal {
             signal: &second,
-            position: 1,
             header: &second_header,
         },
     ];
@@ -216,7 +216,7 @@ fn epoch_pruning_restores_removed_records_and_adjacency_on_drop() {
     let before = records(&graph);
     let next = signal(3);
     let prepared = graph
-        .prepare_native(Some(&next), Some((7, header(&next))), None)
+        .prepare_native(Some(&next), Some(header(&next, 7)), None)
         .unwrap();
     assert_eq!(prepared.height(), 100);
     assert!(
@@ -228,7 +228,7 @@ fn epoch_pruning_restores_removed_records_and_adjacency_on_drop() {
     drop(prepared);
     assert_eq!(records(&graph), before);
     graph
-        .prepare_native(Some(&next), Some((7, header(&next))), None)
+        .prepare_native(Some(&next), Some(header(&next, 7)), None)
         .unwrap()
         .publish();
     assert!(graph.state.particles.is_empty());
@@ -288,29 +288,29 @@ fn preparation_touches_only_signal_neighborhood_in_large_graph() {
     graph.state.refresh_root();
     let signal = signal(2);
     let prepared = graph
-        .prepare_native(Some(&signal), Some((0, header(&signal))), None)
+        .prepare_native(Some(&signal), Some(header(&signal, 0)), None)
         .unwrap();
     assert!(prepared.changes().len() < 20);
 }
 
 #[test]
-fn repeated_positions_and_inconsistent_headers_are_rejected() {
+fn repeated_neuron_steps_and_inconsistent_headers_are_rejected() {
     let mut graph = graph();
     let mut signal = signal(1);
     signal.box_moves.clear();
     graph
-        .prepare_native(Some(&signal), Some((123, header(&signal))), None)
+        .prepare_native(Some(&signal), Some(header(&signal, 123)), None)
         .unwrap()
         .publish();
     let before = records(&graph);
     assert!(matches!(
-        graph.prepare_native(Some(&signal), Some((123, header(&signal))), None),
-        Err(Error::PositionExists)
+        graph.prepare_native(Some(&signal), Some(header(&signal, 123)), None),
+        Err(Error::SignalExists)
     ));
-    let mut wrong = header(&signal);
+    let mut wrong = header(&signal, 124);
     wrong.neuron = [0; 32];
     assert!(matches!(
-        graph.prepare_native(Some(&signal), Some((124, wrong)), None),
+        graph.prepare_native(Some(&signal), Some(wrong), None),
         Err(Error::Arguments)
     ));
     assert_eq!(records(&graph), before);
@@ -324,8 +324,8 @@ fn successful_batch_coalesces_overlapping_keys_and_keeps_each_snapshot() {
     let first = signal(3);
     let mut second = signal(5);
     second.box_moves[0].nullifier = [9; 32];
-    let first_header = header(&first);
-    let second_header = header(&second);
+    let first_header = header(&first, 0);
+    let second_header = header(&second, 1);
     let intent = IntentRecord {
         neuron: [1; 32],
         h0: 1,
@@ -333,24 +333,22 @@ fn successful_batch_coalesces_overlapping_keys_and_keeps_each_snapshot() {
         signature: [6; 64],
     };
     baseline.insert(&first).unwrap();
-    baseline.apply_signal_record(0, header(&first));
+    baseline.apply_signal_record(header(&first, 0));
     baseline.finalize_block();
     let first_root = baseline.state.root();
     baseline.apply_intent(&intent);
     baseline.insert(&second).unwrap();
-    baseline.apply_signal_record(1, header(&second));
+    baseline.apply_signal_record(header(&second, 1));
     baseline.finalize_block();
     let prepared = graph
         .prepare_native_batch(&[
             NativeChange::Signal {
                 signal: &first,
-                position: 0,
                 header: &first_header,
             },
             NativeChange::Intent(&intent),
             NativeChange::Signal {
                 signal: &second,
-                position: 1,
                 header: &second_header,
             },
         ])

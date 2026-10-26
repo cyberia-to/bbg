@@ -8,6 +8,7 @@ use nebu::Goldilocks as F;
 
 fn state() -> BbgState {
     let mut s = BbgState::new();
+    s.set_root_version(bbg::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
     for key in [[0; 32], alias_key()] {
         let mut r = ParticleRecord::zero();
         r.energy = 77;
@@ -87,9 +88,11 @@ fn query_claim_context_opening_and_certificate_mutations_fail() {
         rejects(&bad, &root);
         assert!(!verify_query(&bad), "mutation {mutation}");
     }
-    let mut stale = state();
-    stale.particles.get_mut(&[0; 32]).unwrap().energy += 1;
-    assert!(prove_particle(&stale, &[0; 32]).is_none());
+    // the root is never stale: a proof after a mutation binds the new root
+    let mut moved = state();
+    moved.particles.get_mut(&[0; 32]).unwrap().energy += 1;
+    let fresh = prove_particle(&moved, &[0; 32]).unwrap();
+    assert!(verify_particle(&fresh, &moved.root(), &[0; 32]));
 }
 
 #[test]
@@ -104,6 +107,7 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
             focus: 77,
             karma: u64::MAX,
             stake: 1,
+            nonce: 9,
         },
     );
     s.locations.insert(key, LocationRecord { lat: -1, lon: 2 });
@@ -118,6 +122,9 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
         CardRecord {
             owner: [7; 32],
             particle: [8; 32],
+            author: [13; 32],
+            valence: Valence::Against,
+            since: u64::MAX,
         },
     );
     s.files.insert(
@@ -129,24 +136,25 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
     );
     for n in [1, 256] {
         s.time.insert(n, [9; 32]);
-        s.signals.insert(
-            n,
-            SignalRecord {
-                neuron: [10; 32],
-                network: [11; 32],
-                link_count: 55,
-                block_height: u64::MAX,
-                proof_hash: [12; 32],
-            },
-        );
+        s.apply_signal_record(SignalRecord {
+            neuron: [10; 32],
+            network: [11; 32],
+            link_count: 55,
+            block_height: u64::MAX,
+            proof_hash: [12; 32],
+            step: n,
+        });
     }
     s.refresh_root();
     for ns in 1..=9 {
         let dim = Dim::from_u64(ns).unwrap();
         let mut entity = key;
-        if ns >= 8 {
+        if ns == 8 {
             entity = [0; 32];
             entity[..8].copy_from_slice(&256u64.to_le_bytes());
+        }
+        if ns == 9 {
+            entity = bbg::signal_key(&[10; 32], 256);
         }
         let proof = bbg_query(&s, dim, &entity).unwrap();
         assert!(
@@ -161,6 +169,10 @@ fn every_public_dimension_entity_locator_uses_its_real_record_layout() {
     invalid[31] = 1;
     assert!(bbg_query(&s, Dim::Time, &invalid).is_none());
     assert!(bbg_query(&s, Dim::Signals, &invalid).is_none());
+    // a bare step no longer names a signal: the key is H(neuron || step)
+    let mut bare_step = [0; 32];
+    bare_step[..8].copy_from_slice(&256u64.to_le_bytes());
+    assert!(bbg_query(&s, Dim::Signals, &bare_step).is_none());
 }
 
 #[test]
@@ -186,6 +198,7 @@ fn private_tables_are_not_disclosed_and_cannot_claim_public_context() {
 #[test]
 fn public_query_limit_is_explicit_and_large_certificates_remain_available() {
     let mut s = BbgState::new();
+    s.set_root_version(bbg::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
     for i in 0u64..205 {
         let mut key = [0; 32];
         key[..8].copy_from_slice(&i.to_le_bytes());
@@ -215,11 +228,7 @@ fn legacy_look_needs_matching_complete_context_and_rejects_each_substitution() {
     assert!(verify_opening_with_context(&lo, &proof, &root, 11));
     assert!(!verify_opening_with_context(&lo, &proof, &root, 12));
     for change in 0..6 {
-        let mut bad = zheng::LookOpening {
-            commitment: lo.commitment, point: lo.point.clone(), value: lo.value,
-            opening: lo.opening.clone(), transcript_seed: lo.transcript_seed.clone(),
-            leaves: lo.leaves.clone(), namespace: lo.namespace,
-        };
+        let mut bad = lo.clone();
         match change {
             0 => bad.namespace = F::ONE,
             1 => bad.value += F::ONE,

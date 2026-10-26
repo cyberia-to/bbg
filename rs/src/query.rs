@@ -10,13 +10,12 @@
 //!   2. `bbg_query` — dispatch to the appropriate `prove_*` function
 //!   3. `BbgLookProvider` — implements `nox::LookProvider` for VM look pattern (fast, no proofs)
 //!   4. `ProofLookProvider` — like BbgLookProvider but also accumulates `LookOpening`s
-//!      for explicit context-backed inspection (recursive commit remains unsupported)
+//!      for explicit context-backed inspection; an opening alone proves nothing
 //!
 //! Key encoding for look providers:
 //!   namespace = Dim index (0–9; the look pattern rejects > 9 before calling).
 //!   key = flat cell index into the dimension polynomial → returns `evals[key]`.
-//! This is the index-addressed convention nox's `BrakedownLookProvider` and
-//! zheng's `look_openings_from_provider` already use. Entity → (index, record)
+//! This is the index-addressed convention nox's `BrakedownLookProvider` uses. Entity → (index, record)
 //! navigation is composed ABOVE this in inf (locate by reading key cells + `eq`);
 //! `bbg_query` / `prove_*` are entity-keyed conveniences for light clients.
 
@@ -24,11 +23,10 @@ use std::sync::Mutex;
 
 use nebu::Goldilocks;
 use nox::{CallProvider, LookProvider, Reduction, Order};
-use zheng::LookOpening;
 
 use crate::proof::{
     prove_axons_in, prove_axons_out, prove_card, prove_coin, prove_file, prove_location,
-    prove_neuron, prove_particle, prove_signal, prove_time, QueryProof,
+    prove_neuron, prove_particle, prove_signal_key, prove_time, QueryProof,
 };
 use crate::state::BbgState;
 
@@ -70,13 +68,14 @@ impl Dim {
 
 /// Generate a `QueryProof` for dimension `dim` at key `key`.
 ///
-/// `key` is a 32-byte particle/hash. For `Time` and `Signals` the u64 height
-/// or step is read from the first 8 bytes (little-endian); remaining bytes must be zero.
+/// `key` is a 32-byte particle/hash. For `Time` the u64 height is read from
+/// the first 8 bytes (little-endian); remaining bytes must be zero. For
+/// `Signals` it is the signal key `signal_key(neuron, step)`.
 ///
 /// `Balances` returns `None` — use `prove_balances(state, owner, token)` directly
 /// because the key is derived from two inputs.
 pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProof> {
-    if matches!(dim, Dim::Time | Dim::Signals) && key[8..].iter().any(|&v| v != 0) { return None; }
+    if dim == Dim::Time && key[8..].iter().any(|&v| v != 0) { return None; }
     match dim {
         Dim::Particles => prove_particle(state, key),
         Dim::AxonsOut  => prove_axons_out(state, key),
@@ -91,11 +90,7 @@ pub fn bbg_query(state: &BbgState, dim: Dim, key: &[u8; 32]) -> Option<QueryProo
             buf.copy_from_slice(&key[..8]);
             prove_time(state, u64::from_le_bytes(buf))
         }
-        Dim::Signals   => {
-            let mut buf = [0u8; 8];
-            buf.copy_from_slice(&key[..8]);
-            prove_signal(state, u64::from_le_bytes(buf))
-        }
+        Dim::Signals   => prove_signal_key(state, key),
         Dim::Balances  => None,
     }
 }
@@ -128,12 +123,35 @@ impl<'a> LookProvider for BbgLookProvider<'a> {
 
 // ── ProofLookProvider ─────────────────────────────────────────────────────────
 
-/// nox `LookProvider` that generates `LookOpening` proofs alongside the value.
+/// A sampled opening of one BBG cell recorded by [`ProofLookProvider`].
 ///
-/// During `look()`, opens the selected cell and appends a legacy `LookOpening`.
-/// Retrieve these for context-backed inspection with `verify_opening_with_context`.
-/// Current `zheng::commit()` rejects recursive openings; execution proofs use
-/// authenticated state certificates instead.
+/// Not a proof: a sampled Brakedown opening without its complete table
+/// authenticates nothing ([`verify_opening`] returns `false`). Compare it
+/// against a complete public query with `verify_opening_with_context`.
+/// Execution over state is proven with a `StateCertificate` and zheng's
+/// state profile v3. Field layout matches the LookOpening of the retired zheng 0.3 API.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LookOpening {
+    /// Brakedown commitment to the BBG dimension polynomial.
+    pub commitment: lens::Commitment,
+    /// Evaluation point: the cell's corner.
+    pub point: Vec<Goldilocks>,
+    /// Claimed polynomial value at that point.
+    pub value: Goldilocks,
+    /// Brakedown tensor opening.
+    pub opening: lens::Opening,
+    /// Bytes passed to the lens transcript when the opening was made.
+    pub transcript_seed: Vec<u8>,
+    /// The 14 leaves of the BBG root preimage.
+    pub leaves: crate::root::RootLeaves,
+    /// BBG namespace of this opening: an index into `leaves.dims`.
+    pub namespace: Goldilocks,
+}
+
+/// nox `LookProvider` that records a [`LookOpening`] alongside each value.
+///
+/// Retrieve them for context-backed inspection with `verify_opening_with_context`.
+/// Execution over state is proven with state certificates, not these.
 ///
 /// Uses `Mutex` (not `RefCell`) so the provider is `Sync` — satisfying the
 /// `CallProvider<N>` bound when wrapped in a `ProofCallProvider`.
@@ -141,7 +159,7 @@ pub struct ProofLookProvider<'a> {
     pub state: &'a BbgState,
     /// The root-preimage leaves, computed once — every opening carries a clone
     /// for comparison with a separately authenticated complete public query.
-    leaves: zheng::RootLeaves,
+    leaves: crate::root::RootLeaves,
     openings: Mutex<Vec<LookOpening>>,
 }
 
@@ -259,7 +277,8 @@ mod tests {
 
     fn seeded_state() -> BbgState {
         let mut s = BbgState::new();
-        s.neurons.insert(particle(1), NeuronRecord { focus: 50_000, karma: 0, stake: 0 });
+        s.set_root_version(crate::state::RootVersion::V1); // Brakedown cell proofs bind the v1 leaf
+        s.neurons.insert(particle(1), NeuronRecord { focus: 50_000, karma: 0, stake: 0, nonce: 0 });
         let sig = Signal {
             neuron: particle(1),
             links: vec![Cyberlink {
@@ -369,9 +388,10 @@ mod tests {
     #[test]
     fn look_provider_neuron_focus_cell_by_index() {
         let mut state = BbgState::new();
+        state.set_root_version(crate::state::RootVersion::V1);
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
-        state.neurons.insert(key, crate::types::NeuronRecord { focus: 777, karma: 0, stake: 0 });
+        state.neurons.insert(key, crate::types::NeuronRecord { focus: 777, karma: 0, stake: 0, nonce: 0 });
         state.refresh_root();
 
         let prov = BbgLookProvider { state: &state };
@@ -447,9 +467,10 @@ mod tests {
     #[test]
     fn proof_provider_value_matches_fast_provider_neuron() {
         let mut state = BbgState::new();
+        state.set_root_version(crate::state::RootVersion::V1);
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&42u64.to_le_bytes());
-        state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0 });
+        state.neurons.insert(key, NeuronRecord { focus: 777, karma: 0, stake: 0, nonce: 0 });
         state.refresh_root();
 
         let fast  = BbgLookProvider { state: &state };

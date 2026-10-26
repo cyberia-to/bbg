@@ -335,7 +335,7 @@ fjall keyspace: "bbg"
 │
 ├── partition: "neurons"
 │   key:   neuron_id                           hash of public key
-│   value: (focus, karma, stake)               per-neuron aggregates
+│   value: (focus, karma, stake, nonce)        per-neuron aggregates + chain nonce
 │   polynomial evaluation table for neurons dimension
 │
 ├── partition: "locations"
@@ -445,7 +445,7 @@ signals arrive in batches. each batch triggers:
 1. verify recursive [[zheng]]-2 proof covering the signal batch
 2. for each cyberlink in the batch: extend commitment polynomial A(x) at new point
 3. update public aggregates in BBG_poly: particles (energy), axons_out, axons_in (directional indexes)
-4. update BBG_poly(neurons): focus, karma, stake
+4. update BBG_poly(neurons): focus, karma, stake, nonce
 5. process spending: extend nullifier polynomial N(x) for spent records
 6. update BBG_poly for coins, cards, files, locations as needed
 7. recommit all three polynomials: BBG_poly, A(x), N(x) via Lens (batch evaluation changes, one recommitment each)

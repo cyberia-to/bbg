@@ -130,19 +130,21 @@ fn restore(bbg: &mut Bbg, key: &[u8], value: Option<&[u8]>) {
             NeuronRecord {
                 focus: r.u64(),
                 karma: r.u64(),
-                stake: r.u64()
+                stake: r.u64(),
+                nonce: r.u64(),
             }
         ),
         9 => entry!(s.time, position(), r.array()),
         10 => entry!(
             s.signals,
-            position(),
+            entity(),
             SignalRecord {
                 neuron: r.array(),
                 network: r.array(),
                 link_count: r.u32(),
                 block_height: r.u64(),
                 proof_hash: r.array(),
+                step: r.u64(),
             }
         ),
         11 => entry!(s.commitments, entity(), Goldilocks::new(r.u64())),
@@ -197,7 +199,11 @@ mod tests {
         let mut bbg = Bbg::new();
         bbg.state
             .axons_out
-            .insert([1; 32], vec![[2; 32]; MAX_BYTES / 32]);
+            .insert([1; 32], (0..MAX_BYTES / 32).map(|i| {
+                let mut a = [2; 32];
+                a[..8].copy_from_slice(&(i as u64).to_le_bytes());
+                a
+            }).collect());
         let mut undo = Undo::new(&bbg);
         assert_eq!(
             undo.capture(&bbg, records::key(2, &[1; 32])),

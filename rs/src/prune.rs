@@ -148,7 +148,7 @@ pub fn estimate_bytes(state: &BbgState) -> u64 {
     let particles = state.particles.len() as u64 * 80;
     let axons_out: u64 = state.axons_out.values().map(|v| 32 + v.len() as u64 * 32).sum();
     let axons_in: u64 = state.axons_in.values().map(|v| 32 + v.len() as u64 * 32).sum();
-    let neurons = state.neurons.len() as u64 * 56;
+    let neurons = state.neurons.len() as u64 * 64;
     particles + axons_out + axons_in + neurons
 }
 
@@ -157,18 +157,8 @@ pub(crate) fn remove_axon(state: &mut BbgState, ps: &mut PruneState, axon_id: &P
     state.particles.remove(axon_id);
     ps.last_touched.remove(axon_id);
     if let Some((from, to)) = state.axon_edges.remove(axon_id) {
-        if let Some(list) = state.axons_out.get_mut(&from) {
-            list.retain(|id| id != axon_id);
-            if list.is_empty() {
-                state.axons_out.remove(&from);
-            }
-        }
-        if let Some(list) = state.axons_in.get_mut(&to) {
-            list.retain(|id| id != axon_id);
-            if list.is_empty() {
-                state.axons_in.remove(&to);
-            }
-        }
+        state.axons_out.remove_axon(&from, axon_id);
+        state.axons_in.remove_axon(&to, axon_id);
     }
 }
 
@@ -186,7 +176,7 @@ mod tests {
 
     fn make_state() -> BbgState {
         let mut s = BbgState::new();
-        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0 });
+        s.neurons.insert(neuron_id(1), NeuronRecord { focus: 10_000, karma: 0, stake: 0, nonce: 0 });
         s
     }
 

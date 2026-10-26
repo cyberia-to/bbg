@@ -16,31 +16,42 @@ pub mod dim;
 pub mod query_auth;
 #[cfg(feature = "serde")]
 mod query_wire;
+pub mod keyed;
+pub mod position;
 pub mod proof;
 pub mod prune;
 pub mod query;
+pub mod root;
 pub mod signal;
 pub mod state;
 pub mod stats;
 pub mod storage;
 pub mod transition;
+pub mod trie;
 pub mod types;
 
-pub use checkpoint::Checkpoint;
+pub use checkpoint::{Checkpoint, CheckpointProof};
 pub use proof::{
     QueryProof, prove_axons_in, prove_axons_out, prove_balances, prove_card, prove_coin,
     prove_commitment, prove_file, prove_location, prove_neuron, prove_particle, prove_signal,
-    prove_time, verify_particle,
+    prove_signal_key, prove_time, verify_particle,
 };
 pub use prune::{PruneConfig, PruneState};
+pub use root::{RootLeaves, root_from_leaves, root_to_bytes};
 pub use query::{
-    BbgLookProvider, Dim, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
+    BbgLookProvider, Dim, LookOpening, ProofLookProvider, bbg_query, collect_look_openings, verify_opening,
     verify_query, verify_query_at, verify_entity, verify_opening_with_context,
 };
 pub use signal::{BoxMove, Cyberlink, InsertError, Signal};
-pub use state::{BbgState, balance_key};
+pub use keyed::{AxonIndex, Keyed, KeyedSet};
+pub use state::{BbgState, RootVersion, balance_key, signal_key};
+pub use trie::{Trie, TrieProof};
 pub use stats::{GraphStats, STAT_RELATIONS};
-pub use types::{IntentRecord, NeuronId, NeuronRecord, Particle, SignalRecord};
+pub use position::{
+    AxonPositions, Cards, D_CARD, D_FOCUS, D_STAKE, Position, PositionSnapshot, SideSums, card_id,
+    focus_key, stake_key,
+};
+pub use types::{CardRecord, IntentRecord, NeuronId, NeuronRecord, Particle, Side, SignalRecord, Valence};
 
 /// The BBG facade: state + checkpoint + pruning policy as a single unit.
 pub struct Bbg {
@@ -64,6 +75,12 @@ impl Bbg {
 
     pub fn with_prune_config(mut self, config: PruneConfig) -> Self {
         self.prune_config = config;
+        self
+    }
+
+    /// Select the root derivation (see [`RootVersion`]).
+    pub fn with_root_version(mut self, version: RootVersion) -> Self {
+        self.state.set_root_version(version);
         self
     }
 
@@ -131,8 +148,9 @@ impl Bbg {
         prove_file(&self.state, particle)
     }
 
-    pub fn prove_signal(&self, step: u64) -> Option<QueryProof> {
-        prove_signal(&self.state, step)
+    /// Open `neuron`'s signal at its chain `step`.
+    pub fn prove_signal(&self, neuron: &NeuronId, step: u64) -> Option<QueryProof> {
+        prove_signal(&self.state, neuron, step)
     }
 
     pub fn prove_time(&self, height: u64) -> Option<QueryProof> {
@@ -153,10 +171,11 @@ impl Bbg {
         self.state.apply_intent(intent)
     }
 
-    /// Persist a signal header without applying its cyberlinks.
+    /// Persist a signal header without applying its cyberlinks, at
+    /// `signal_key(record.neuron, record.step)`; returns the key.
     /// Used when sealing follows a separate intent → seal lifecycle.
-    pub fn apply_signal_record(&mut self, step: u64, record: SignalRecord) {
-        self.state.apply_signal_record(step, record);
+    pub fn apply_signal_record(&mut self, record: SignalRecord) -> Particle {
+        self.state.apply_signal_record(record)
     }
 
     /// Committed graph statistics — the bbg → inf cost/recursion interface.
@@ -198,6 +217,7 @@ mod tests {
                 focus,
                 karma: 0,
                 stake: 0,
+                nonce: 0,
             },
         );
     }
@@ -274,7 +294,8 @@ mod tests {
 
     #[test]
     fn prove_and_verify_particle_roundtrip() {
-        let mut bbg = Bbg::new();
+        // Brakedown cell proofs bind the v1 dimension leaf.
+        let mut bbg = Bbg::new().with_root_version(RootVersion::V1);
         seed_neuron(&mut bbg, neuron_id(1), 100);
         bbg.insert(&one_link(neuron_id(1), particle(2), particle(3)))
             .unwrap();

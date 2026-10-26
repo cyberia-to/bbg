@@ -42,7 +42,7 @@ cyberlink 7-tuple (ν, p, q, τ, a, v, t)
 who linked what                        axon H(p,q): aggregate weight A_{pq}
 individual conviction, valence         axon market state (s_YES, s_NO)
 neuron linking history                 axon meta-score
-market positions (TRUE/FALSE tokens)   neuron: focus, karma, stake
+market positions (TRUE/FALSE tokens)   neuron: focus, karma, stake, nonce
 box values, owners                     particle: energy, φ*
                                        token: denominations, total supply
                                        content: availability proofs
@@ -88,7 +88,7 @@ private queries use the independent commitments:
 "nullifier n not yet spent"          = Lens.open(N, n) → ≠ 0 (non-membership proof)
 ```
 
-one Lens opening per query. one verification per proof. ~5 μs.
+one Lens opening per query. one verification per proof.
 
 ## evaluation dimensions
 
@@ -98,9 +98,9 @@ BBG_poly has 10 public evaluation dimensions. each former sub-root is now an eva
 
 particles are polynomial nouns. particle identity = hemera(Lens.commit(content) ‖ PARTICLE). the content of a particle is a polynomial over the Goldilocks field; its identity is the hemera-wrapped Lens commitment of that polynomial.
 
-accessing any byte range within a particle = Lens.open(commitment, position) producing ~75 bytes of proof. this enables:
+accessing any byte range within a particle = Lens.open(commitment, position), a proof that carries hemera Merkle paths. this enables:
 
-- **O(1) random access** to particle content — any byte range is a Lens opening, no tree path walk
+- **random access** to particle content — any byte range is a Lens opening, no walk over the data tree
 - **native DAS** — the polynomial extension beyond the Boolean hypercube IS the erasure code. no separate 2D Reed-Solomon encoding step. the particle's Lens commitment IS the DAS commitment
 - **algebraic composability** — particle identity is a field element derived from a polynomial commitment. state operations (energy accumulation, axon aggregation, focus computation) compose algebraically with particle identity. no hash-to-field conversion boundary
 
@@ -152,7 +152,7 @@ fungible token denominations. one entry per denomination τ. stores total supply
 
 ### cards — evaluation dimension
 
-non-fungible knowledge assets. every cyberlink is a card. names are cards bound to axon-particles (A6: axons are particles, names are human-readable identifiers for those particles).
+positions: an author's locked stake on an axon-particle, with a valence and a payout owner (dimension version 4, [[state]] rule 8). the stake itself is a balance at a reserved key (rule 9).
 
 ### files — evaluation dimension
 
@@ -189,8 +189,8 @@ CHECKPOINT = (
 
 checkpoint size: O(1) — ~232 bytes
 contains: proof that ALL history from genesis is valid
-updated: O(1) per block via folding
-proof size: ~2 KiB, verification: ~5 μs
+updated: O(1) per block via accumulation
+proof size and verification: set by soft3 proposals/proof-system-repair
 ```
 
 ## storage layers
@@ -219,7 +219,7 @@ L4: Archival       historical state via polynomial time dimension
 | nullifier polynomial N(x) | private double-spend prevention | Neptune SWBF heritage |
 | Brakedown polynomial commitments | batch proofs, evaluation | Brakedown (lens) |
 
-unified by [[hemera]] (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]] (~2 KiB proofs, ~5 μs verification, folding-first).
+unified by [[hemera]] (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]] (accumulation-first; sizes and times in [[soft3/proposals/proof-system-repair|the proof-system repair]]).
 
 ## pipeline
 
@@ -231,23 +231,23 @@ DEVICE                          NETWORK                         CLIENT
 nox execution                   include signals in block        download checkpoint
   ↓ proof-carrying                ↓ polynomial state update       ↓ one zheng decider
 hemera identity                 fold into block accumulator     sync namespaces
-  ↓ folded sponge                 ↓ HyperNova folding             ↓ Lens openings
+  ↓ folded sponge                 ↓ accumulation                  ↓ Lens openings
 build signal                    fold into epoch accumulator     DAS sample
   ↓ (ν, l⃗, Δφ*, σ, prev...)     ↓ universal accumulator          ↓ algebraic DAS
 local sync                      publish checkpoint              query
-  ↓ CRDT + Lens + DAS             ↓ ~240 bytes                    ↓ verifiable query
+  ↓ CRDT + Lens + DAS             ↓ root + accumulator + height   ↓ verifiable query
 submit to network
   ↓ foculus φ* convergence
 ```
 
 | stage | where specified | cost |
 |-------|----------------|------|
-| signal creation | [[nox]] reduction.md (proof-carrying) | ~30 field ops per step |
+| signal creation | [[nox]] reduction.md (proof-carrying) | — |
 | local sync | [[foculus]] (structural sync layers 1-5) | ~200 bytes per namespace |
 | block processing | [[state]] (polynomial updates) | ~3,200 constraints per cyberlink |
 | epoch composition | [[foculus]] + zheng recursion.md | ~100K constraints per epoch |
-| light client | [[foculus]] (checkpoint + Lens) | < 10 KiB, ~5 μs |
-| query | [[query]] (verifiable query compiler) | ~200 bytes to ~5 KiB proof |
+| light client | [[foculus]] (checkpoint + Lens) | — |
+| query | [[query]] (verifiable query compiler) | — |
 
 see [[state]] for transaction types, [[privacy]] for the polynomial mutator set, [[cross-index]] for why LogUp is eliminated, [[foculus]] for namespace synchronization, [[data-availability]] for algebraic DAS, [[temporal]] for the time dimension, [[query]] for verifiable queries
 
@@ -263,7 +263,7 @@ content-address isolation (A1): particle identity = hemera(Lens.commit(content))
 
 a Lens commitment Lens.commit(f) is the topological charge of the polynomial f. the charge is defined by the evaluation of f at a random point drawn from the Fiat-Shamir transcript — a winding number in the algebraic sense. the opening Lens.open(commit, x) → v proves that the charge at x equals v, without revealing f.
 
-the topological interpretation: `Lens.open` is the measurement of topological charge at a point. `Lens.commit` is the total charge. the conservation law: Σ charges = BBG_root. folding (HyperNova) composes charges — the accumulated charge grows each block without changing the verification cost.
+the topological interpretation: `Lens.open` is the measurement of topological charge at a point. `Lens.commit` is the total charge. the conservation law: Σ charges = BBG_root. accumulation composes charges — the accumulated charge grows each block without changing the verification cost.
 
 ### implication for soft3
 

@@ -1,6 +1,6 @@
 //! Exact public-table authentication for consumed BBG dimensions.
 //! The certificate reveals complete tables. See specs/state-certificate.md.
-use crate::dim::{DIMENSION_VERSION, HEADER_FIELDS, KEY_FIELDS, commit_fields, dim_serialize};
+use crate::dim::{TABLE_VERSION, HEADER_FIELDS, KEY_FIELDS, commit_fields, dim_serialize};
 use crate::proof::dim_entries;
 use crate::{BbgState, Dim};
 use nebu::Goldilocks;
@@ -106,13 +106,13 @@ impl StateCertificate {
             }
         }
         let field_leaves = self.leaves.map(|leaf| leaf.map(Goldilocks::new));
-        let leaves = zheng::RootLeaves {
+        let leaves = crate::root::RootLeaves {
             dims: field_leaves[..11].try_into().unwrap(),
             a: field_leaves[11],
             n: field_leaves[12],
             stats: field_leaves[13],
         };
-        Ok(zheng::root_from_leaves(&leaves).map(|v| v.as_u64()))
+        Ok(crate::root::root_from_leaves(&leaves).map(|v| v.as_u64()))
     }
 
     pub fn verify(&self, expected_root: [u64; 4]) -> Result<(), String> {
@@ -123,6 +123,24 @@ impl StateCertificate {
             return Err("state certificate root mismatch".into());
         }
         Ok(())
+    }
+
+    /// The evidence zheng's state verifiers authenticate themselves: the
+    /// same 14 leaves and tables. zheng recomputes the root and every
+    /// table commitment; nothing here is trusted.
+    pub fn evidence(&self) -> Result<zheng::execution::state_evidence::StateEvidence, String> {
+        self.validate_shape()?;
+        Ok(zheng::execution::state_evidence::StateEvidence {
+            leaves: self.leaves,
+            tables: self
+                .dimensions
+                .iter()
+                .map(|t| zheng::execution::state_evidence::StateTable {
+                    namespace: t.namespace,
+                    fields: t.fields.clone(),
+                })
+                .collect(),
+        })
     }
 
     /// Read an unpadded cell. Verify against the trusted root before use.
@@ -138,7 +156,7 @@ impl StateCertificate {
         let table = self.dimensions.iter().find(|t| t.namespace == namespace)?;
         if table.fields.len() < HEADER_FIELDS
             || table.fields.len() > MAX_FIELDS
-            || table.fields[0] != DIMENSION_VERSION
+            || table.fields[0] != TABLE_VERSION
             || table.fields[1] != table.fields.len() as u64
         {
             return None;
@@ -173,7 +191,7 @@ impl StateCertificate {
                 return Err("certificate field limit exceeded".into());
             }
             if table.fields.len() < HEADER_FIELDS
-                || table.fields[0] != DIMENSION_VERSION
+                || table.fields[0] != TABLE_VERSION
                 || table.fields[1] != table.fields.len() as u64
                 || table.fields[2] > ((table.fields.len() - HEADER_FIELDS) / KEY_FIELDS) as u64
                 || (table.fields[2] == 0 && table.fields.len() != HEADER_FIELDS)

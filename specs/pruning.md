@@ -133,7 +133,7 @@ estimate_bytes(state):
   particles:  len × 80    (32-byte key + 6 × u64 fields)
   axons_out:  Σ (32 + n × 32)  per entry, n = list length
   axons_in:   Σ (32 + n × 32)  per entry
-  neurons:    len × 56    (32-byte key + 3 × u64 fields)
+  neurons:    len × 64    (32-byte key + 4 × u64 fields)
 ```
 
 the estimate is monotonically proportional to real state size. it understates by

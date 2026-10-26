@@ -7,22 +7,17 @@ query hiding and does not rely on sampled polynomial acceptance.
 
 ## Canonical dimension encoding
 
-Dimension format version 2 changes roots and cell offsets. Recompute old roots
+Table format version 2 (`dim::TABLE_VERSION`) changes roots and cell offsets. The table layout is record-agnostic: dimension version 3 added `nonce` to neuron entries (width 8 limbs) and dimension version 4 widened card entries to owner, particle, author, valence, since (16 → 28 limbs) without changing this word. Recompute old roots
 and proofs; no legacy fallback exists. For each dimension, the polynomial's
 unpadded field table is `[2, field_count, entry_count, entries...]`. Each entry
 contains its 32-byte key as eight little-endian u32 field limbs, followed by the
 record fields. Every arbitrary u64 record scalar is two u32 limbs, low first;
 every arbitrary 32-byte value is eight u32 limbs. True field values in A remain
 single canonical field elements. Keys follow the dimension map's deterministic
-ordering. Signals include neuron, network, link_count, block_height, proof_hash.
+ordering. Signals are keyed by `H(neuron ‖ step)` (state.md rule 7) and include neuron, network, link_count, block_height, proof_hash, step (30 limbs).
 Root commitments and query proofs use the same entry serializer.
 
-When the next power of two is at most 65,536 fields, the table pads to that
-size for Brakedown version 2. Larger tables commit with Hemera over
-`"bbg-dim-oversize-v1" || length_u64_le || fields_u64_le`, without padding.
-Certificate verification recomputes the same branch. The large-table branch
-does not support polynomial openings; complete-table certificates still work
-within the aggregate certificate bound below.
+The table pads to exactly its next power of two for Brakedown version 2.
 The header binds its unpadded length and entry count. Empty dimensions encode
 `[2,3,0]`; padding cells are not addressable. Particle energy is at cell 11 for
 the first record: three header fields plus eight key limbs. The following cell
@@ -54,6 +49,16 @@ additionally requires equality to the caller's canonical root. `cell(ns,key)`
 returns an in-range canonical field value from a structurally valid certificate;
 callers must verify the certificate against their expected root before trusting
 that value. Missing namespaces and padded/out-of-range indices return None.
+
+`evidence()` converts the certificate into zheng's `StateEvidence` (the same
+leaves and tables). zheng's state verifiers (`verify_certificate`,
+`succinct::verify_state`, `Envelope::verify`) take that evidence and
+authenticate it themselves — the leaves fold to the statement's own root, every
+table matches its leaf — before pinning any read, so a consumer of a state
+proof has no authentication step of its own. zheng restates this layout
+(`zheng/rs/src/execution/state_evidence.rs`) and pins the frozen root vectors;
+`tests/look_e2e.rs::zheng_and_bbg_agree_on_the_root` checks the two agree on a
+real state.
 
 A certificate may omit unconsumed dimensions but never replace a consumed table
 with a sampled opening. The execution proof must bind each actual namespace,

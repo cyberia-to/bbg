@@ -36,16 +36,27 @@ pub(crate) fn adjacency(entries: &[Particle]) -> Vec<u8> {
 }
 
 pub(crate) fn neuron(n: &NeuronRecord) -> Vec<u8> {
-    integers(&[n.focus, n.karma, n.stake])
+    integers(&[n.focus, n.karma, n.stake, n.nonce])
+}
+
+pub(crate) fn card(c: &CardRecord) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(105);
+    bytes.extend(c.owner);
+    bytes.extend(c.particle);
+    bytes.extend(c.author);
+    bytes.push(c.valence.byte());
+    bytes.extend(c.since.to_le_bytes());
+    bytes
 }
 
 pub(crate) fn signal(s: &SignalRecord) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(108);
+    let mut bytes = Vec::with_capacity(116);
     bytes.extend(s.neuron);
     bytes.extend(s.network);
     bytes.extend(s.link_count.to_le_bytes());
     bytes.extend(s.block_height.to_le_bytes());
     bytes.extend(s.proof_hash);
+    bytes.extend(s.step.to_le_bytes());
     bytes
 }
 
@@ -74,10 +85,10 @@ pub(crate) fn metadata(bbg: &Bbg) -> Vec<u8> {
     bytes
 }
 
-/// Exact persisted state, ordered by byte key. Native profiles have no accumulator.
+/// Exact persisted state, ordered by byte key. Native profiles carry no checkpoint proof.
 pub fn records(bbg: &Bbg) -> Result<impl Iterator<Item = Record> + '_, Error> {
     if bbg.checkpoint.acc.is_some() {
-        return Err(Error::Accumulator);
+        return Err(Error::CheckpointProof);
     }
     let s = &bbg.state;
     type Stream<'a> = Box<dyn Iterator<Item = Record> + 'a>;
@@ -115,7 +126,7 @@ pub fn records(bbg: &Bbg) -> Result<impl Iterator<Item = Record> + '_, Error> {
             Box::new(
                 s.cards
                     .iter()
-                    .map(move |(k, v)| record(7, k, [v.owner, v.particle].concat())),
+                    .map(move |(k, v)| record(7, k, card(v))),
             ),
             Box::new(s.files.iter().map(move |(k, v)| {
                 let mut bytes = vec![u8::from(v.available)];
@@ -130,7 +141,7 @@ pub fn records(bbg: &Bbg) -> Result<impl Iterator<Item = Record> + '_, Error> {
             Box::new(
                 s.signals
                     .iter()
-                    .map(move |(k, v)| record(10, &k.to_be_bytes(), signal(v))),
+                    .map(move |(k, v)| record(10, k, signal(v))),
             ),
             Box::new(
                 s.commitments
@@ -171,7 +182,7 @@ pub(crate) fn read(bbg: &Bbg, key: &[u8]) -> Option<Vec<u8>> {
         3 => s.axons_in.get(&entity()).map(|v| adjacency(v)),
         4 => s.neurons.get(&entity()).map(neuron),
         9 => s.time.get(&position()).map(|v| v.to_vec()),
-        10 => s.signals.get(&position()).map(signal),
+        10 => s.signals.get(&entity()).map(signal),
         11 => s
             .commitments
             .get(&entity())

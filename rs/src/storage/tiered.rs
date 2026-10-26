@@ -98,14 +98,14 @@ impl TieredStore {
         Ok(())
     }
 
-    /// Fetch self-authenticating content; reject a peer's substituted bytes.
+    /// Fetch raw content bytes for a particle from the network tier.
+    ///
+    /// L3 content is self-authenticating (`H(content) = particle`,
+    /// specs/storage.md); a peer's answer that does not hash to the requested
+    /// particle is rejected as unreachable rather than handed back as-is.
     pub fn fetch_content(&self, particle: &Particle) -> Option<Vec<u8>> {
         let bytes = self.network.as_ref()?.fetch(particle)?;
-        if hemera::hash(&bytes).as_bytes() == particle {
-            Some(bytes)
-        } else {
-            None
-        }
+        (hemera::hash(&bytes).as_bytes() == particle).then_some(bytes)
     }
 
     pub fn archive(&mut self) -> StorageResult<Option<[u8; 32]>> {
