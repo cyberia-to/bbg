@@ -11,7 +11,7 @@ categories = ["cryptography", "data-structures"]
 [dependencies]
 neuron-id = { version = "0.1", path = "../../neuron/id" }
 nebu   = { package = "strata-nebu", version = "0.1", path = "../../strata/nebu/rs" }
-hemera = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
+hemera = { package = "cyber-hemera", version = "0.4", path = "../../hemera/rs" }
 lens   = { package = "cyber-lens", version = "0.2.0", path = "../../lens/src" }
 nox    = { package = "cyber-nox", version = "0.3.0", path = "../../nox/rs" }
 zheng  = { version = "0.4.0", path = "../../zheng/rs" }
