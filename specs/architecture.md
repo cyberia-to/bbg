@@ -190,7 +190,7 @@ CHECKPOINT = (
 checkpoint size: O(1) — ~232 bytes
 contains: proof that ALL history from genesis is valid
 updated: O(1) per block via accumulation
-proof size and verification: set by soft3 proposals/proof-system-repair
+proof size and verification: set by soft3 projects/proof-system-repair
 ```
 
 ## storage layers
@@ -219,7 +219,7 @@ L4: Archival       historical state via polynomial time dimension
 | nullifier polynomial N(x) | private double-spend prevention | Neptune SWBF heritage |
 | Brakedown polynomial commitments | batch proofs, evaluation | Brakedown (lens) |
 
-unified by [[hemera]] (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]] (accumulation-first; sizes and times in [[soft3/proposals/proof-system-repair|the proof-system repair]]).
+unified by [[hemera]] (32-byte output, 24 rounds, ~736 constraints/perm), [[Goldilocks field]], and [[zheng]] (accumulation-first; sizes and times in [[soft3/projects/proof-system-repair|the proof-system repair]]).
 
 ## pipeline
 

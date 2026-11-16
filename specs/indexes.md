@@ -17,7 +17,7 @@ BBG_poly(index, key, t) = value
 query:  Lens.open(BBG_root, (index, key, t)) → (value, proof)
 verify: Lens.verify(BBG_root, (index, key, t), value, proof)
 
-verification cost and proof size: set by soft3 proposals/proof-system-repair (openings carry hemera Merkle paths)
+verification cost and proof size: set by soft3 projects/proof-system-repair (openings carry hemera Merkle paths)
 ```
 
 ## completeness proofs

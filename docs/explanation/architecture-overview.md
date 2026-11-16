@@ -18,7 +18,7 @@ BBG_root = H(commit(BBG_poly) ‖ commit(A) ‖ commit(N))    32 bytes
 - **A(x)**: commitment polynomial — every private record ever created
 - **N(x)**: nullifier polynomial — every spent record
 
-one hash, three commitments, 32 bytes. a checkpoint (root + universal accumulator + height) proves all history from genesis with one decider. the checkpoint size and verify time of the retired zheng design do not hold; the measured numbers live in [[soft3/proposals/proof-system-repair|the proof-system repair]].
+one hash, three commitments, 32 bytes. a checkpoint (root + universal accumulator + height) proves all history from genesis with one decider. the checkpoint size and verify time of the retired zheng design do not hold; the measured numbers live in [[soft3/projects/proof-system-repair|the proof-system repair]].
 
 ## 10 public dimensions + 2 private commitments
 
@@ -104,7 +104,7 @@ one distribution governs the entire stack.
 
 ```
 BBG_root:                32 bytes (one hash of three commitments)
-checkpoint:              root + accumulator + height (size: soft3 proposals/proof-system-repair)
+checkpoint:              root + accumulator + height (size: soft3 projects/proof-system-repair)
 verification:            one zheng decider (time: same)
 per-cyberlink:           ~8,200 constraints + hemera identity
   public state update:   ~3,200 constraints (polynomial)
