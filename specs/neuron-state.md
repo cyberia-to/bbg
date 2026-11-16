@@ -176,7 +176,7 @@ verification against BBG_root:
 verify(zheng_π, epoch_index_root, Ikat.commit(P_out), commit(O)) → accept/reject
 
 cost:  one zheng decider
-size:  set by soft3 proposals/proof-system-repair
+size:  set by soft3 projects/proof-system-repair
 ```
 
 the zheng proof certifies completeness. the GCD proof certifies unspentness. together:

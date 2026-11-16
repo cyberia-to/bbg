@@ -47,7 +47,7 @@ FINALIZATION (1 root)
 
 ```
 hash output:          32 bytes (hemera, 24 rounds, ~736 constraints/perm)
-proof size:           — (set by soft3 proposals/proof-system-repair)
+proof size:           — (set by soft3 projects/proof-system-repair)
 verification:         —
 private transfer:     ~40,000 constraints, sub-second proving
 cross-index (LogUp):  ~500 constraints per axon update (15× savings)
@@ -83,7 +83,7 @@ light client join:    one zheng verification + namespace sync
 
 ## open design
 
-| proposal | status | topic |
+| project | status | topic |
 |----------|--------|-------|
 | [[valence]] | implemented | ternary epistemic field in cyberlink 7-tuple |
 | [[storage-proofs]] | draft | proving data retention at all storage tiers |

@@ -86,6 +86,6 @@ blocked on lens serde (soft3 blocker #1): serializing a `QueryProof` to a file (
 
 ## open questions
 
-1. codec home — the cyber-dialect signal/intent tape codec lives in `foculus/src/frames.rs` today, operating on foculus's envelope `Signal`. `bbg-cli` needs the same frames but only bbg's state-application shape. proposal: lift the cyber-dialect codec into a shared spot (a `cyber-dialect` module in [[tape]], or a tiny shared crate) that both `foculus` and `bbg-cli` import — one frame format, one implementation, no duplication. the CLI depends on [[tape]] + bbg only.
+1. codec home — the cyber-dialect signal/intent tape codec lives in `foculus/src/frames.rs` today, operating on foculus's envelope `Signal`. `bbg-cli` needs the same frames but only bbg's state-application shape. project: lift the cyber-dialect codec into a shared spot (a `cyber-dialect` module in [[tape]], or a tiny shared crate) that both `foculus` and `bbg-cli` import — one frame format, one implementation, no duplication. the CLI depends on [[tape]] + bbg only.
 2. does `apply` require the neuron to exist (focus debit) or auto-seed? bbg's `insert` debits focus only if the neuron is present; the CLI should surface a warning when applying links from an unknown neuron.
 3. a `replay <log>` command for auditing — fold a foreign tape log and print the resulting root, for fraud detection against a claimed root.

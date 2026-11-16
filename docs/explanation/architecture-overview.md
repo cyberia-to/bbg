@@ -104,7 +104,7 @@ one distribution governs the entire stack.
 
 ```
 BBG_root:                32 bytes (one hash of three commitments)
-checkpoint:              root + accumulator + height (size: soft3 proposals/proof-system-repair)
+checkpoint:              root + accumulator + height (size: soft3 projects/proof-system-repair)
 verification:            one zheng decider (time: same)
 per-cyberlink:           ~8,200 constraints + hemera identity
   public state update:   ~3,200 constraints (polynomial)

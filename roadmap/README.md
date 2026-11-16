@@ -33,9 +33,9 @@ results with source revisions in `audit/`.
 | [verifiable query](verifiable-query.md) | [query](../specs/query.md) | query compilation and proof construction |
 | [evy ShardStore](evy-shardstore.md) | [storage](../specs/storage.md) | ECS storage API and Unimem compatibility to preserve during P0 changes |
 
-## earlier proposals (contracts in specs, rationale in explanation)
+## earlier projects (contracts in specs, rationale in explanation)
 
-| former proposal | specs | explanation |
+| former project | specs | explanation |
 |---|---|---|
 | algebraic-nmt | indexes.md, state.md, architecture.md | why-polynomial-state.md |
 | unified-polynomial-state | state.md, architecture.md | why-polynomial-state.md |

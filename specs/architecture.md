@@ -190,7 +190,7 @@ CHECKPOINT = (
 checkpoint size: O(1) — ~232 bytes
 contains: proof that ALL history from genesis is valid
 updated: O(1) per block via accumulation
-proof size and verification: set by soft3 proposals/proof-system-repair
+proof size and verification: set by soft3 projects/proof-system-repair
 ```
 
 ## storage layers
